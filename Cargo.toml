@@ -1,0 +1,23 @@
+[package]
+name = "six"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1.0.102"
+color-eyre = { version = "0.6.5", optional = true }
+crossterm = "0.29.0"
+hecs = { version = "0.11.0", features = ["macros"] }
+nom = "8.0.0"
+ratatui = { version = "0.30.0", default-features = false, features = ["crossterm"] }
+regex = "1.12.4"
+ropey = { version = "1.6.1", default-features = false, features = ["cr_lines", "simd"] }
+shellexpand = "3.1.2"
+tempfile = "3.27.0"
+thiserror = "2.0.18"
+unescape = "0.1.0"
+unicode-segmentation = "1.13.2"
+unicode-width = "0.2.2"
+
+[features]
+color-eyre = ["dep:color-eyre"]
