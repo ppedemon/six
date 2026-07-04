@@ -295,20 +295,30 @@ mod find_tests {
     }
 }
 
-pub fn next_word(rope: &Rope, char_idx: usize) -> usize {
+pub fn next_big_word(rope: &Rope, char_idx: usize) -> usize {
+    scan_next(rope, char_idx, |c| !c.is_whitespace())
+}
+
+pub fn next_sub_word(rope: &Rope, char_idx: usize) -> usize {
+    scan_next(rope, char_idx, |c| {
+        c == '_' || (!c.is_whitespace() && !c.is_ascii_punctuation())
+    })
+}
+
+fn scan_next(rope: &Rope, char_idx: usize, is_word_char: fn(char) -> bool) -> usize {
     let char_idx = char_idx.clamp(0, rope.len_chars().saturating_sub(1));
 
     let mut chars = rope.chars_at(char_idx);
     let mut curr_idx = char_idx + 1;
 
     while let Some(c) = chars.next()
-        && !c.is_whitespace()
+        && is_word_char(c)
     {
         curr_idx += 1;
     }
 
     while let Some(c) = chars.next()
-        && c.is_whitespace()
+        && !is_word_char(c)
     {
         curr_idx += 1;
     }
@@ -316,20 +326,30 @@ pub fn next_word(rope: &Rope, char_idx: usize) -> usize {
     curr_idx.min(rope.len_chars().saturating_sub(1))
 }
 
-pub fn prev_word(rope: &Rope, char_idx: usize) -> usize {
+pub fn prev_big_word(rope: &Rope, char_idx: usize) -> usize {
+    scan_prev(rope, char_idx, |c| !c.is_whitespace())
+}
+
+pub fn prev_sub_word(rope: &Rope, char_idx: usize) -> usize {
+    scan_prev(rope, char_idx, |c| {
+        c == '_' || (!c.is_whitespace() && !c.is_ascii_punctuation())
+    })
+}
+
+fn scan_prev(rope: &Rope, char_idx: usize, is_word: fn(char) -> bool) -> usize {
     let char_idx = char_idx.clamp(0, rope.len_chars().saturating_sub(1));
 
     let mut chars = rope.chars_at(char_idx).reversed();
     let mut curr_idx = 1;
 
     while let Some(c) = chars.next()
-        && c.is_whitespace()
+        && !is_word(c)
     {
         curr_idx += 1;
     }
 
     while let Some(c) = chars.next()
-        && !c.is_whitespace()
+        && is_word(c)
     {
         curr_idx += 1;
     }
@@ -338,7 +358,7 @@ pub fn prev_word(rope: &Rope, char_idx: usize) -> usize {
 }
 
 #[cfg(test)]
-mod word_tests {
+mod word_ws_tests {
     use super::*;
     use ropey::Rope;
 
@@ -352,100 +372,116 @@ mod word_tests {
 
     #[test]
     fn test_next_word_empty() {
-        check_jump!(next_word, "", 0, Expected => 0);
-        check_jump!(next_word, "", 20, Expected => 0);
+        check_jump!(next_big_word, "", 0, Expected => 0);
+        check_jump!(next_big_word, "", 20, Expected => 0);
     }
 
     #[test]
     fn test_next_word_spaces() {
-        check_jump!(next_word, "    ", 0, Expected => 3);
+        check_jump!(next_big_word, "    ", 0, Expected => 3);
     }
 
     #[test]
     fn test_next_word_standard_jump() {
         // Cursor on 'm' of 'mut' -> should jump to 'f' of 'foo'
-        check_jump!(next_word, "mut foo", 0, Expected => 4);
+        check_jump!(next_big_word, "mut foo", 0, Expected => 4);
 
         // Cursor on 'u' of 'mut' -> should still jump to 'f' of 'foo'
-        check_jump!(next_word, "mut foo", 1, Expected => 4);
+        check_jump!(next_big_word, "mut foo", 1, Expected => 4);
 
         // Cursor on 'f' of 'foo' -> should jump to last index
-        check_jump!(next_word, "mut foo", 4, Expected => 6);
+        check_jump!(next_big_word, "mut foo", 4, Expected => 6);
     }
 
     #[test]
     fn test_next_word_multiple_spaces() {
         // Should cross multiple spaces seamlessly
-        check_jump!(next_word, "let    value", 0, Expected => 7);
+        check_jump!(next_big_word, "let    value", 0, Expected => 7);
     }
 
     #[test]
     fn test_next_word_crosses_newlines() {
         // Should drop down to the next line if a word ends near a newline
         let text = "first\nsecond";
-        check_jump!(next_word, text, 0, Expected => 6);
+        check_jump!(next_big_word, text, 0, Expected => 6);
 
         // From a blank line, it should jump to the first word below it
         let blank_line_text = "first\n\n\n  second";
-        check_jump!(next_word, blank_line_text, 5, Expected => 10);
+        check_jump!(next_big_word, blank_line_text, 5, Expected => 10);
     }
 
     #[test]
     fn test_next_word_boundaries() {
         // Last word in the file has no next word -> returns None
-        check_jump!(next_word, "tail", 0, Expected => 3);
-        check_jump!(next_word, "tail   ", 0, Expected => 6);
+        check_jump!(next_big_word, "tail", 0, Expected => 3);
+        check_jump!(next_big_word, "tail   ", 0, Expected => 6);
 
         // Out of bounds inputs
-        check_jump!(next_word, "hello", 5, Expected => 4);
+        check_jump!(next_big_word, "hello", 5, Expected => 4);
+    }
+
+    #[test]
+    fn test_next_word_punct_and_emojis() {
+        check_jump!(next_big_word, "a_b a", 0, Expected => 4);
+        check_jump!(next_sub_word, "a_b-- a", 0, Expected => 6);
+        check_jump!(next_big_word, "a🧑‍🧑‍🧒‍🧒b a", 0, Expected => 10);
+        check_jump!(next_sub_word, "a🧑‍🧑‍🧒‍🧒b a", 0, Expected => 10);
     }
 
     #[test]
     fn test_prev_word_empty() {
-        check_jump!(prev_word, "", 0, Expected => 0);
-        check_jump!(prev_word, "", 20, Expected => 0);
+        check_jump!(prev_big_word, "", 0, Expected => 0);
+        check_jump!(prev_big_word, "", 20, Expected => 0);
     }
 
     #[test]
     fn test_prev_word_spaces() {
-        check_jump!(prev_word, "    ", 3, Expected => 0);
+        check_jump!(prev_big_word, "    ", 3, Expected => 0);
     }
 
     #[test]
     fn test_prev_word_standard_jump() {
         // Cursor on 'f' of 'foo' -> should jump back to 'm' of 'mut'
-        check_jump!(prev_word, "mut foo", 4, Expected => 0);
+        check_jump!(prev_big_word, "mut foo", 4, Expected => 0);
 
         // Cursor in the middle of 'foo' -> should jump back to 'f'
-        check_jump!(prev_word, "mut foo", 5, Expected => 4);
+        check_jump!(prev_big_word, "mut foo", 5, Expected => 4);
     }
 
     #[test]
     fn test_prev_word_multiple_spaces() {
         // Should cross multiple spaces backwards seamlessly
-        check_jump!(prev_word, "first let    value", 13, Expected => 6);
+        check_jump!(prev_big_word, "first let    value", 13, Expected => 6);
 
         // Should go to the beginning of the current word
-        check_jump!(prev_word, "first let    value", 7, Expected => 6);
+        check_jump!(prev_big_word, "first let    value", 7, Expected => 6);
     }
 
     #[test]
     fn test_prev_word_lands_at_start_of_file() {
         // Your specific unwrap_or edge-case: jumping to the very first word of a file
-        check_jump!(prev_word, "first_word  ", 11, Expected => 0);
-        check_jump!(prev_word, "first_word", 5, Expected => 0);
+        check_jump!(prev_big_word, "first_word  ", 11, Expected => 0);
+        check_jump!(prev_big_word, "first_word", 5, Expected => 0);
     }
 
     #[test]
     fn test_prev_word_crosses_newlines_backward() {
         // Should move up a line if spaces/newlines are encountered backwards
         let text = "first\nsecond";
-        check_jump!(prev_word, text, 6, Expected => 0);
+        check_jump!(prev_big_word, text, 6, Expected => 0);
 
         let multi_line = "first\n\n\n  second";
-        check_jump!(prev_word, multi_line, 10, Expected => 0);
+        check_jump!(prev_big_word, multi_line, 10, Expected => 0);
 
         let multi_line_1 = "first\n\n\n  second third";
-        check_jump!(prev_word, multi_line_1, 17, Expected => 10);
+        check_jump!(prev_big_word, multi_line_1, 17, Expected => 10);
+    }
+
+    #[test]
+    fn test_prev_word_punct_and_emojis() {
+        check_jump!(prev_big_word, "a_b a", 4, Expected => 0);
+        check_jump!(prev_sub_word, "a_b-- a", 6, Expected => 0);
+        check_jump!(prev_big_word, "a🧑‍🧑‍🧒‍🧒b a", 10, Expected => 0);
+        check_jump!(prev_sub_word, "a🧑‍🧑‍🧒‍🧒b a", 10, Expected => 0);
     }
 }
