@@ -2,7 +2,8 @@ use ropey::Rope;
 
 use super::rules::NavRules;
 use crate::components::{BufferView, Config};
-use crate::systems::commons::curr_line;
+use crate::rope;
+use crate::systems::commons::{char_idx_to_coords, coords_to_char_idx, curr_line, cursor_to_char_idx};
 
 fn apply_target_col<R: NavRules>(config: &Config, rope: &Rope, buf_view: &mut BufferView) {
     let target_col = buf_view.target_col;
@@ -115,4 +116,48 @@ pub fn page_down<R: NavRules>(
         .saturating_add(pages * pg_size)
         .min(max_line_idx);
     move_to_first_non_blank::<R>(config, rope, buf_view);
+}
+
+pub fn next_big_word(config: &Config, rope: &Rope, buf_view: &mut BufferView, reps: usize) {
+    let mut char_idx = cursor_to_char_idx(config, buf_view, rope);
+
+    for _ in 0..reps {
+        char_idx = rope::next_big_word(rope, char_idx);
+    }
+
+    buf_view.cursor = char_idx_to_coords(config, rope, buf_view, char_idx);
+    buf_view.target_col = buf_view.cursor.col;
+}
+
+pub fn next_sub_word(config: &Config, rope: &Rope, buf_view: &mut BufferView, reps: usize) {
+    let mut char_idx = cursor_to_char_idx(config, buf_view, rope);
+
+    for _ in 0..reps {
+        char_idx = rope::next_sub_word(rope, char_idx);
+    }
+    
+    buf_view.cursor = char_idx_to_coords(config, rope, buf_view, char_idx);
+    buf_view.target_col = buf_view.cursor.col;
+}
+
+pub fn prev_big_word(config: &Config, rope: &Rope, buf_view: &mut BufferView, reps: usize) {
+    let mut char_idx = cursor_to_char_idx(config, buf_view, rope);
+
+    for _ in 0..reps {
+        char_idx = rope::prev_big_word(rope, char_idx);
+    }
+
+    buf_view.cursor = char_idx_to_coords(config, rope, buf_view, char_idx);
+    buf_view.target_col = buf_view.cursor.col;
+}
+
+pub fn prev_sub_word(config: &Config, rope: &Rope, buf_view: &mut BufferView, reps: usize) {
+    let mut char_idx = cursor_to_char_idx(config, buf_view, rope);
+
+    for _ in 0..reps {
+        char_idx = rope::prev_sub_word(rope, char_idx);
+    }
+    
+    buf_view.cursor = char_idx_to_coords(config, rope, buf_view, char_idx);
+    buf_view.target_col = buf_view.cursor.col;
 }

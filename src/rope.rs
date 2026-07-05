@@ -295,66 +295,110 @@ mod find_tests {
     }
 }
 
+fn is_sub_word_char(c: char) -> bool {
+    c == '_' || (!c.is_whitespace() && !c.is_ascii_punctuation())
+}
+
 pub fn next_big_word(rope: &Rope, char_idx: usize) -> usize {
-    scan_next(rope, char_idx, |c| !c.is_whitespace())
+    let max_idx = rope.len_chars().saturating_sub(1);
+    if max_idx == 0 {
+        return 0;
+    }
+
+    let mut char_idx = char_idx.clamp(0, max_idx);
+    let mut c = rope.char(char_idx);
+
+    while char_idx < max_idx && !c.is_whitespace() {
+        char_idx += 1;
+        c = rope.char(char_idx);
+    }
+
+    while char_idx < max_idx && c.is_whitespace() {
+        char_idx += 1;
+        c = rope.char(char_idx);
+    }
+
+    char_idx.min(rope.len_chars().saturating_sub(1))
 }
 
 pub fn next_sub_word(rope: &Rope, char_idx: usize) -> usize {
-    scan_next(rope, char_idx, |c| {
-        c == '_' || (!c.is_whitespace() && !c.is_ascii_punctuation())
-    })
-}
-
-fn scan_next(rope: &Rope, char_idx: usize, is_word_char: fn(char) -> bool) -> usize {
-    let char_idx = char_idx.clamp(0, rope.len_chars().saturating_sub(1));
-
-    let mut chars = rope.chars_at(char_idx);
-    let mut curr_idx = char_idx + 1;
-
-    while let Some(c) = chars.next()
-        && is_word_char(c)
-    {
-        curr_idx += 1;
+    let max_idx = rope.len_chars().saturating_sub(1);
+    if max_idx == 0 {
+        return 0;
     }
 
-    while let Some(c) = chars.next()
-        && !is_word_char(c)
-    {
-        curr_idx += 1;
+    let mut char_idx = char_idx.clamp(0, max_idx);
+    let mut c = rope.char(char_idx);
+
+    if is_sub_word_char(c) {
+        while char_idx < max_idx && is_sub_word_char(c) {
+            char_idx += 1;
+            c = rope.char(char_idx);
+        }
+    } else if c.is_ascii_punctuation() {
+        while char_idx < max_idx && c.is_ascii_punctuation() {
+            char_idx += 1;
+            c = rope.char(char_idx);
+        }
     }
 
-    curr_idx.min(rope.len_chars().saturating_sub(1))
+    while char_idx < max_idx && c.is_whitespace() {
+        char_idx += 1;
+        c = rope.char(char_idx);
+    }
+
+    char_idx.min(rope.len_chars().saturating_sub(1))
 }
 
 pub fn prev_big_word(rope: &Rope, char_idx: usize) -> usize {
-    scan_prev(rope, char_idx, |c| !c.is_whitespace())
+    let max_idx = rope.len_chars().saturating_sub(1);
+    if max_idx == 0 {
+        return 0;
+    }
+
+    let mut char_idx = char_idx.clamp(0, max_idx);
+    let mut c = rope.char(char_idx.saturating_sub(1));
+
+    while char_idx != 0 && c.is_whitespace() {
+        char_idx -= 1;
+        c = rope.char(char_idx.saturating_sub(1));
+    }
+
+    while char_idx != 0 && !c.is_whitespace() {
+        char_idx -= 1;
+        c = rope.char(char_idx.saturating_sub(1));
+    }
+
+    char_idx.min(rope.len_chars().saturating_sub(1))
 }
 
 pub fn prev_sub_word(rope: &Rope, char_idx: usize) -> usize {
-    scan_prev(rope, char_idx, |c| {
-        c == '_' || (!c.is_whitespace() && !c.is_ascii_punctuation())
-    })
-}
-
-fn scan_prev(rope: &Rope, char_idx: usize, is_word: fn(char) -> bool) -> usize {
-    let char_idx = char_idx.clamp(0, rope.len_chars().saturating_sub(1));
-
-    let mut chars = rope.chars_at(char_idx).reversed();
-    let mut curr_idx = 1;
-
-    while let Some(c) = chars.next()
-        && !is_word(c)
-    {
-        curr_idx += 1;
+    let max_idx = rope.len_chars().saturating_sub(1);
+    if max_idx == 0 {
+        return 0;
     }
 
-    while let Some(c) = chars.next()
-        && is_word(c)
-    {
-        curr_idx += 1;
+    let mut char_idx = char_idx.clamp(0, max_idx);
+    let mut c = rope.char(char_idx.saturating_sub(1));
+
+    while char_idx != 0 && c.is_whitespace() {
+        char_idx -= 1;
+        c = rope.char(char_idx.saturating_sub(1));
     }
 
-    char_idx.saturating_sub(curr_idx)
+    if is_sub_word_char(c) {
+        while char_idx != 0 && is_sub_word_char(c) {
+            char_idx -= 1;
+            c = rope.char(char_idx.saturating_sub(1));
+        }
+    } else if c.is_ascii_punctuation() {
+        while char_idx != 0 && c.is_ascii_punctuation() {
+            char_idx -= 1;
+            c = rope.char(char_idx.saturating_sub(1));
+        }
+    }
+
+    char_idx.min(rope.len_chars().saturating_sub(1))
 }
 
 #[cfg(test)]
@@ -422,8 +466,9 @@ mod word_ws_tests {
 
     #[test]
     fn test_next_word_punct_and_emojis() {
+        check_jump!(next_sub_word, "   -A-  !", 4, Expected => 5);
         check_jump!(next_big_word, "a_b a", 0, Expected => 4);
-        check_jump!(next_sub_word, "a_b-- a", 0, Expected => 6);
+        check_jump!(next_sub_word, "a_b-- a", 0, Expected => 3);
         check_jump!(next_big_word, "a🧑‍🧑‍🧒‍🧒b a", 0, Expected => 10);
         check_jump!(next_sub_word, "a🧑‍🧑‍🧒‍🧒b a", 0, Expected => 10);
     }
@@ -480,7 +525,7 @@ mod word_ws_tests {
     #[test]
     fn test_prev_word_punct_and_emojis() {
         check_jump!(prev_big_word, "a_b a", 4, Expected => 0);
-        check_jump!(prev_sub_word, "a_b-- a", 6, Expected => 0);
+        check_jump!(prev_sub_word, "a_b-- a", 6, Expected => 3);
         check_jump!(prev_big_word, "a🧑‍🧑‍🧒‍🧒b a", 10, Expected => 0);
         check_jump!(prev_sub_word, "a🧑‍🧑‍🧒‍🧒b a", 10, Expected => 0);
     }

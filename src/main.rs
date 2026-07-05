@@ -9,7 +9,7 @@ use std::{
     time::Duration,
 };
 
-use crate::components::EditorCtx;
+use crate::{components::EditorCtx, systems::adjust_initial_coords};
 
 mod components;
 mod digraphs;
@@ -43,9 +43,9 @@ fn main() -> Result<()> {
 
     let args = std::env::args().collect::<Vec<_>>();
     if args.len() == 1 {
-        systems::create_empty_session(&mut ctx)?
+        systems::create_empty_session(&mut ctx)?;
     } else {
-        systems::load_session(&mut ctx, &args[1])?
+        systems::load_session(&mut ctx, &args[1])?;
     };
 
     run(ctx)
@@ -63,6 +63,13 @@ fn editor_loop(
     terminal: &mut Terminal<CrosstermBackend<Stdout>>,
 ) -> Result<()> {
     let mut input_handler = systems::InputHandler::new();
+
+    // In order to put the cursor at an arbitrary place and get proper scrolling if it
+    // falls outside the screen, we need the terminal size and do a pre-render pass.
+    terminal.draw(|frame| {
+        systems::pre_render(&mut ctx, frame.area()).unwrap();
+        adjust_initial_coords(&ctx).unwrap();
+    })?;
 
     while !systems::should_quit(&ctx)? {
         terminal.draw(|frame| {

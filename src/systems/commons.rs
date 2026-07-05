@@ -40,7 +40,7 @@ pub fn char_idx_to_coords(
 ) -> Coords {
     let line_idx = rope.char_to_line(char_idx);
     let start_idx = rope.line_to_char(line_idx);
-    let line = curr_line(config, rope, buf_view);
+    let line = buf_view.display_buf.ensure_line(config, rope, line_idx);
     let col_idx = line.char_idx_to_col(char_idx - start_idx);
 
     Coords {

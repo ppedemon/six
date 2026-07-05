@@ -8,11 +8,19 @@ pub enum Motion {
     Right,
     PageDown,
     PageUp,
+    NextBigWord,
+    NextSubWord,
+    PrevBigWord,
+    PrevSubWord,
+}
+
+fn only_shit(modifiers: KeyModifiers) -> bool {
+    modifiers == KeyModifiers::NONE || modifiers == KeyModifiers::SHIFT
 }
 
 impl Motion {
     pub fn from(event: KeyEvent) -> Option<Self> {
-        if event.modifiers.is_empty() {
+        if only_shit(event.modifiers) {
             match event.code {
                 KeyCode::Char('j') | KeyCode::Down => Some(Motion::Down),
                 KeyCode::Char('k') | KeyCode::Up => Some(Motion::Up),
@@ -20,6 +28,10 @@ impl Motion {
                 KeyCode::Char('l') | KeyCode::Right => Some(Motion::Right),
                 KeyCode::PageUp => Some(Motion::PageUp),
                 KeyCode::PageDown => Some(Motion::PageDown),
+                KeyCode::Char('W') => Some(Motion::NextBigWord),
+                KeyCode::Char('w') => Some(Motion::NextSubWord),
+                KeyCode::Char('B') => Some(Motion::PrevBigWord),
+                KeyCode::Char('b') => Some(Motion::PrevSubWord),
                 _ => None,
             }
         } else if event.modifiers == KeyModifiers::CONTROL {

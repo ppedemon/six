@@ -111,5 +111,9 @@ fn session_nav<R: NavRules>(
             buffer::page_down::<R>(config, rope, buf_view, reps, pg_size);
             viewport.scroll_to_row(buf_view.cursor.row);
         }
+        Motion::NextBigWord => buffer::next_big_word(config, rope, buf_view, reps),
+        Motion::NextSubWord => buffer::next_sub_word(config, rope, buf_view, reps),
+        Motion::PrevBigWord => buffer::prev_big_word(config, rope, buf_view, reps),
+        Motion::PrevSubWord => buffer::prev_sub_word(config, rope, buf_view, reps),
     }
 }

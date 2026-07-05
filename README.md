@@ -1,3 +1,5 @@
+								Hola!			|
+   -A-  !!!a!!! b---c       bbb    c
 # Six
 Six is just another vi clone. Certainly nothing that the world needed or expected.
 
