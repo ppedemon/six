@@ -1,3 +1,5 @@
+use crossterm::event::{KeyCode, KeyEvent};
+
 use crate::normal::Motion;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -59,6 +61,20 @@ impl From<EditOp> for Operator {
 }
 
 impl Operator {
+    pub fn from(event: KeyEvent) -> Option<Operator> {
+        match event.code {
+            KeyCode::Char('i') => Some(SysOp::EnterInsert(InsertPoint::Curr).into()),
+            KeyCode::Char('I') => Some(SysOp::EnterInsert(InsertPoint::First).into()),
+            KeyCode::Char('a') => Some(SysOp::EnterInsert(InsertPoint::Next).into()),
+            KeyCode::Char('A') => Some(SysOp::EnterInsert(InsertPoint::Last).into()),
+            KeyCode::Char(':') => Some(SysOp::EnterEx(ExMode::Colon).into()),
+            KeyCode::Char('/') => Some(SysOp::EnterEx(ExMode::SearchForward).into()),
+            KeyCode::Char('?') => Some(SysOp::EnterEx(ExMode::SearchBackward).into()),
+            KeyCode::Char('Z') => Some(SysOp::BufferOp.into()),
+            _ => Motion::from(event).map(Operator::Move),
+        }
+    }
+    
     pub fn needs_target(&self) -> bool {
         match self {
             Self::Sys(SysOp::BufferOp) => true,

@@ -11,6 +11,7 @@ pub enum Target {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct NormalCmd {
     pub reps: usize,
+    pub reg: Option<char>, // Ignored if op doesn't use a register, None -> default register
     pub op: Operator,
     pub target: Target,
 }
@@ -19,6 +20,7 @@ impl NormalCmd {
     pub fn new(op: Operator) -> Self {
         Self {
             reps: 1,
+            reg: None,
             op,
             target: Target::None,
         }
@@ -26,6 +28,11 @@ impl NormalCmd {
 
     pub fn reps(mut self, reps: usize) -> Self {
         self.reps = reps;
+        self
+    }
+
+    pub fn reg(mut self, reg: Option<char>) -> Self {
+        self.reg = reg;
         self
     }
 

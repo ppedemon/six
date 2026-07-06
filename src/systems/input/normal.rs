@@ -3,28 +3,53 @@ use crossterm::event::{Event, KeyCode, KeyEvent};
 
 use crate::{
     components::EditorCtx,
-    normal::{
-        NormalCmd, ExMode, InsertPoint, Kind, Motion, Operator, Scope, Secondary, SysOp, TextObject,
-    },
+    normal::{Kind, Motion, NormalCmd, Operator, Scope, Secondary, TextObject},
     systems::{input::handler::dispatch, status},
 };
 
 enum State {
     Init,
-    CmdReps {
+    // Saw: ", we want a reg
+    Reg1,
+    // We have a reg, follows either reps or op
+    Reg2 {
+        reg: char,
+    },
+    // We have a reg and then reps, we need an op
+    RegReps {
+        reg: char,
         reps: usize,
     },
+    // We have reps, follows either reg or op
+    Reps {
+        reps: usize,
+    },
+    // Saw ", if follows a reg
+    RepsReg1 {
+        reps: usize,
+    },
+    // We have reps and a reg, we need an op
+    RepsReg2 {
+        reps: usize,
+        reg: char,
+    },
+    // We have an op, must follow motion reps or target
     Operator {
         reps: usize,
+        reg: Option<char>,
         op: Operator,
     },
+    // Saw motion reps, target must follow
     MotionReps {
         reps: usize,
+        reg: Option<char>,
         op: Operator,
         motion_reps: usize,
     },
+    // Target was text object, and we have the text object's scope
     TextObject {
         reps: usize,
+        reg: Option<char>,
         op: Operator,
         scope: Scope,
     },
@@ -74,54 +99,169 @@ impl NormalInputHandler {
         let curr_state = std::mem::replace(&mut self.state, State::Init);
         match curr_state {
             State::Init => self.handle_init(ctx, event),
-            State::CmdReps { reps } => self.handle_cmd_reps(ctx, event, reps),
-            State::Operator { reps, op } => self.handle_op(ctx, event, reps, op),
+            State::Reps { reps } => self.handle_reps(ctx, event, reps),
+            State::RepsReg1 { reps } => self.handle_reps_reg1(ctx, event, reps),
+            State::RepsReg2 { reps, reg } => self.handle_reps_reg2(ctx, event, reps, reg),
+            State::Reg1 => self.handle_reg1(ctx, event),
+            State::Reg2 { reg } => self.handle_reg2(ctx, event, reg),
+            State::RegReps { reg, reps } => self.handle_reg_reps(ctx, event, reg, reps),
+            State::Operator { reps, reg, op } => self.handle_op(ctx, event, reps, reg, op),
             State::MotionReps {
                 reps,
+                reg,
                 op,
                 motion_reps,
-            } => self.handle_motion_reps(ctx, event, reps, op, motion_reps),
-            State::TextObject { reps, op, scope } => {
-                self.handle_text_object(ctx, event, reps, op, scope)
-            }
+            } => self.handle_motion_reps(ctx, event, reps, reg, op, motion_reps),
+            State::TextObject {
+                reps,
+                reg,
+                op,
+                scope,
+            } => self.handle_text_object(ctx, event, reps, reg, op, scope),
         }
     }
 
     fn handle_init(&mut self, ctx: &EditorCtx, event: KeyEvent) -> Result<()> {
-        match operator(event) {
-            None => match as_digit(&event) {
-                None => self.reset(ctx)?,
-                Some(d) => self.state = State::CmdReps { reps: d as usize },
-            },
-            Some(op) => {
+        match (Operator::from(event), as_digit(&event), starts_reg(&event)) {
+            (Some(op), _, _) => {
                 if op.needs_target() {
-                    self.state = State::Operator { reps: 1, op };
+                    self.state = State::Operator {
+                        reps: 1,
+                        reg: None,
+                        op,
+                    };
                 } else {
                     let cmd = NormalCmd::new(op);
                     self.done(ctx, cmd)?;
                 }
             }
+            (_, Some(d), _) => self.state = State::Reps { reps: d as usize },
+            (_, _, true) => self.state = State::Reg1,
+            _ => self.reset(ctx)?,
         }
         Ok(())
     }
 
-    fn handle_cmd_reps(&mut self, ctx: &EditorCtx, event: KeyEvent, reps: usize) -> Result<()> {
-        match operator(event) {
-            None => match as_digit(&event) {
-                None => self.reset(ctx)?,
-                Some(d) => {
-                    let new_reps = reps.saturating_mul(10).saturating_add(d as usize);
-                    self.state = State::CmdReps { reps: new_reps };
-                }
-            },
-            Some(op) => {
+    fn handle_reps(&mut self, ctx: &EditorCtx, event: KeyEvent, reps: usize) -> Result<()> {
+        match (Operator::from(event), as_digit(&event), starts_reg(&event)) {
+            (Some(op), _, _) => {
                 if op.needs_target() {
-                    self.state = State::Operator { reps, op }
+                    self.state = State::Operator {
+                        reps,
+                        reg: None,
+                        op,
+                    }
                 } else {
                     let cmd = NormalCmd::new(op).reps(reps);
                     self.done(ctx, cmd)?;
                 };
             }
+            (_, Some(d), _) => {
+                let new_reps = reps.saturating_mul(10).saturating_add(d as usize);
+                self.state = State::Reps { reps: new_reps };
+            }
+            (_, _, true) => self.state = State::RepsReg1 { reps },
+            _ => self.reset(ctx)?,
+        }
+        Ok(())
+    }
+
+    fn handle_reps_reg1(&mut self, ctx: &EditorCtx, event: KeyEvent, reps: usize) -> Result<()> {
+        match as_reg(&event) {
+            Some(reg) => self.state = State::RepsReg2 { reps, reg },
+            None => self.reset(ctx)?,
+        }
+        Ok(())
+    }
+
+    fn handle_reps_reg2(
+        &mut self,
+        ctx: &EditorCtx,
+        event: KeyEvent,
+        reps: usize,
+        reg: char,
+    ) -> Result<()> {
+        match Operator::from(event) {
+            // TODO Fix
+            Some(op) => {
+                if op.needs_target() {
+                    self.state = State::Operator {
+                        reps,
+                        reg: Some(reg),
+                        op,
+                    }
+                } else {
+                    let cmd = NormalCmd::new(op).reps(reps).reg(Some(reg));
+                    self.done(ctx, cmd)?;
+                }
+            }
+            None => self.reset(ctx)?,
+        }
+        Ok(())
+    }
+
+    fn handle_reg1(&mut self, ctx: &EditorCtx, event: KeyEvent) -> Result<()> {
+        match as_reg(&event) {
+            Some(reg) => self.state = State::Reg2 { reg },
+            None => self.reset(ctx)?,
+        }
+        Ok(())
+    }
+
+    fn handle_reg2(&mut self, ctx: &EditorCtx, event: KeyEvent, reg: char) -> Result<()> {
+        match (Operator::from(event), as_digit(&event)) {
+            (Some(op), _) => {
+                if op.needs_target() {
+                    self.state = State::Operator {
+                        reps: 1,
+                        reg: Some(reg),
+                        op,
+                    }
+                } else {
+                    let cmd = NormalCmd::new(op).reg(Some(reg));
+                    self.done(ctx, cmd)?;
+                };
+            }
+            (_, Some(d)) => {
+                self.state = State::RegReps {
+                    reg,
+                    reps: d as usize,
+                }
+            }
+            _ => self.reset(ctx)?,
+        }
+        Ok(())
+    }
+
+    fn handle_reg_reps(
+        &mut self,
+        ctx: &EditorCtx,
+        event: KeyEvent,
+        reg: char,
+        reps: usize,
+    ) -> Result<()> {
+        match (Operator::from(event), as_digit(&event)) {
+            (Some(op), _) => {
+                if op.needs_target() {
+                    self.state = State::Operator {
+                        reps,
+                        reg: Some(reg),
+                        op,
+                    }
+                } else {
+                    // TODO Fix
+                    let cmd = NormalCmd::new(op).reps(reps);
+                    self.done(ctx, cmd)?;
+                };
+            }
+            (_, Some(d)) => {
+                let new_reps = reps.saturating_mul(10).saturating_add(d as usize);
+                self.state = State::RegReps {
+                    reg,
+                    reps: new_reps,
+                };
+            }
+            _ => self.reset(ctx)?,
         }
         Ok(())
     }
@@ -131,6 +271,7 @@ impl NormalInputHandler {
         ctx: &EditorCtx,
         event: KeyEvent,
         reps: usize,
+        reg: Option<char>,
         op: Operator,
     ) -> Result<()> {
         let (motion, scope, special) = (
@@ -144,18 +285,26 @@ impl NormalInputHandler {
                 Some(d) => {
                     self.state = State::MotionReps {
                         reps,
+                        reg,
                         op,
                         motion_reps: d as usize,
                     }
                 }
             },
             (Some(motion), None, None) => {
-                let cmd = NormalCmd::new(op).reps(reps).motion(motion);
+                let cmd = NormalCmd::new(op).reps(reps).reg(reg).motion(motion);
                 self.done(ctx, cmd)?;
             }
-            (None, Some(scope), None) => self.state = State::TextObject { reps, op, scope },
+            (None, Some(scope), None) => {
+                self.state = State::TextObject {
+                    reps,
+                    reg,
+                    op,
+                    scope,
+                }
+            }
             (None, None, Some(special)) => {
-                let cmd = NormalCmd::new(op).reps(reps).special(special);
+                let cmd = NormalCmd::new(op).reps(reps).reg(reg).special(special);
                 self.done(ctx, cmd)?;
             }
             _ => self.reset(ctx)?,
@@ -168,6 +317,7 @@ impl NormalInputHandler {
         ctx: &EditorCtx,
         event: KeyEvent,
         reps: usize,
+        reg: Option<char>,
         op: Operator,
         motion_reps: usize,
     ) -> Result<()> {
@@ -183,29 +333,31 @@ impl NormalInputHandler {
                     let new_motion_reps = motion_reps.saturating_mul(10).saturating_add(d as usize);
                     self.state = State::MotionReps {
                         reps,
+                        reg,
                         op,
                         motion_reps: new_motion_reps,
                     };
                 }
             },
-            (Some(motion), None, None) => {
+            (Some(motion), _, _) => {
                 let cmd = NormalCmd::new(op)
                     .reps(reps.saturating_mul(motion_reps))
+                    .reg(reg)
                     .motion(motion);
                 self.done(ctx, cmd)?;
             }
-            (None, Some(scope), None) => {
+            (_, Some(scope), _) => {
                 self.state = State::TextObject {
                     reps: reps.saturating_mul(motion_reps),
+                    reg,
                     op,
                     scope,
                 }
             }
-            (None, None, Some(special)) => {
-                let cmd = NormalCmd::new(op).special(special);
+            (_, _, Some(special)) => {
+                let cmd = NormalCmd::new(op).reps(reps).reg(reg).special(special);
                 self.done(ctx, cmd)?;
             }
-            _ => self.reset(ctx)?,
         }
         Ok(())
     }
@@ -215,6 +367,7 @@ impl NormalInputHandler {
         ctx: &EditorCtx,
         event: KeyEvent,
         reps: usize,
+        reg: Option<char>,
         op: Operator,
         scope: Scope,
     ) -> Result<()> {
@@ -222,7 +375,11 @@ impl NormalInputHandler {
             None => self.reset(ctx)?,
             Some(kind) => {
                 let text_object = TextObject { scope, kind };
-                let cmd = NormalCmd::new(op).reps(reps).text_object(text_object);
+                // TODO Fix
+                let cmd = NormalCmd::new(op)
+                    .reps(reps)
+                    .reg(reg)
+                    .text_object(text_object);
                 self.done(ctx, cmd)?;
             }
         }
@@ -238,16 +395,15 @@ fn as_digit(event: &KeyEvent) -> Option<u32> {
     }
 }
 
-fn operator(event: KeyEvent) -> Option<Operator> {
-    match event.code {
-        KeyCode::Char('i') => Some(SysOp::EnterInsert(InsertPoint::Curr).into()),
-        KeyCode::Char('I') => Some(SysOp::EnterInsert(InsertPoint::First).into()),
-        KeyCode::Char('a') => Some(SysOp::EnterInsert(InsertPoint::Next).into()),
-        KeyCode::Char('A') => Some(SysOp::EnterInsert(InsertPoint::Last).into()),
-        KeyCode::Char(':') => Some(SysOp::EnterEx(ExMode::Colon).into()),
-        KeyCode::Char('/') => Some(SysOp::EnterEx(ExMode::SearchForward).into()),
-        KeyCode::Char('?') => Some(SysOp::EnterEx(ExMode::SearchBackward).into()),
-        KeyCode::Char('Z') => Some(SysOp::BufferOp.into()),
-        _ => Motion::from(event).map(Operator::Move),
-    }
+fn starts_reg(event: &KeyEvent) -> bool {
+    event.code.as_char().is_some_and(|c| c == '"')
+}
+
+fn as_reg(event: &KeyEvent) -> Option<char> {
+    event.code.as_char().and_then(|c| match c {
+        _ if c.is_ascii_digit() => Some(c),
+        _ if c.is_ascii_alphabetic() => Some(c),
+        _ if "%#.:/=-".contains(c) => Some(c),
+        _ => None,
+    })
 }
