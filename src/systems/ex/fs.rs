@@ -16,10 +16,10 @@ pub fn save_active(
     range: ExRange,
 ) -> Result<(), ExError> {
     let editor = ctx.world.get::<&EditorState>(ctx.editor_id).unwrap();
-    let session = ctx.world.get::<&Session>(editor.session_id).unwrap();
+    let mut session = ctx.world.get::<&mut Session>(editor.session_id).unwrap();
     save(
         ctx,
-        (editor.session_id, &session),
+        (editor.session_id, &mut session),
         name,
         append,
         only_if_dirty,
@@ -36,10 +36,10 @@ pub fn hard_save_active(
     range: ExRange,
 ) -> Result<(), ExError> {
     let editor = ctx.world.get::<&EditorState>(ctx.editor_id).unwrap();
-    let session = ctx.world.get::<&Session>(editor.session_id).unwrap();
+    let mut session = ctx.world.get::<&mut Session>(editor.session_id).unwrap();
     hard_save(
         ctx,
-        (editor.session_id, &session),
+        (editor.session_id, &mut session),
         name,
         append,
         only_if_dirty,
@@ -49,11 +49,11 @@ pub fn hard_save_active(
 }
 
 pub fn save_all(ctx: &EditorCtx, only_if_dirty: bool) -> Result<(), ExError> {
-    let mut q_session = ctx.world.query::<(Entity, &Session)>();
+    let mut q_session = ctx.world.query::<(Entity, &mut Session)>();
     for (session_id, session) in q_session.iter() {
         save(
             ctx,
-            (session_id, &session),
+            (session_id, session),
             None,
             false,
             only_if_dirty,
@@ -65,11 +65,11 @@ pub fn save_all(ctx: &EditorCtx, only_if_dirty: bool) -> Result<(), ExError> {
 }
 
 pub fn hard_save_all(ctx: &EditorCtx, only_if_dirty: bool) -> Result<(), ExError> {
-    let mut q_session = ctx.world.query::<(Entity, &Session)>();
+    let mut q_session = ctx.world.query::<(Entity, &mut Session)>();
     for (session_id, session) in q_session.iter() {
         hard_save(
             ctx,
-            (session_id, &session),
+            (session_id, session),
             None,
             false,
             only_if_dirty,
@@ -82,7 +82,7 @@ pub fn hard_save_all(ctx: &EditorCtx, only_if_dirty: bool) -> Result<(), ExError
 
 fn save(
     ctx: &EditorCtx,
-    session_args: (Entity, &Session),
+    session_args: (Entity, &mut Session),
     name: Option<BufferName>,
     append: bool,
     only_if_dirty: bool,
@@ -101,7 +101,7 @@ fn save(
     let rope_slice = rope_slice(&buffer, curr_line, range)?;
     let writes_all = rope_slice.len_lines() == buffer.rope.len_lines();
 
-    match (name.as_ref(), buffer.name.as_ref()) {
+    match (name.as_ref(), session.buf_name.as_ref()) {
         (None, None) => Err(ExError::NoFileName),
         (None, Some(orig_name)) => {
             // Can't append to myself
@@ -119,7 +119,7 @@ fn save(
         (Some(given_name), None) => {
             save_buffer(ctx, given_name, append, rope_slice)?;
             if !append && writes_all {
-                buffer.name = name;
+                session.buf_name = name;
                 buffer.dirty = false;
             }
             Ok(())
@@ -146,7 +146,7 @@ fn save(
 
 fn hard_save(
     ctx: &EditorCtx,
-    session_args: (Entity, &Session),
+    session_args: (Entity, &mut Session),
     name: Option<BufferName>,
     append: bool,
     only_if_dirty: bool,
@@ -165,7 +165,7 @@ fn hard_save(
     let rope_slice = rope_slice(&buffer, curr_line, range)?;
     let writes_all = rope_slice.len_lines() == buffer.rope.len_lines();
 
-    match (name.as_ref(), buffer.name.as_ref()) {
+    match (name.as_ref(), session.buf_name.as_ref()) {
         (None, None) => Err(ExError::NoFileName),
         (None, Some(orig_name)) => {
             hard_save_buffer(ctx, orig_name, append, rope_slice)?;
@@ -176,8 +176,8 @@ fn hard_save(
         }
         (Some(given_name), _) => {
             hard_save_buffer(ctx, given_name, append, rope_slice)?;
-            if !append && buffer.name.is_none() {
-                buffer.name = name;
+            if !append && session.buf_name.is_none() {
+                session.buf_name = name;
             }
             if writes_all {
                 buffer.dirty = false;
