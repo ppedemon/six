@@ -1,9 +1,10 @@
 use crate::{
-    normal::{ExMode, InsertPoint, Secondary, SysOp, Target},
     components::{
         Buffer, BufferView, Config, EditorCtx, EditorState, ExSession, Focus, Level, Mode, Session,
         Status,
     },
+    ex::ExRange,
+    normal::{ExMode, InsertPoint, Secondary, SysOp, Target},
     systems::{
         commons,
         edit::{clear_ex, insert_char},
@@ -12,7 +13,7 @@ use crate::{
         quit_editor,
     },
 };
-use anyhow::{Result, anyhow};
+use anyhow::Result;
 use ropey::Rope;
 
 pub struct SysArgs {
@@ -40,7 +41,7 @@ fn handle_buffer_op(ctx: &EditorCtx, target: Target) -> Result<()> {
     match target {
         Target::Secondary(Secondary::HardQuit) => quit_editor(ctx),
         Target::Secondary(Secondary::CondWriteAndQuit) => {
-            ex::save_all(ctx, true).map_err(|_| anyhow!("Failed to save buffer"))?;
+            ex::save_active(ctx, None, false, true, ExRange::All)?;
             quit_editor(ctx)
         }
         _ => Ok(()),

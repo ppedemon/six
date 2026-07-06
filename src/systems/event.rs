@@ -1,25 +1,22 @@
 use anyhow::Result;
-use ropey::RopeSlice;
+use ropey::{Rope, RopeSlice};
 
 use crate::{
-    components::{Buffer, BufferName, EditorCtx, Level},
+    components::{BufferName, EditorCtx, Level},
     rope,
     systems::status,
 };
 
-pub fn on_buffer_loaded(ctx: &EditorCtx, buffer: &Buffer) -> Result<()> {
-    if let Some(name) = buffer.name.as_ref() {
-        let msg = if name.file_path.exists() {
-            let rope_info = rope::info(&buffer.rope);
-            let lines = rope_info.num_lines;
-            let bytes = rope_info.num_bytes;
-            &format!("\"{}\" - {}L, {}B", name.orig_name, lines, bytes)
-        } else {
-            &format!("\"{}\" - [New]", name.orig_name)
-        };
-        status::set_msg(ctx, Level::Info, msg)?;
-    }
-
+pub fn on_buffer_loaded(ctx: &EditorCtx, name: &BufferName, rope: &Rope) -> Result<()> {
+    let msg = if name.file_path.exists() {
+        let rope_info = rope::info(rope);
+        let lines = rope_info.num_lines;
+        let bytes = rope_info.num_bytes;
+        &format!("\"{}\" - {}L, {}B", name.orig_name, lines, bytes)
+    } else {
+        &format!("\"{}\" - [New]", name.orig_name)
+    };
+    status::set_msg(ctx, Level::Info, msg)?;
     Ok(())
 }
 

@@ -1,6 +1,6 @@
 use std::{fs::File, io::BufReader, path::PathBuf};
 
-use anyhow::{Result, anyhow};
+use anyhow::Result;
 use hecs::{Entity, World};
 use ropey::Rope;
 
@@ -44,9 +44,12 @@ pub fn quit_editor(ctx: &EditorCtx) -> Result<()> {
 }
 
 pub fn load_session(ctx: &mut EditorCtx, filename: &str) -> Result<()> {
-    let buf_id = create_buffer(ctx, filename)?;
+    let file_path = norm_filename(filename);
+    let buf_name = BufferName::new(filename, file_path.clone());
+
+    let buf_id = create_buffer(ctx, &buf_name)?;
     let buf_view = BufferView::empty();
-    let session = Session::new(buf_id);
+    let session = Session::new(buf_name, buf_id);
     let session_id = ctx.world.spawn((session, buf_view));
     set_active_session(ctx, session_id)
 }
@@ -55,34 +58,27 @@ pub fn create_empty_session(ctx: &mut EditorCtx) -> Result<()> {
     let buffer = Buffer::empty();
     let buf_id = ctx.world.spawn((buffer,));
     let buf_view = BufferView::empty();
-    let session = Session::new(buf_id);
+    let session = Session::empty(buf_id);
     let session_id = ctx.world.spawn((session, buf_view));
     set_active_session(ctx, session_id)
 }
 
-fn create_buffer(ctx: &mut EditorCtx, filename: &str) -> Result<Entity> {
-    let file_path = norm_filename(filename);
-
-    if file_path.as_os_str().is_empty() {
-        return Err(anyhow!("Invalid path: {}", filename));
-    }
-
-    let buf_id = match find_buffer(ctx.world, &file_path) {
+fn create_buffer(ctx: &mut EditorCtx, buf_name: &BufferName) -> Result<Entity> {
+    let file_path = &buf_name.file_path;
+    let buf_id = match find_buffer(ctx.world, file_path) {
         Some(buf_id) => buf_id,
         None => {
-            let name = BufferName::new(filename, file_path.clone());
-
             let buffer = if file_path.exists() {
-                let file = File::open(&filename)?;
+                let file = File::open(file_path)?;
                 let reader = BufReader::new(file);
                 let mut rope = Rope::from_reader(reader)?;
                 rope::norm(&mut rope);
-                Buffer::new(name, rope)
+                Buffer::new(rope)
             } else {
-                Buffer::new(name, Rope::new())
+                Buffer::empty()
             };
 
-            event::on_buffer_loaded(ctx, &buffer)?;
+            event::on_buffer_loaded(ctx, buf_name, &buffer.rope)?;
             ctx.world.spawn((buffer,))
         }
     };
@@ -91,13 +87,13 @@ fn create_buffer(ctx: &mut EditorCtx, filename: &str) -> Result<Entity> {
 }
 
 fn find_buffer(world: &World, file_path: &PathBuf) -> Option<Entity> {
-    for (buf_id, buffer) in world.query::<(Entity, &Buffer)>().iter() {
-        if buffer
-            .name
+    for session in world.query::<&Session>().iter() {
+        if session
+            .buf_name
             .as_ref()
             .is_some_and(|name| name.file_path.as_path() == file_path.as_path())
         {
-            return Some(buf_id);
+            return Some(session.buf_id);
         }
     }
     None
@@ -110,7 +106,7 @@ fn set_active_session(ctx: &EditorCtx, session_id: Entity) -> Result<()> {
 }
 
 // This should be easy, but moving the cursor to the active document's first non-blank
-// character can force arbitrary scrolling, so we have to go through the navigation 
+// character can force arbitrary scrolling, so we have to go through the navigation
 // machinery, fetching all the parameters it requires. Oh well...
 pub fn adjust_initial_coords(ctx: &EditorCtx) -> Result<()> {
     let config = ctx.world.get::<&Config>(ctx.config_id)?;
