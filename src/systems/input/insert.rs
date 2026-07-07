@@ -4,7 +4,7 @@ use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
 use crate::{
     components::{EditorCtx, EditorState},
     digraphs,
-    normal::{EditOp, Motion, NormalCmd, Operator, SysOp},
+    cmd::{EditOp, Motion, Cmd, Operator, SysOp},
     systems::{input::handler::dispatch, status},
 };
 
@@ -81,7 +81,7 @@ impl InsertInputHandler {
 
             _ => Operator::Nop,
         };
-        let cmd = NormalCmd::new(op);
+        let cmd = Cmd::new(op);
         dispatch(ctx, cmd)
     }
 
@@ -96,7 +96,7 @@ impl InsertInputHandler {
         match event.code {
             KeyCode::Char(c1) => {
                 let op = self.dg_end(ctx, c0, c1)?;
-                let cmd = NormalCmd::new(op);
+                let cmd = Cmd::new(op);
                 dispatch(ctx, cmd)
             }
             _ => self.dg_esc(ctx),

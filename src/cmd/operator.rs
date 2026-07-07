@@ -1,6 +1,6 @@
 use crossterm::event::{KeyCode, KeyEvent};
 
-use crate::normal::Motion;
+use crate::cmd::Motion;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EditOp {

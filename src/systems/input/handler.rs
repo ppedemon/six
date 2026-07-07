@@ -2,7 +2,7 @@ use anyhow::Result;
 use crossterm::event::Event;
 
 use crate::{
-    normal::{NormalCmd, Operator},
+    cmd::{Cmd, Operator},
     components::{EditorCtx, EditorState, Focus, Mode, Session},
     systems::{
         edit::handle_edit,
@@ -46,7 +46,7 @@ impl InputHandler {
     }
 }
 
-pub fn dispatch(ctx: &EditorCtx, cmd: NormalCmd) -> Result<()> {
+pub fn dispatch(ctx: &EditorCtx, cmd: Cmd) -> Result<()> {
     let reps = cmd.reps;
     match cmd.op {
         Operator::Nop => Ok(()),

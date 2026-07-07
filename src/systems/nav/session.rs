@@ -9,7 +9,7 @@ use super::{
 use crate::components::{
     Buffer, BufferView, Config, EditorCtx, EditorState, ExSession, Focus, Mode, Session, Viewport,
 };
-use crate::normal::Motion;
+use crate::cmd::Motion;
 
 pub struct NavArgs {
     pub motion: Motion,

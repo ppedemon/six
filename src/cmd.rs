@@ -1,4 +1,14 @@
-use crate::normal::{Motion, Operator, Secondary, TextObject};
+mod cmd;
+mod motion;
+mod operator;
+mod secondary;
+mod text_object;
+
+pub use motion::Motion;
+pub use operator::{EditOp, Operator};
+pub use operator::{ExMode, InsertPoint, SysOp};
+pub use secondary::Secondary;
+pub use text_object::{Kind, Scope, TextObject};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Target {
@@ -9,14 +19,14 @@ pub enum Target {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct NormalCmd {
+pub struct Cmd {
     pub reps: usize,
     pub reg: Option<char>, // Ignored if op doesn't use a register, None -> default register
     pub op: Operator,
     pub target: Target,
 }
 
-impl NormalCmd {
+impl Cmd {
     pub fn new(op: Operator) -> Self {
         Self {
             reps: 1,

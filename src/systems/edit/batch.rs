@@ -3,7 +3,7 @@ use ropey::Rope;
 
 use crate::{
     components::{Buffer, BufferView, Config, EditorCtx, EditorState, Registers, Session},
-    normal::EditOp,
+    cmd::EditOp,
     systems::{
         commons::{char_idx_to_coords, cursor_to_char_idx},
         edit::{

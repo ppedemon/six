@@ -6,7 +6,7 @@ use crate::{
         Buffer, BufferView, Config, Coords, EditorCtx, EditorState, ExSession, ExState, Focus,
         Mode, Registers, Session,
     },
-    normal::EditOp,
+    cmd::EditOp,
     systems::edit::{
         batch::apply_insert_log,
         buffer::{Damage, backspace, delete, enter, insert_char},

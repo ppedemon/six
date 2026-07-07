@@ -1,4 +1,4 @@
-use crate::normal::EditOp;
+use crate::cmd::EditOp;
 
 pub struct InsertLog {
     pub reps: usize,

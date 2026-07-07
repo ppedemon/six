@@ -15,7 +15,7 @@ mod components;
 mod digraphs;
 mod ex;
 mod misc;
-mod normal;
+mod cmd;
 mod rope;
 mod systems;
 

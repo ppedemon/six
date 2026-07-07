@@ -4,7 +4,7 @@ use crate::{
         Status,
     },
     ex::ExRange,
-    normal::{ExMode, InsertPoint, Secondary, SysOp, Target},
+    cmd::{ExMode, InsertPoint, Secondary, SysOp, Target},
     systems::{
         commons,
         edit::{clear_ex, insert_char},

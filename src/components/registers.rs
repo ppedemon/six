@@ -1,7 +1,7 @@
 use ropey::Rope;
 use std::collections::HashMap;
 
-use crate::normal::EditOp;
+use crate::cmd::EditOp;
 
 pub enum YankFlavor {
     Character,

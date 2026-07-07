@@ -3,7 +3,7 @@ use crossterm::event::{Event, KeyCode, KeyEvent};
 
 use crate::{
     components::EditorCtx,
-    normal::{Kind, Motion, NormalCmd, Operator, Scope, Secondary, TextObject},
+    cmd::{Kind, Motion, Cmd, Operator, Scope, Secondary, TextObject},
     systems::{input::handler::dispatch, status},
 };
 
@@ -75,7 +75,7 @@ impl NormalInputHandler {
         Ok(())
     }
 
-    fn done(&mut self, ctx: &EditorCtx, cmd: NormalCmd) -> Result<()> {
+    fn done(&mut self, ctx: &EditorCtx, cmd: Cmd) -> Result<()> {
         self.reset(ctx)?;
         dispatch(ctx, cmd)
     }
@@ -131,7 +131,7 @@ impl NormalInputHandler {
                         op,
                     };
                 } else {
-                    let cmd = NormalCmd::new(op);
+                    let cmd = Cmd::new(op);
                     self.done(ctx, cmd)?;
                 }
             }
@@ -156,7 +156,7 @@ impl NormalInputHandler {
                         op,
                     }
                 } else {
-                    let cmd = NormalCmd::new(op).reps(reps);
+                    let cmd = Cmd::new(op).reps(reps);
                     self.done(ctx, cmd)?;
                 };
             }
@@ -191,7 +191,7 @@ impl NormalInputHandler {
                         op,
                     }
                 } else {
-                    let cmd = NormalCmd::new(op).reps(reps).reg(Some(reg));
+                    let cmd = Cmd::new(op).reps(reps).reg(Some(reg));
                     self.done(ctx, cmd)?;
                 }
             }
@@ -218,7 +218,7 @@ impl NormalInputHandler {
                         op,
                     }
                 } else {
-                    let cmd = NormalCmd::new(op).reg(Some(reg));
+                    let cmd = Cmd::new(op).reg(Some(reg));
                     self.done(ctx, cmd)?;
                 };
             }
@@ -257,7 +257,7 @@ impl NormalInputHandler {
                     }
                 } else {
                     // TODO Fix
-                    let cmd = NormalCmd::new(op).reps(reps);
+                    let cmd = Cmd::new(op).reps(reps);
                     self.done(ctx, cmd)?;
                 };
             }
@@ -292,7 +292,7 @@ impl NormalInputHandler {
                 }
             },
             (Some(motion), None, None) => {
-                let cmd = NormalCmd::new(op).reps(reps).reg(reg).motion(motion);
+                let cmd = Cmd::new(op).reps(reps).reg(reg).motion(motion);
                 self.done(ctx, cmd)?;
             }
             (None, Some(scope), None) => {
@@ -304,7 +304,7 @@ impl NormalInputHandler {
                 }
             }
             (None, None, Some(special)) => {
-                let cmd = NormalCmd::new(op).reps(reps).reg(reg).special(special);
+                let cmd = Cmd::new(op).reps(reps).reg(reg).special(special);
                 self.done(ctx, cmd)?;
             }
             _ => self.reset(ctx)?,
@@ -338,7 +338,7 @@ impl NormalInputHandler {
                 };
             }
             (_, Some(motion), _, _) => {
-                let cmd = NormalCmd::new(op)
+                let cmd = Cmd::new(op)
                     .reps(reps.saturating_mul(motion_reps))
                     .reg(reg)
                     .motion(motion);
@@ -353,7 +353,7 @@ impl NormalInputHandler {
                 }
             }
             (_, _, _, Some(special)) => {
-                let cmd = NormalCmd::new(op).reps(reps).reg(reg).special(special);
+                let cmd = Cmd::new(op).reps(reps).reg(reg).special(special);
                 self.done(ctx, cmd)?;
             }
             _ => self.reset(ctx)?,
@@ -375,7 +375,7 @@ impl NormalInputHandler {
             Some(kind) => {
                 let text_object = TextObject { scope, kind };
                 // TODO Fix
-                let cmd = NormalCmd::new(op)
+                let cmd = Cmd::new(op)
                     .reps(reps)
                     .reg(reg)
                     .text_object(text_object);
