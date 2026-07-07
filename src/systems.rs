@@ -10,12 +10,10 @@ mod render;
 mod status;
 mod sys;
 
-pub use edit::apply_insert_log;
+pub use edit::post_edit;
 pub use ex::handle_ex_state;
 pub use input::InputHandler;
-pub use lifecycle::{
-    adjust_initial_coords, create_editor, create_empty_session, load_session, quit_editor,
-    should_quit,
-};
+pub use lifecycle::{create_editor, create_empty_session, load_session, quit_editor, should_quit};
+pub use nav::move_to_first_non_blank;
 pub use pre_render::pre_render;
 pub use render::{cursor_pos, render};

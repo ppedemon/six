@@ -403,7 +403,7 @@ fn as_reg(event: &KeyEvent) -> Option<char> {
     event.code.as_char().and_then(|c| match c {
         _ if c.is_ascii_digit() => Some(c),
         _ if c.is_ascii_alphabetic() => Some(c),
-        _ if "%#.:/=-".contains(c) => Some(c),
+        _ if "%#.:/=-_".contains(c) => Some(c),
         _ => None,
     })
 }

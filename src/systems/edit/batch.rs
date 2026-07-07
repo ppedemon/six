@@ -2,10 +2,8 @@ use anyhow::Result;
 use ropey::Rope;
 
 use crate::{
+    components::{Buffer, BufferView, Config, EditorCtx, EditorState, Registers, Session},
     normal::EditOp,
-    components::{
-        Buffer, BufferView, Config, EditorCtx, EditorState, Focus, InsertLog, Mode, Session,
-    },
     systems::{
         commons::{char_idx_to_coords, cursor_to_char_idx},
         edit::{
@@ -15,8 +13,8 @@ use crate::{
     },
 };
 
-pub fn apply_insert_log(ctx: &EditorCtx) -> Result<()> {
-    let damage_evt = intepret_insert_log(ctx)?;
+pub fn apply_insert_log(ctx: &EditorCtx, reps: usize) -> Result<()> {
+    let damage_evt = intepret_insert_log(ctx, reps)?;
 
     let session_id = {
         let editor = ctx.world.get::<&EditorState>(ctx.editor_id)?;
@@ -25,29 +23,21 @@ pub fn apply_insert_log(ctx: &EditorCtx) -> Result<()> {
     broadcast_damage(ctx, session_id, damage_evt)
 }
 
-pub fn intepret_insert_log(ctx: &EditorCtx) -> Result<DamageEvent> {
-    let intact = DamageEvent::intact();
-
+pub fn intepret_insert_log(ctx: &EditorCtx, reps: usize) -> Result<DamageEvent> {
     let editor = ctx.world.get::<&EditorState>(ctx.editor_id)?;
-    if editor.focus == Focus::Ex {
-        return Ok(intact);
-    }
-
     let mut q_session = ctx
         .world
         .query_one::<(&mut Session, &mut BufferView)>(editor.session_id);
     let (session, buf_view) = q_session.get()?;
-    if session.mode == Mode::Insert {
-        return Ok(intact);
-    }
 
     let config = ctx.world.get::<&Config>(ctx.config_id)?;
     let mut buffer = ctx.world.get::<&mut Buffer>(session.buf_id)?;
-
     let mut interpreter = InsertLogInterpreter::new(&config, buf_view, &mut buffer.rope);
-    let damage = interpreter.interpret(&session.insert_log);
-    session.insert_log.reset();
 
+    let registers = ctx.world.get::<&Registers>(ctx.registers_id)?;
+    let ops = &registers.last_insert;
+
+    let damage = interpreter.interpret(ops, reps);
     Ok(DamageEvent::new(session.buf_id, damage))
 }
 
@@ -84,13 +74,12 @@ impl<'a> InsertLogInterpreter<'a> {
         }
     }
 
-    fn interpret(&mut self, insert_log: &InsertLog) -> Damage {
-        if insert_log.reps == 0 {
+    fn interpret(&mut self, log: &Vec<EditOp>, reps: usize) -> Damage {
+        if reps == 0 {
             return Damage::Intact;
         }
 
-        let log = insert_log.log();
-        for _ in 0..insert_log.reps {
+        for _ in 0..reps {
             for op in log {
                 match op {
                     EditOp::InsertChar(c) => self.insert(*c),

@@ -3,7 +3,7 @@ use ropey::Rope;
 use super::rules::NavRules;
 use crate::components::{BufferView, Config};
 use crate::rope;
-use crate::systems::commons::{char_idx_to_coords, coords_to_char_idx, curr_line, cursor_to_char_idx};
+use crate::systems::commons::{char_idx_to_coords, curr_line, cursor_to_char_idx};
 
 fn apply_target_col<R: NavRules>(config: &Config, rope: &Rope, buf_view: &mut BufferView) {
     let target_col = buf_view.target_col;
@@ -81,7 +81,7 @@ pub fn move_right<R: NavRules>(
     }
 }
 
-pub fn move_to_first_non_blank<R: NavRules>(
+pub fn move_bol<R: NavRules>(
     config: &Config,
     rope: &Rope,
     buf_view: &mut BufferView,
@@ -99,7 +99,7 @@ pub fn page_up<R: NavRules>(
     pg_size: usize,
 ) {
     buf_view.cursor.row = buf_view.cursor.row.saturating_sub(pages * pg_size);
-    move_to_first_non_blank::<R>(config, rope, buf_view);
+    move_bol::<R>(config, rope, buf_view);
 }
 
 pub fn page_down<R: NavRules>(
@@ -115,7 +115,7 @@ pub fn page_down<R: NavRules>(
         .row
         .saturating_add(pages * pg_size)
         .min(max_line_idx);
-    move_to_first_non_blank::<R>(config, rope, buf_view);
+    move_bol::<R>(config, rope, buf_view);
 }
 
 pub fn next_big_word(config: &Config, rope: &Rope, buf_view: &mut BufferView, reps: usize) {

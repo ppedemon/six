@@ -9,7 +9,7 @@ use std::{
     time::Duration,
 };
 
-use crate::{components::EditorCtx, systems::adjust_initial_coords};
+use crate::{components::EditorCtx, systems::move_to_first_non_blank};
 
 mod components;
 mod digraphs;
@@ -68,7 +68,7 @@ fn editor_loop(
     // falls outside the screen, we need the terminal size and do a pre-render pass.
     terminal.draw(|frame| {
         systems::pre_render(&mut ctx, frame.area()).unwrap();
-        adjust_initial_coords(&ctx).unwrap();
+        move_to_first_non_blank(&ctx).unwrap();
     })?;
 
     while !systems::should_quit(&ctx)? {
@@ -86,7 +86,7 @@ fn editor_loop(
             input_handler.handle_event(&ctx, event)?;
         }
 
-        systems::apply_insert_log(&ctx)?;
+        systems::post_edit(&ctx)?;
         systems::handle_ex_state(&ctx);
     }
 

@@ -44,6 +44,10 @@ pub fn info(rope: &Rope) -> RopeInfo {
     }
 }
 
+pub fn first_non_blank_char_idx(rope: &Rope) -> usize {
+    rope.chars().position(|c| !c.is_whitespace()).unwrap_or(0)
+}
+
 pub fn slice_as_view(rope: &Rope, range: Range<usize>) -> RopeSlice<'_> {
     let line_idx_start = rope.line_to_char(range.start);
     let line_idx_end = rope.line_to_char(range.end);

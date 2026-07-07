@@ -30,8 +30,4 @@ impl InsertLog {
             self.log.push(op);
         }
     }
-
-    pub fn log(&self) -> &Vec<EditOp> {
-        &self.log
-    }
 }

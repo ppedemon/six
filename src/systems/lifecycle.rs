@@ -6,14 +6,12 @@ use ropey::Rope;
 
 use crate::{
     components::{
-        Buffer, BufferName, BufferView, Config, EditorCtx, EditorState, ExSession, Session, Status,
+        Buffer, BufferName, BufferView, Config, EditorCtx, EditorState, ExSession, Registers,
+        Session, Status,
     },
     misc::path::norm_filename,
-    rope,
-    systems::{
-        event,
-        nav::{NormalNav, move_to_first_non_blank},
-    },
+    rope::{self, first_non_blank_char_idx},
+    systems::{commons::char_idx_to_coords, event},
 };
 
 pub fn create_editor(world: &mut World) -> EditorCtx<'_> {
@@ -21,6 +19,7 @@ pub fn create_editor(world: &mut World) -> EditorCtx<'_> {
     let editor_id = world.spawn((EditorState::new(),));
     let ex_session_id = world.spawn((ExSession::new(), BufferView::empty()));
     let status_id = world.spawn((Status::new(),));
+    let registers_id = world.spawn((Registers::empty(),));
 
     EditorCtx {
         world,
@@ -28,6 +27,7 @@ pub fn create_editor(world: &mut World) -> EditorCtx<'_> {
         editor_id,
         ex_session_id,
         status_id,
+        registers_id,
     }
 }
 
@@ -102,22 +102,5 @@ fn find_buffer(world: &World, file_path: &PathBuf) -> Option<Entity> {
 fn set_active_session(ctx: &EditorCtx, session_id: Entity) -> Result<()> {
     let mut editor_state = ctx.world.get::<&mut EditorState>(ctx.editor_id)?;
     editor_state.session_id = session_id;
-    Ok(())
-}
-
-// This should be easy, but moving the cursor to the active document's first non-blank
-// character can force arbitrary scrolling, so we have to go through the navigation
-// machinery, fetching all the parameters it requires. Oh well...
-pub fn adjust_initial_coords(ctx: &EditorCtx) -> Result<()> {
-    let config = ctx.world.get::<&Config>(ctx.config_id)?;
-    let editor = ctx.world.get::<&EditorState>(ctx.editor_id)?;
-
-    let mut q_session = ctx
-        .world
-        .query_one::<(&Session, &mut BufferView)>(editor.session_id);
-    let (session, buf_view) = q_session.get()?;
-
-    let buffer = ctx.world.get::<&Buffer>(session.buf_id)?;
-    move_to_first_non_blank::<NormalNav>(&config, &buffer.rope, buf_view);
     Ok(())
 }

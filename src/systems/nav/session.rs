@@ -6,10 +6,10 @@ use super::{
     buffer,
     rules::{InsertNav, NavRules, NormalNav},
 };
-use crate::normal::Motion;
 use crate::components::{
     Buffer, BufferView, Config, EditorCtx, EditorState, ExSession, Focus, Mode, Session, Viewport,
 };
+use crate::{normal::Motion, rope::first_non_blank_char_idx, systems::commons::char_idx_to_coords};
 
 pub struct NavArgs {
     pub motion: Motion,
@@ -116,4 +116,25 @@ fn session_nav<R: NavRules>(
         Motion::PrevBigWord => buffer::prev_big_word(config, rope, buf_view, reps),
         Motion::PrevSubWord => buffer::prev_sub_word(config, rope, buf_view, reps),
     }
+}
+
+// Move cursor to the first non-blank charrecter of the active session.
+// More work that you'd expect, since this operation can cause arbitrary scrolling.
+pub fn move_to_first_non_blank(ctx: &EditorCtx) -> Result<()> {
+    let config = ctx.world.get::<&Config>(ctx.config_id)?;
+    let editor = ctx.world.get::<&EditorState>(ctx.editor_id)?;
+
+    let mut q_session = ctx
+        .world
+        .query_one::<(&Session, &mut BufferView)>(editor.session_id);
+    let (session, buf_view) = q_session.get()?;
+
+    let buffer = ctx.world.get::<&Buffer>(session.buf_id)?;
+    let char_idx = first_non_blank_char_idx(&buffer.rope);
+    let coords = char_idx_to_coords(&config, &buffer.rope, buf_view, char_idx);
+
+    buf_view.cursor = coords;
+    buf_view.target_col = coords.col;
+
+    Ok(())
 }

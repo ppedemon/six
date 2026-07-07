@@ -1,5 +1,3 @@
-use std::ops::Deref;
-
 use nom::{
     Parser,
     bytes::complete::escaped,
