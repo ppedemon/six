@@ -9,7 +9,7 @@ use std::{
     time::Duration,
 };
 
-use crate::{components::EditorCtx, systems::move_to_first_non_blank};
+use crate::{components::EditorCtx, systems::init_cursor_pos};
 
 mod components;
 mod digraphs;
@@ -64,11 +64,12 @@ fn editor_loop(
 ) -> Result<()> {
     let mut input_handler = systems::InputHandler::new();
 
-    // In order to put the cursor at an arbitrary place and get proper scrolling if it
-    // falls outside the screen, we need the terminal size and do a pre-render pass.
+    // The init_cursor_pos function jumps to the first non-blank character of
+    // the active sesssion, which might be anywere and hence force scrolling.
+    // Since scrolling requires viewport size, we do a pre-render pass first.
     terminal.draw(|frame| {
         systems::pre_render(&mut ctx, frame.area()).unwrap();
-        move_to_first_non_blank(&ctx).unwrap();
+        init_cursor_pos(&ctx).unwrap();
     })?;
 
     while !systems::should_quit(&ctx)? {

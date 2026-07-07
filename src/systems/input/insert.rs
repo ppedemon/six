@@ -2,9 +2,9 @@ use anyhow::Result;
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
 
 use crate::{
-    normal::{NormalCmd, EditOp, Motion, Operator, SysOp},
     components::{EditorCtx, EditorState},
     digraphs,
+    normal::{EditOp, Motion, NormalCmd, Operator, SysOp},
     systems::{input::handler::dispatch, status},
 };
 
@@ -63,6 +63,21 @@ impl InsertInputHandler {
             KeyCode::Right => Motion::Right.into(),
             KeyCode::PageUp => Motion::PageUp.into(),
             KeyCode::PageDown => Motion::PageDown.into(),
+
+            KeyCode::Home => {
+                if event.modifiers == KeyModifiers::CONTROL {
+                    Motion::StartOfFile.into()
+                } else {
+                    Motion::StartOfLine.into()
+                }
+            }
+            KeyCode::End => {
+                if event.modifiers == KeyModifiers::CONTROL {
+                    Motion::EndOfFile.into()
+                } else {
+                    Motion::EndOfLine.into()
+                }
+            }
 
             _ => Operator::Nop,
         };

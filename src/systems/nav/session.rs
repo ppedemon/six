@@ -9,7 +9,7 @@ use super::{
 use crate::components::{
     Buffer, BufferView, Config, EditorCtx, EditorState, ExSession, Focus, Mode, Session, Viewport,
 };
-use crate::{normal::Motion, rope::first_non_blank_char_idx, systems::commons::char_idx_to_coords};
+use crate::normal::Motion;
 
 pub struct NavArgs {
     pub motion: Motion,
@@ -115,12 +115,18 @@ fn session_nav<R: NavRules>(
         Motion::NextSubWord => buffer::next_sub_word(config, rope, buf_view, reps),
         Motion::PrevBigWord => buffer::prev_big_word(config, rope, buf_view, reps),
         Motion::PrevSubWord => buffer::prev_sub_word(config, rope, buf_view, reps),
+
+        Motion::FirstNonBlankInLine => buffer::line_first_non_blank::<R>(config, rope, buf_view),
+        Motion::StartOfLine => buffer::start_of_line::<R>(config, rope, buf_view),
+        Motion::EndOfLine => buffer::end_of_line::<R>(config, rope, buf_view),
+        Motion::FirstNonBlankInFile => buffer::file_first_non_blank::<R>(config, rope, buf_view),
+        Motion::StartOfFile => buffer::start_of_file::<R>(config, rope, buf_view),
+        Motion::EndOfFile => buffer::end_of_file::<R>(config, rope, buf_view),
     }
 }
 
-// Move cursor to the first non-blank charrecter of the active session.
-// More work that you'd expect, since this operation can cause arbitrary scrolling.
-pub fn move_to_first_non_blank(ctx: &EditorCtx) -> Result<()> {
+// On startup, move cursor to the first non-blank character of the active session
+pub fn init_cursor_pos(ctx: &EditorCtx) -> Result<()> {
     let config = ctx.world.get::<&Config>(ctx.config_id)?;
     let editor = ctx.world.get::<&EditorState>(ctx.editor_id)?;
 
@@ -130,11 +136,7 @@ pub fn move_to_first_non_blank(ctx: &EditorCtx) -> Result<()> {
     let (session, buf_view) = q_session.get()?;
 
     let buffer = ctx.world.get::<&Buffer>(session.buf_id)?;
-    let char_idx = first_non_blank_char_idx(&buffer.rope);
-    let coords = char_idx_to_coords(&config, &buffer.rope, buf_view, char_idx);
-
-    buf_view.cursor = coords;
-    buf_view.target_col = coords.col;
+    buffer::file_first_non_blank::<NormalNav>(&config, &buffer.rope, buf_view);
 
     Ok(())
 }

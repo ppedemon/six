@@ -81,16 +81,6 @@ pub fn move_right<R: NavRules>(
     }
 }
 
-pub fn move_bol<R: NavRules>(
-    config: &Config,
-    rope: &Rope,
-    buf_view: &mut BufferView,
-) {
-    let line = curr_line(config, rope, buf_view);
-    buf_view.cursor.col = R::first_non_blank(&line);
-    buf_view.target_col = buf_view.cursor.col;
-}
-
 pub fn page_up<R: NavRules>(
     config: &Config,
     rope: &Rope,
@@ -99,7 +89,7 @@ pub fn page_up<R: NavRules>(
     pg_size: usize,
 ) {
     buf_view.cursor.row = buf_view.cursor.row.saturating_sub(pages * pg_size);
-    move_bol::<R>(config, rope, buf_view);
+    line_first_non_blank::<R>(config, rope, buf_view);
 }
 
 pub fn page_down<R: NavRules>(
@@ -115,7 +105,7 @@ pub fn page_down<R: NavRules>(
         .row
         .saturating_add(pages * pg_size)
         .min(max_line_idx);
-    move_bol::<R>(config, rope, buf_view);
+    line_first_non_blank::<R>(config, rope, buf_view);
 }
 
 pub fn next_big_word(config: &Config, rope: &Rope, buf_view: &mut BufferView, reps: usize) {
@@ -135,7 +125,7 @@ pub fn next_sub_word(config: &Config, rope: &Rope, buf_view: &mut BufferView, re
     for _ in 0..reps {
         char_idx = rope::next_sub_word(rope, char_idx);
     }
-    
+
     buf_view.cursor = char_idx_to_coords(config, rope, buf_view, char_idx);
     buf_view.target_col = buf_view.cursor.col;
 }
@@ -157,7 +147,63 @@ pub fn prev_sub_word(config: &Config, rope: &Rope, buf_view: &mut BufferView, re
     for _ in 0..reps {
         char_idx = rope::prev_sub_word(rope, char_idx);
     }
-    
+
     buf_view.cursor = char_idx_to_coords(config, rope, buf_view, char_idx);
     buf_view.target_col = buf_view.cursor.col;
+}
+
+pub fn line_first_non_blank<R: NavRules>(config: &Config, rope: &Rope, buf_view: &mut BufferView) {
+    let line = curr_line(config, rope, buf_view);
+
+    buf_view.cursor.col = R::first_non_blank(&line);
+    buf_view.target_col = buf_view.cursor.col;
+}
+
+pub fn start_of_line<R: NavRules>(config: &Config, rope: &Rope, buf_view: &mut BufferView) {
+    let line = curr_line(config, rope, buf_view);
+    let col = R::snap_col(&line, 0);
+
+    buf_view.cursor.col = col;
+    buf_view.target_col = col;
+}
+
+pub fn end_of_line<R: NavRules>(config: &Config, rope: &Rope, buf_view: &mut BufferView) {
+    let line = curr_line(config, rope, buf_view);
+    let col = R::max_allowed_width(&line);
+    let col = R::snap_col(&line, col);
+
+    buf_view.cursor.col = col;
+    buf_view.target_col = col;
+}
+
+pub fn file_first_non_blank<R:NavRules>(config: &Config, rope: &Rope, buf_view: &mut BufferView) {
+    let char_idx = rope::first_non_blank_char_idx(rope);
+    let coords = char_idx_to_coords(config, rope, buf_view, char_idx);
+    let line = buf_view.display_buf.ensure_line(config, rope, coords.row);
+    let col = R::first_non_blank(&line);
+
+    buf_view.cursor.row = coords.row;
+    buf_view.cursor.col = col;
+    buf_view.target_col = col
+}
+
+pub fn start_of_file<R: NavRules>(config: &Config, rope: &Rope, buf_view: &mut BufferView) {
+    let line = buf_view.display_buf.ensure_line(config, rope, 0);
+    let col = R::snap_col(&line, 0);
+
+    buf_view.cursor.row = 0;
+    buf_view.cursor.col = col;
+    buf_view.target_col = col
+}
+
+pub fn end_of_file<R: NavRules>(config: &Config, rope: &Rope, buf_view: &mut BufferView) {
+    let char_idx = rope.len_chars().saturating_sub(1);
+    let coords = char_idx_to_coords(config, rope, buf_view, char_idx);
+    let line = buf_view.display_buf.ensure_line(config, rope, coords.row);
+    let col = R::max_allowed_width(&line);
+    let col = R::snap_col(&line, col);
+
+    buf_view.cursor.row = coords.row;
+    buf_view.cursor.col = col;
+    buf_view.target_col = col;
 }

@@ -143,8 +143,12 @@ impl NormalInputHandler {
     }
 
     fn handle_reps(&mut self, ctx: &EditorCtx, event: KeyEvent, reps: usize) -> Result<()> {
-        match (Operator::from(event), as_digit(&event), starts_reg(&event)) {
-            (Some(op), _, _) => {
+        match (as_digit(&event), Operator::from(event), starts_reg(&event)) {
+            (Some(d), _, _) => {
+                let new_reps = reps.saturating_mul(10).saturating_add(d as usize);
+                self.state = State::Reps { reps: new_reps };
+            }
+            (_, Some(op), _) => {
                 if op.needs_target() {
                     self.state = State::Operator {
                         reps,
@@ -155,10 +159,6 @@ impl NormalInputHandler {
                     let cmd = NormalCmd::new(op).reps(reps);
                     self.done(ctx, cmd)?;
                 };
-            }
-            (_, Some(d), _) => {
-                let new_reps = reps.saturating_mul(10).saturating_add(d as usize);
-                self.state = State::Reps { reps: new_reps };
             }
             (_, _, true) => self.state = State::RepsReg1 { reps },
             _ => self.reset(ctx)?,
@@ -240,8 +240,15 @@ impl NormalInputHandler {
         reg: char,
         reps: usize,
     ) -> Result<()> {
-        match (Operator::from(event), as_digit(&event)) {
-            (Some(op), _) => {
+        match (as_digit(&event), Operator::from(event)) {
+            (Some(d), _) => {
+                let new_reps = reps.saturating_mul(10).saturating_add(d as usize);
+                self.state = State::RegReps {
+                    reg,
+                    reps: new_reps,
+                };
+            }
+            (_, Some(op)) => {
                 if op.needs_target() {
                     self.state = State::Operator {
                         reps,
@@ -252,13 +259,6 @@ impl NormalInputHandler {
                     // TODO Fix
                     let cmd = NormalCmd::new(op).reps(reps);
                     self.done(ctx, cmd)?;
-                };
-            }
-            (_, Some(d)) => {
-                let new_reps = reps.saturating_mul(10).saturating_add(d as usize);
-                self.state = State::RegReps {
-                    reg,
-                    reps: new_reps,
                 };
             }
             _ => self.reset(ctx)?,
@@ -321,32 +321,30 @@ impl NormalInputHandler {
         op: Operator,
         motion_reps: usize,
     ) -> Result<()> {
-        let (motion, scope, special) = (
+        let (d, motion, scope, special) = (
+            as_digit(&event),
             Motion::from(event),
             Scope::from(event),
             Secondary::from(event),
         );
-        match (motion, scope, special) {
-            (None, None, None) => match as_digit(&event) {
-                None => self.reset(ctx)?,
-                Some(d) => {
-                    let new_motion_reps = motion_reps.saturating_mul(10).saturating_add(d as usize);
-                    self.state = State::MotionReps {
-                        reps,
-                        reg,
-                        op,
-                        motion_reps: new_motion_reps,
-                    };
-                }
-            },
-            (Some(motion), _, _) => {
+        match (d, motion, scope, special) {
+            (Some(d), _, _, _) => {
+                let new_motion_reps = motion_reps.saturating_mul(10).saturating_add(d as usize);
+                self.state = State::MotionReps {
+                    reps,
+                    reg,
+                    op,
+                    motion_reps: new_motion_reps,
+                };
+            }
+            (_, Some(motion), _, _) => {
                 let cmd = NormalCmd::new(op)
                     .reps(reps.saturating_mul(motion_reps))
                     .reg(reg)
                     .motion(motion);
                 self.done(ctx, cmd)?;
             }
-            (_, Some(scope), _) => {
+            (_, _, Some(scope), _) => {
                 self.state = State::TextObject {
                     reps: reps.saturating_mul(motion_reps),
                     reg,
@@ -354,10 +352,11 @@ impl NormalInputHandler {
                     scope,
                 }
             }
-            (_, _, Some(special)) => {
+            (_, _, _, Some(special)) => {
                 let cmd = NormalCmd::new(op).reps(reps).reg(reg).special(special);
                 self.done(ctx, cmd)?;
             }
+            _ => self.reset(ctx)?,
         }
         Ok(())
     }
