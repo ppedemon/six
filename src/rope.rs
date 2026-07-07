@@ -300,7 +300,11 @@ mod find_tests {
 }
 
 fn is_sub_word_char(c: char) -> bool {
-    c == '_' || (!c.is_whitespace() && !c.is_ascii_punctuation())
+    c == '_' || (!c.is_whitespace() && !c.is_ascii_punctuation() && !c.is_control())
+}
+
+fn is_punct_char(c: char) -> bool {
+    (c.is_ascii_punctuation() || c.is_control()) && !c.is_whitespace()
 }
 
 pub fn next_big_word(rope: &Rope, char_idx: usize) -> usize {
@@ -339,8 +343,8 @@ pub fn next_sub_word(rope: &Rope, char_idx: usize) -> usize {
             char_idx += 1;
             c = rope.char(char_idx);
         }
-    } else if c.is_ascii_punctuation() {
-        while char_idx < max_idx && c.is_ascii_punctuation() {
+    } else if is_punct_char(c) {
+        while char_idx < max_idx && is_punct_char(c) {
             char_idx += 1;
             c = rope.char(char_idx);
         }
@@ -395,8 +399,8 @@ pub fn prev_sub_word(rope: &Rope, char_idx: usize) -> usize {
             char_idx -= 1;
             c = rope.char(char_idx.saturating_sub(1));
         }
-    } else if c.is_ascii_punctuation() {
-        while char_idx != 0 && c.is_ascii_punctuation() {
+    } else if is_punct_char(c) {
+        while char_idx != 0 && is_punct_char(c) {
             char_idx -= 1;
             c = rope.char(char_idx.saturating_sub(1));
         }
@@ -532,5 +536,13 @@ mod word_ws_tests {
         check_jump!(prev_sub_word, "a_b-- a", 6, Expected => 3);
         check_jump!(prev_big_word, "a🧑‍🧑‍🧒‍🧒b a", 10, Expected => 0);
         check_jump!(prev_sub_word, "a🧑‍🧑‍🧒‍🧒b a", 10, Expected => 0);
+    }
+
+    #[test]
+    fn test_ctrl_chars() {
+        check_jump!(next_sub_word, "a\n\u{1}a", 2, Expected => 3);
+        check_jump!(next_sub_word, "a\n\u{1}a", 0, Expected => 2);
+        check_jump!(prev_sub_word, "a\n\u{1}a", 3, Expected => 2);
+        check_jump!(prev_sub_word, "a\n\u{1}a", 2, Expected => 0);
     }
 }

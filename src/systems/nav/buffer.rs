@@ -1,7 +1,7 @@
 use ropey::Rope;
 
 use super::rules::NavRules;
-use crate::components::{BufferView, Config};
+use crate::components::{BufferView, Config, Coords};
 use crate::rope;
 use crate::systems::commons::{char_idx_to_coords, curr_line, cursor_to_char_idx};
 
@@ -108,6 +108,15 @@ pub fn page_down<R: NavRules>(
     line_first_non_blank::<R>(config, rope, buf_view);
 }
 
+fn snap_coords(config: &Config, rope: &Rope, buf_view: &mut BufferView, coords: Coords) {
+    let line = buf_view.display_buf.ensure_line(config, rope, coords.row);
+    let col = line.snap_col(coords.col);
+
+    buf_view.cursor.row = coords.row;
+    buf_view.cursor.col = col;
+    buf_view.target_col = col;
+}
+
 pub fn next_big_word(config: &Config, rope: &Rope, buf_view: &mut BufferView, reps: usize) {
     let mut char_idx = cursor_to_char_idx(config, buf_view, rope);
 
@@ -115,8 +124,8 @@ pub fn next_big_word(config: &Config, rope: &Rope, buf_view: &mut BufferView, re
         char_idx = rope::next_big_word(rope, char_idx);
     }
 
-    buf_view.cursor = char_idx_to_coords(config, rope, buf_view, char_idx);
-    buf_view.target_col = buf_view.cursor.col;
+    let coords = char_idx_to_coords(config, rope, buf_view, char_idx);
+    snap_coords(config, rope, buf_view, coords);
 }
 
 pub fn next_sub_word(config: &Config, rope: &Rope, buf_view: &mut BufferView, reps: usize) {
@@ -126,8 +135,8 @@ pub fn next_sub_word(config: &Config, rope: &Rope, buf_view: &mut BufferView, re
         char_idx = rope::next_sub_word(rope, char_idx);
     }
 
-    buf_view.cursor = char_idx_to_coords(config, rope, buf_view, char_idx);
-    buf_view.target_col = buf_view.cursor.col;
+    let coords = char_idx_to_coords(config, rope, buf_view, char_idx);
+    snap_coords(config, rope, buf_view, coords);
 }
 
 pub fn prev_big_word(config: &Config, rope: &Rope, buf_view: &mut BufferView, reps: usize) {
@@ -137,8 +146,8 @@ pub fn prev_big_word(config: &Config, rope: &Rope, buf_view: &mut BufferView, re
         char_idx = rope::prev_big_word(rope, char_idx);
     }
 
-    buf_view.cursor = char_idx_to_coords(config, rope, buf_view, char_idx);
-    buf_view.target_col = buf_view.cursor.col;
+    let coords = char_idx_to_coords(config, rope, buf_view, char_idx);
+    snap_coords(config, rope, buf_view, coords);
 }
 
 pub fn prev_sub_word(config: &Config, rope: &Rope, buf_view: &mut BufferView, reps: usize) {
@@ -148,8 +157,8 @@ pub fn prev_sub_word(config: &Config, rope: &Rope, buf_view: &mut BufferView, re
         char_idx = rope::prev_sub_word(rope, char_idx);
     }
 
-    buf_view.cursor = char_idx_to_coords(config, rope, buf_view, char_idx);
-    buf_view.target_col = buf_view.cursor.col;
+    let coords = char_idx_to_coords(config, rope, buf_view, char_idx);
+    snap_coords(config, rope, buf_view, coords);
 }
 
 pub fn line_first_non_blank<R: NavRules>(config: &Config, rope: &Rope, buf_view: &mut BufferView) {
@@ -176,7 +185,7 @@ pub fn end_of_line<R: NavRules>(config: &Config, rope: &Rope, buf_view: &mut Buf
     buf_view.target_col = col;
 }
 
-pub fn file_first_non_blank<R:NavRules>(config: &Config, rope: &Rope, buf_view: &mut BufferView) {
+pub fn file_first_non_blank<R: NavRules>(config: &Config, rope: &Rope, buf_view: &mut BufferView) {
     let char_idx = rope::first_non_blank_char_idx(rope);
     let coords = char_idx_to_coords(config, rope, buf_view, char_idx);
     let line = buf_view.display_buf.ensure_line(config, rope, coords.row);
