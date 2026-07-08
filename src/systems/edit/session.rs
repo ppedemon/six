@@ -2,11 +2,11 @@ use anyhow::Result;
 use hecs::Entity;
 
 use crate::{
+    cmd::EditOp,
     components::{
         Buffer, BufferView, Config, Coords, EditorCtx, EditorState, ExSession, ExState, Focus,
         Mode, Registers, Session,
     },
-    cmd::EditOp,
     systems::edit::{
         batch::apply_insert_log,
         buffer::{Damage, backspace, delete, enter, insert_char},

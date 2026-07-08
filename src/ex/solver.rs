@@ -96,7 +96,11 @@ fn solve_address(address: Address, rope: &Rope, relative_to: usize) -> Result<us
 //  - curr_line is a 0-based line number
 // Postconditions:
 //  - The returned range is a normal 0-based [inclusive, exclusive) range
-pub fn solve_exrange(range: ExRange, rope: &Rope, curr_line: usize) -> Result<Range<usize>, ExError> {
+pub fn solve_exrange(
+    range: ExRange,
+    rope: &Rope,
+    curr_line: usize,
+) -> Result<Range<usize>, ExError> {
     match range {
         ExRange::All => Ok(0..rope.len_lines()),
         ExRange::Implicit => Ok(curr_line..curr_line + 1),

@@ -2,8 +2,8 @@ use anyhow::Result;
 use ropey::Rope;
 
 use crate::{
-    components::{Buffer, BufferView, Config, EditorCtx, EditorState, Registers, Session},
     cmd::EditOp,
+    components::{Buffer, BufferView, Config, EditorCtx, EditorState, Registers, Session},
     systems::{
         commons::{char_idx_to_coords, cursor_to_char_idx},
         edit::{
@@ -59,6 +59,8 @@ struct InsertLogInterpreter<'a> {
 // Anyway, I'm leaving it like this for now. Adding DisplayBuffer recalculation
 // and Unicode segmentation to the interpreter's execution would be prohibitely
 // expensive.
+//
+// Never forget: multichar graphemes are hell.
 impl<'a> InsertLogInterpreter<'a> {
     fn new(config: &'a Config, buf_view: &'a mut BufferView, rope: &'a mut Rope) -> Self {
         let row = buf_view.cursor.row;

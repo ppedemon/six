@@ -4,6 +4,7 @@ use crossterm::event::{KeyCode, KeyEvent};
 pub enum Secondary {
     HardQuit,
     CondWriteAndQuit,
+    Char(char),
 }
 
 impl Secondary {

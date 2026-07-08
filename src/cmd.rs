@@ -4,8 +4,7 @@ mod secondary;
 mod text_object;
 
 pub use motion::Motion;
-pub use operator::{EditOp, Operator};
-pub use operator::{ExMode, InsertPoint, SysOp};
+pub use operator::{EditOp, ExMode, InsertPoint, Operator, SearchOp, SysOp};
 pub use secondary::Secondary;
 pub use text_object::{Kind, Scope, TextObject};
 

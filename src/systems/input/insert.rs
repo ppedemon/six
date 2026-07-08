@@ -2,9 +2,9 @@ use anyhow::Result;
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
 
 use crate::{
+    cmd::{Cmd, EditOp, Motion, Operator, SysOp},
     components::{EditorCtx, EditorState},
     digraphs,
-    cmd::{EditOp, Motion, Cmd, Operator, SysOp},
     systems::{input::handler::dispatch, status},
 };
 

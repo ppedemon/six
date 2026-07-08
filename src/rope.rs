@@ -597,3 +597,20 @@ mod word_ws_tests {
         check_jump!(prev_sub_word, "a\n\u{1}a", 2, Expected => 0);
     }
 }
+
+pub fn find_char_forward(rope: &Rope, c: char, char_idx: usize) -> usize {
+    let max_idx = rope.len_chars().saturating_sub(1);
+    let mut i = char_idx.saturating_add(1).min(max_idx);
+
+    let line_idx = rope.char_to_line(char_idx);
+    let line_end = char_idx.saturating_add(rope.line(line_idx).len_chars());
+
+    while i < line_end {
+        if rope.char(i) == c {
+            return i;
+        }
+        i += 1;
+    }
+
+    char_idx
+}

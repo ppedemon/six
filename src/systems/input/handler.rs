@@ -8,6 +8,7 @@ use crate::{
         edit::handle_edit,
         input::{insert::InsertInputHandler, normal::NormalInputHandler},
         nav::{NavArgs, handle_nav},
+        search::{SearchArgs, handle_search},
         sys::{SysArgs, handle_sys},
     },
 };
@@ -50,14 +51,18 @@ pub fn dispatch(ctx: &EditorCtx, cmd: Cmd) -> Result<()> {
     let reps = cmd.reps;
     match cmd.op {
         Operator::Nop => Ok(()),
-        Operator::Sys(op) => {
-            let sys_args = SysArgs::new(op, reps, cmd.target);
-            handle_sys(ctx, sys_args)
-        }
         Operator::Edit(op) => handle_edit(ctx, op),
+        Operator::Sys(op) => {
+            let args = SysArgs::new(op, reps, cmd.target);
+            handle_sys(ctx, args)
+        }
         Operator::Move(motion) => {
-            let nav_args = NavArgs::new(motion, reps);
-            handle_nav(ctx, nav_args)
+            let args = NavArgs::new(motion, reps);
+            handle_nav(ctx, args)
+        }
+        Operator::Find(op) => {
+            let args = SearchArgs::new(op, reps, cmd.target);
+            handle_search(ctx, args)
         }
     }
 }

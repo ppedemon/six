@@ -1,10 +1,9 @@
 use ropey::Rope;
 
 use super::rules::NavRules;
-use crate::components::{BufferView, Config, Coords};
+use crate::components::{BufferView, Config};
 use crate::rope;
-use crate::systems::commons::{char_idx_to_coords, curr_line, cursor_to_char_idx};
-use crate::systems::nav::{InsertNav, NormalNav};
+use crate::systems::commons::{char_idx_to_coords, curr_line, cursor_to_char_idx, snap_coords};
 
 fn apply_target_col<R: NavRules>(config: &Config, rope: &Rope, buf_view: &mut BufferView) {
     let target_col = buf_view.target_col;
@@ -109,15 +108,6 @@ pub fn page_down<R: NavRules>(
     line_first_non_blank::<R>(config, rope, buf_view);
 }
 
-fn snap_coords(config: &Config, rope: &Rope, buf_view: &mut BufferView, coords: Coords) {
-    let line = buf_view.display_buf.ensure_line(config, rope, coords.row);
-    let col = line.snap_col(coords.col);
-
-    buf_view.cursor.row = coords.row;
-    buf_view.cursor.col = col;
-    buf_view.target_col = col;
-}
-
 pub fn next_big_word(config: &Config, rope: &Rope, buf_view: &mut BufferView, reps: usize) {
     let mut char_idx = cursor_to_char_idx(config, buf_view, rope);
 
@@ -169,8 +159,10 @@ pub fn end_big_word(config: &Config, rope: &Rope, buf_view: &mut BufferView, rep
         let old_col = char_idx_to_coords(config, rope, buf_view, char_idx).col;
         char_idx = rope::end_big_word(rope, char_idx);
 
-        // If afer moving we are at the same grapheme, snapping will leave us
-        // stuck. So we move out of the grapheme and recompute. Unicode sucks.
+        // Multichar graphemes are hell:
+        // If afer moving we are at the end of the initial grapheme, but no at the end of the text, we
+        // found a multichar grapheme. Snapping will leave us stuck at the the start of such grapheme.
+        // Fix: move out of the grapheme and recompute.
         let new_col = char_idx_to_coords(config, rope, buf_view, char_idx).col;
         let line = curr_line(config, rope, buf_view);
         if let Some((_, span)) = line.grapheme_at(new_col) {
@@ -191,8 +183,10 @@ pub fn end_sub_word(config: &Config, rope: &Rope, buf_view: &mut BufferView, rep
         let old_col = char_idx_to_coords(config, rope, buf_view, char_idx).col;
         char_idx = rope::end_sub_word(rope, char_idx);
 
-        // If afer moving we are at the same grapheme, snapping will leave us
-        // stuck. So we move out of the grapheme and recompute. Unicode sucks.
+        // Multichar graphemes are hell:
+        // If afer moving we are at the end of the initial grapheme, but no at the end of the text, we
+        // found a multichar grapheme. Snapping will leave us stuck at the the start of such grapheme.
+        // Fix: move out of the grapheme and recompute.
         let new_col = char_idx_to_coords(config, rope, buf_view, char_idx).col;
         let line = curr_line(config, rope, buf_view);
         if let Some((_, span)) = line.grapheme_at(new_col) {

@@ -2,10 +2,7 @@ use ropey::Rope;
 
 use crate::components::{BufferView, Config, Coords};
 use crate::systems::commons::{coords_to_char_idx, curr_line, cursor_to_char_idx};
-use crate::systems::nav::{
-    move_down, move_right, move_up,
-    InsertNav,
-};
+use crate::systems::nav::{InsertNav, move_down, move_right, move_up};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Damage {

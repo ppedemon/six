@@ -11,11 +11,11 @@ use std::{
 
 use crate::{components::EditorCtx, systems::init_cursor_pos};
 
+mod cmd;
 mod components;
 mod digraphs;
 mod ex;
 mod misc;
-mod cmd;
 mod rope;
 mod systems;
 

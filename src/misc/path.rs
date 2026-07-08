@@ -87,9 +87,6 @@ mod tests {
         );
 
         let input3 = "../.././../doc.txt";
-        assert_eq!(
-            norm_filename(input3).to_str(),
-            Some(r"../../../doc.txt")
-        );
+        assert_eq!(norm_filename(input3).to_str(), Some(r"../../../doc.txt"));
     }
 }

@@ -48,3 +48,12 @@ pub fn char_idx_to_coords(
         col: col_idx,
     }
 }
+
+pub fn snap_coords(config: &Config, rope: &Rope, buf_view: &mut BufferView, coords: Coords) {
+    let line = buf_view.display_buf.ensure_line(config, rope, coords.row);
+    let col = line.snap_col(coords.col);
+
+    buf_view.cursor.row = coords.row;
+    buf_view.cursor.col = col;
+    buf_view.target_col = col;
+}

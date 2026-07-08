@@ -2,8 +2,8 @@ use anyhow::Result;
 use crossterm::event::{Event, KeyCode, KeyEvent};
 
 use crate::{
+    cmd::{Cmd, Kind, Motion, Operator, Scope, Secondary, TextObject},
     components::EditorCtx,
-    cmd::{Kind, Motion, Cmd, Operator, Scope, Secondary, TextObject},
     systems::{input::handler::dispatch, status},
 };
 
@@ -274,11 +274,25 @@ impl NormalInputHandler {
         reg: Option<char>,
         op: Operator,
     ) -> Result<()> {
+        // The find char operator family must interprect whetever follows as
+        // the char to find, so we need to prematurely match on the operator
+        match &op {
+            Operator::Find(_) => {
+                if let Some(c) = as_char(&event) {
+                    let cmd = Cmd::new(op).reps(reps).reg(reg).special(Secondary::Char(c));
+                    return self.done(ctx, cmd);
+                }
+                self.reset(ctx)?
+            }
+            _ => {}
+        }
+
         let (motion, scope, special) = (
             Motion::from(event),
             Scope::from(event),
             Secondary::from(event),
         );
+
         match (motion, scope, special) {
             (None, None, None) => match as_digit(&event) {
                 None => self.reset(ctx)?,
@@ -375,10 +389,7 @@ impl NormalInputHandler {
             Some(kind) => {
                 let text_object = TextObject { scope, kind };
                 // TODO Fix
-                let cmd = Cmd::new(op)
-                    .reps(reps)
-                    .reg(reg)
-                    .text_object(text_object);
+                let cmd = Cmd::new(op).reps(reps).reg(reg).text_object(text_object);
                 self.done(ctx, cmd)?;
             }
         }
@@ -391,6 +402,14 @@ fn as_digit(event: &KeyEvent) -> Option<u32> {
         event.code.as_char().and_then(|c| c.to_digit(10))
     } else {
         None
+    }
+}
+
+fn as_char(event: &KeyEvent) -> Option<char> {
+    match event.code {
+        KeyCode::Char(c) => Some(c),
+        KeyCode::Tab => Some('\t'),
+        _ => None,
     }
 }
 

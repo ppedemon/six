@@ -45,7 +45,7 @@ pub enum ExError {
     InternalError {
         #[from]
         source: anyhow::Error,
-    }
+    },
 }
 
 impl ExError {

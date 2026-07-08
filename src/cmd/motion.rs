@@ -36,14 +36,14 @@ impl Motion {
             }
             KeyCode::PageUp => Some(Motion::PageUp),
             KeyCode::PageDown => Some(Motion::PageDown),
-            
+
             KeyCode::Char('W') => Some(Motion::NextBigWord),
             KeyCode::Char('w') => Some(Motion::NextSubWord),
             KeyCode::Char('B') => Some(Motion::PrevBigWord),
             KeyCode::Char('b') => Some(Motion::PrevSubWord),
             KeyCode::Char('E') => Some(Motion::EndBigWord),
             KeyCode::Char('e') => Some(Motion::EndSubWord),
-            
+
             KeyCode::Char('0') => Some(Motion::StartOfLine),
             KeyCode::Char('^') => Some(Motion::FirstNonBlankInLine),
             KeyCode::Char('$') => Some(Motion::EndOfLine),

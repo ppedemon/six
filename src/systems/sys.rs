@@ -1,10 +1,10 @@
 use crate::{
+    cmd::{ExMode, InsertPoint, Secondary, SysOp, Target},
     components::{
         Buffer, BufferView, Config, EditorCtx, EditorState, ExSession, Focus, Level, Mode, Session,
         Status,
     },
     ex::ExRange,
-    cmd::{ExMode, InsertPoint, Secondary, SysOp, Target},
     systems::{
         commons,
         edit::{clear_ex, insert_char},

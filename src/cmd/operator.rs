@@ -12,6 +12,11 @@ pub enum EditOp {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SearchOp {
+    FindNextChar,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InsertPoint {
     Curr,
     Next,
@@ -39,6 +44,7 @@ pub enum Operator {
     Nop,
     Sys(SysOp),
     Move(Motion),
+    Find(SearchOp),
     Edit(EditOp),
 }
 
@@ -51,6 +57,12 @@ impl From<SysOp> for Operator {
 impl From<Motion> for Operator {
     fn from(motion: Motion) -> Self {
         Self::Move(motion)
+    }
+}
+
+impl From<SearchOp> for Operator {
+    fn from(find_op: SearchOp) -> Self {
+        Self::Find(find_op)
     }
 }
 
@@ -71,13 +83,17 @@ impl Operator {
             KeyCode::Char('/') => Some(SysOp::EnterEx(ExMode::SearchForward).into()),
             KeyCode::Char('?') => Some(SysOp::EnterEx(ExMode::SearchBackward).into()),
             KeyCode::Char('Z') => Some(SysOp::BufferOp.into()),
+
+            KeyCode::Char('f') => Some(SearchOp::FindNextChar.into()),
+
             _ => Motion::from(event).map(Operator::Move),
         }
     }
-    
+
     pub fn needs_target(&self) -> bool {
         match self {
             Self::Sys(SysOp::BufferOp) => true,
+            Self::Find(_) => true,
             _ => false,
         }
     }
