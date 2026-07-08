@@ -6,10 +6,10 @@ use super::{
     buffer,
     rules::{InsertNav, NavRules, NormalNav},
 };
+use crate::cmd::Motion;
 use crate::components::{
     Buffer, BufferView, Config, EditorCtx, EditorState, ExSession, Focus, Mode, Session, Viewport,
 };
-use crate::cmd::Motion;
 
 pub struct NavArgs {
     pub motion: Motion,
@@ -115,6 +115,8 @@ fn session_nav<R: NavRules>(
         Motion::NextSubWord => buffer::next_sub_word(config, rope, buf_view, reps),
         Motion::PrevBigWord => buffer::prev_big_word(config, rope, buf_view, reps),
         Motion::PrevSubWord => buffer::prev_sub_word(config, rope, buf_view, reps),
+        Motion::EndBigWord => buffer::end_big_word(config, rope, buf_view, reps),
+        Motion::EndSubWord => buffer::end_sub_word(config, rope, buf_view, reps),
 
         Motion::FirstNonBlankInLine => buffer::line_first_non_blank::<R>(config, rope, buf_view),
         Motion::StartOfLine => buffer::start_of_line::<R>(config, rope, buf_view),

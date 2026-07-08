@@ -12,6 +12,8 @@ pub enum Motion {
     NextSubWord,
     PrevBigWord,
     PrevSubWord,
+    EndBigWord,
+    EndSubWord,
     FirstNonBlankInLine,
     StartOfLine,
     EndOfLine,
@@ -39,6 +41,8 @@ impl Motion {
             KeyCode::Char('w') => Some(Motion::NextSubWord),
             KeyCode::Char('B') => Some(Motion::PrevBigWord),
             KeyCode::Char('b') => Some(Motion::PrevSubWord),
+            KeyCode::Char('E') => Some(Motion::EndBigWord),
+            KeyCode::Char('e') => Some(Motion::EndSubWord),
             
             KeyCode::Char('0') => Some(Motion::StartOfLine),
             KeyCode::Char('^') => Some(Motion::FirstNonBlankInLine),

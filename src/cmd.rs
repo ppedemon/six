@@ -1,4 +1,3 @@
-mod cmd;
 mod motion;
 mod operator;
 mod secondary;

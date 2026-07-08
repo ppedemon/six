@@ -4,6 +4,7 @@ use super::rules::NavRules;
 use crate::components::{BufferView, Config, Coords};
 use crate::rope;
 use crate::systems::commons::{char_idx_to_coords, curr_line, cursor_to_char_idx};
+use crate::systems::nav::{InsertNav, NormalNav};
 
 fn apply_target_col<R: NavRules>(config: &Config, rope: &Rope, buf_view: &mut BufferView) {
     let target_col = buf_view.target_col;
@@ -155,6 +156,50 @@ pub fn prev_sub_word(config: &Config, rope: &Rope, buf_view: &mut BufferView, re
 
     for _ in 0..reps {
         char_idx = rope::prev_sub_word(rope, char_idx);
+    }
+
+    let coords = char_idx_to_coords(config, rope, buf_view, char_idx);
+    snap_coords(config, rope, buf_view, coords);
+}
+
+pub fn end_big_word(config: &Config, rope: &Rope, buf_view: &mut BufferView, reps: usize) {
+    let mut char_idx = cursor_to_char_idx(config, buf_view, rope);
+
+    for _ in 0..reps {
+        let old_col = char_idx_to_coords(config, rope, buf_view, char_idx).col;
+        char_idx = rope::end_big_word(rope, char_idx);
+
+        // If afer moving we are at the same grapheme, snapping will leave us
+        // stuck. So we move out of the grapheme and recompute. Unicode sucks.
+        let new_col = char_idx_to_coords(config, rope, buf_view, char_idx).col;
+        let line = curr_line(config, rope, buf_view);
+        if let Some((_, span)) = line.grapheme_at(new_col) {
+            if span.start == old_col && span.end < rope.len_chars().saturating_sub(1) {
+                char_idx = rope::end_big_word(rope, char_idx + 1);
+            }
+        }
+    }
+
+    let coords = char_idx_to_coords(config, rope, buf_view, char_idx);
+    snap_coords(config, rope, buf_view, coords);
+}
+
+pub fn end_sub_word(config: &Config, rope: &Rope, buf_view: &mut BufferView, reps: usize) {
+    let mut char_idx = cursor_to_char_idx(config, buf_view, rope);
+
+    for _ in 0..reps {
+        let old_col = char_idx_to_coords(config, rope, buf_view, char_idx).col;
+        char_idx = rope::end_sub_word(rope, char_idx);
+
+        // If afer moving we are at the same grapheme, snapping will leave us
+        // stuck. So we move out of the grapheme and recompute. Unicode sucks.
+        let new_col = char_idx_to_coords(config, rope, buf_view, char_idx).col;
+        let line = curr_line(config, rope, buf_view);
+        if let Some((_, span)) = line.grapheme_at(new_col) {
+            if span.start == old_col && span.end < rope.len_chars().saturating_sub(1) {
+                char_idx = rope::end_sub_word(rope, char_idx + 1);
+            }
+        }
     }
 
     let coords = char_idx_to_coords(config, rope, buf_view, char_idx);

@@ -326,7 +326,7 @@ pub fn next_big_word(rope: &Rope, char_idx: usize) -> usize {
         c = rope.char(char_idx);
     }
 
-    char_idx.min(rope.len_chars().saturating_sub(1))
+    char_idx
 }
 
 pub fn next_sub_word(rope: &Rope, char_idx: usize) -> usize {
@@ -355,7 +355,7 @@ pub fn next_sub_word(rope: &Rope, char_idx: usize) -> usize {
         c = rope.char(char_idx);
     }
 
-    char_idx.min(rope.len_chars().saturating_sub(1))
+    char_idx
 }
 
 pub fn prev_big_word(rope: &Rope, char_idx: usize) -> usize {
@@ -377,7 +377,7 @@ pub fn prev_big_word(rope: &Rope, char_idx: usize) -> usize {
         c = rope.char(char_idx.saturating_sub(1));
     }
 
-    char_idx.min(rope.len_chars().saturating_sub(1))
+    char_idx
 }
 
 pub fn prev_sub_word(rope: &Rope, char_idx: usize) -> usize {
@@ -406,7 +406,58 @@ pub fn prev_sub_word(rope: &Rope, char_idx: usize) -> usize {
         }
     }
 
-    char_idx.min(rope.len_chars().saturating_sub(1))
+    char_idx
+}
+
+pub fn end_big_word(rope: &Rope, char_idx: usize) -> usize {
+    let max_idx = rope.len_chars().saturating_sub(1);
+    if max_idx == 0 {
+        return 0;
+    }
+
+    let mut char_idx = char_idx.clamp(0, max_idx);
+    let mut c = rope.char(char_idx.saturating_add(1).min(max_idx));
+
+    while char_idx < max_idx && c.is_whitespace() {
+        char_idx += 1;
+        c = rope.char(char_idx.saturating_add(1).min(max_idx));
+    }
+
+    while char_idx < max_idx && !c.is_whitespace() {
+        char_idx += 1;
+        c = rope.char(char_idx.saturating_add(1).min(max_idx));
+    }
+
+    char_idx
+}
+
+pub fn end_sub_word(rope: &Rope, char_idx: usize) -> usize {
+    let max_idx = rope.len_chars().saturating_sub(1);
+    if max_idx == 0 {
+        return 0;
+    }
+
+    let mut char_idx = char_idx.clamp(0, max_idx);
+    let mut c = rope.char(char_idx.saturating_add(1).min(max_idx));
+
+    while char_idx < max_idx && c.is_whitespace() {
+        char_idx += 1;
+        c = rope.char(char_idx.saturating_add(1).min(max_idx));
+    }
+
+    if is_sub_word_char(c) {
+        while char_idx < max_idx && is_sub_word_char(c) {
+            char_idx += 1;
+            c = rope.char(char_idx.saturating_add(1).min(max_idx));
+        }
+    } else if is_punct_char(c) {
+        while char_idx < max_idx && is_punct_char(c) {
+            char_idx += 1;
+            c = rope.char(char_idx.saturating_add(1).min(max_idx));
+        }
+    }
+
+    char_idx
 }
 
 #[cfg(test)]
