@@ -10,8 +10,8 @@ use crate::{
         Session, Status,
     },
     misc::path::norm_filename,
-    rope::{self, first_non_blank_char_idx},
-    systems::{commons::char_idx_to_coords, event},
+    rope::{self},
+    systems::event,
 };
 
 pub fn create_editor(world: &mut World) -> EditorCtx<'_> {
