@@ -60,7 +60,7 @@ pub fn dispatch(ctx: &EditorCtx, cmd: Cmd) -> Result<()> {
             let args = NavArgs::new(motion, reps);
             handle_nav(ctx, args)
         }
-        Operator::Find(op) => {
+        Operator::Search(op) => {
             let args = SearchArgs::new(op, reps, cmd.target);
             handle_search(ctx, args)
         }

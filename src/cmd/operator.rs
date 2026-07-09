@@ -14,6 +14,11 @@ pub enum EditOp {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SearchOp {
     FindNextChar,
+    FindPrevChar,
+    TillNextChar,
+    TillPrevChar,
+    RepeatForward,
+    RepeatBackward,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -44,7 +49,7 @@ pub enum Operator {
     Nop,
     Sys(SysOp),
     Move(Motion),
-    Find(SearchOp),
+    Search(SearchOp),
     Edit(EditOp),
 }
 
@@ -62,7 +67,7 @@ impl From<Motion> for Operator {
 
 impl From<SearchOp> for Operator {
     fn from(find_op: SearchOp) -> Self {
-        Self::Find(find_op)
+        Self::Search(find_op)
     }
 }
 
@@ -82,9 +87,15 @@ impl Operator {
             KeyCode::Char(':') => Some(SysOp::EnterEx(ExMode::Colon).into()),
             KeyCode::Char('/') => Some(SysOp::EnterEx(ExMode::SearchForward).into()),
             KeyCode::Char('?') => Some(SysOp::EnterEx(ExMode::SearchBackward).into()),
+
             KeyCode::Char('Z') => Some(SysOp::BufferOp.into()),
 
             KeyCode::Char('f') => Some(SearchOp::FindNextChar.into()),
+            KeyCode::Char('F') => Some(SearchOp::FindPrevChar.into()),
+            KeyCode::Char('t') => Some(SearchOp::TillNextChar.into()),
+            KeyCode::Char('T') => Some(SearchOp::TillPrevChar.into()),
+            KeyCode::Char(';') => Some(SearchOp::RepeatForward.into()),
+            KeyCode::Char(',') => Some(SearchOp::RepeatBackward.into()),
 
             _ => Motion::from(event).map(Operator::Move),
         }
@@ -93,7 +104,11 @@ impl Operator {
     pub fn needs_target(&self) -> bool {
         match self {
             Self::Sys(SysOp::BufferOp) => true,
-            Self::Find(_) => true,
+            Self::Search(SearchOp::FindNextChar) => true,
+            Self::Search(SearchOp::FindPrevChar) => true,
+            Self::Search(SearchOp::TillNextChar) => true,
+            Self::Search(SearchOp::TillPrevChar) => true,
+            
             _ => false,
         }
     }

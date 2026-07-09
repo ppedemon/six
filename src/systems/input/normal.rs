@@ -182,7 +182,6 @@ impl NormalInputHandler {
         reg: char,
     ) -> Result<()> {
         match Operator::from(event) {
-            // TODO Fix
             Some(op) => {
                 if op.needs_target() {
                     self.state = State::Operator {
@@ -277,9 +276,9 @@ impl NormalInputHandler {
         // The find char operator family must interprect whetever follows as
         // the char to find, so we need to prematurely match on the operator
         match &op {
-            Operator::Find(_) => {
+            Operator::Search(_) => {
                 if let Some(c) = as_char(&event) {
-                    let cmd = Cmd::new(op).reps(reps).reg(reg).special(Secondary::Char(c));
+                    let cmd = Cmd::new(op).reps(reps).reg(reg).secondary(Secondary::Char(c));
                     return self.done(ctx, cmd);
                 }
                 self.reset(ctx)?
@@ -318,7 +317,7 @@ impl NormalInputHandler {
                 }
             }
             (None, None, Some(special)) => {
-                let cmd = Cmd::new(op).reps(reps).reg(reg).special(special);
+                let cmd = Cmd::new(op).reps(reps).reg(reg).secondary(special);
                 self.done(ctx, cmd)?;
             }
             _ => self.reset(ctx)?,
@@ -367,7 +366,7 @@ impl NormalInputHandler {
                 }
             }
             (_, _, _, Some(special)) => {
-                let cmd = Cmd::new(op).reps(reps).reg(reg).special(special);
+                let cmd = Cmd::new(op).reps(reps).reg(reg).secondary(special);
                 self.done(ctx, cmd)?;
             }
             _ => self.reset(ctx)?,

@@ -54,7 +54,7 @@ impl Cmd {
         self
     }
 
-    pub fn special(mut self, special: Secondary) -> Self {
+    pub fn secondary(mut self, special: Secondary) -> Self {
         self.target = Target::Secondary(special);
         self
     }
