@@ -1,5 +1,6 @@
 use crate::{
-    components::{Buffer, EditorCtx},
+    cmd::{Motion, Target},
+    components::{Buffer, EditorCtx, Level},
     ex::{BuiltIn, ExError, ExRange},
     systems::{
         ex::{
@@ -7,6 +8,8 @@ use crate::{
             fs,
         },
         lifecycle,
+        nav::{NavArgs, handle_nav},
+        status,
     },
 };
 
@@ -56,6 +59,13 @@ pub fn exec_builtin(
         BuiltIn::Write("w") => {
             let (append, name) = validate_opt_append_filename(args)?;
             fs::save_active(ctx, name, append, false, range)
+        }
+        BuiltIn::GotoLine(line) => {
+            adapt(handle_nav(
+                ctx,
+                NavArgs::new(Motion::BigGotoLine, line, Target::None),
+            ))?;
+            adapt(status::set_msg(ctx, Level::Info, &format!(":{}", line)))
         }
         _ => unreachable!("Unimplemented builtin: {builtin:?}"),
     }

@@ -4,7 +4,7 @@ use nom::{
     bytes::complete::{escaped, tag},
     character::{
         char,
-        complete::{anychar, none_of, space0},
+        complete::{anychar, digit1, none_of, space0},
     },
     combinator::{complete, opt, recognize, value},
     multi::{many1, separated_list1},
@@ -17,6 +17,7 @@ use crate::ex::{ExError, ExRange, range::parse_exrange};
 pub enum BuiltIn<'a> {
     Quit(&'a str),
     Write(&'a str),
+    GotoLine(usize),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -90,6 +91,20 @@ fn parse_internal(input: &str) -> IResult<&str, ExCmd<'_>> {
         .parse(input)
 }
 
+fn parse_num(input: &str) -> IResult<&str, ExCmd<'_>> {
+    (
+        space0::<&str, _>,
+        digit1.map_res(|s: &str| s.parse::<usize>()),
+        space0,
+    )
+        .map(|(_, d, _)| ExCmd::BuiltIn {
+            range: ExRange::Implicit,
+            builtin: BuiltIn::GotoLine(d),
+            args: "",
+        })
+        .parse(input)
+}
+
 pub fn parse_cmd_line(input: &str) -> Result<Vec<ExCmd<'_>>, ExError> {
     let separator = complete((space0, char('|'), space0));
 
@@ -98,6 +113,7 @@ pub fn parse_cmd_line(input: &str) -> Result<Vec<ExCmd<'_>>, ExError> {
         alt((parse_shell, parse_shell_scoped, parse_internal)),
     )
     .parse(input)
+    .or_else(|_| parse_num.map(|cmd| vec![cmd]).parse(input))
     .map_err(|_| ExError::ParseError {
         cmd: input.to_string(),
     })?;
@@ -114,7 +130,10 @@ pub fn parse_cmd_line(input: &str) -> Result<Vec<ExCmd<'_>>, ExError> {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::ex::range::{Address, BaseAddress, Delimiter, Modifier};
+    use crate::ex::{
+        BuiltIn::GotoLine,
+        range::{Address, BaseAddress, Delimiter, Modifier},
+    };
 
     fn address(base: BaseAddress) -> Address {
         Address {
@@ -275,6 +294,20 @@ mod test {
             ExCmd::Shell {
                 range: ExRange::All,
                 raw_cmd: r"grep file\.txt | wc -l",
+            }
+        )
+    }
+
+    #[test]
+    fn test_parse_numline() {
+        let cmd_line = "10";
+        let result = parse_cmd_line(cmd_line).unwrap();
+        assert_eq!(
+            result[0],
+            ExCmd::BuiltIn {
+                range: ExRange::Implicit,
+                builtin: GotoLine(10),
+                args: ""
             }
         )
     }
