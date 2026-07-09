@@ -95,9 +95,6 @@ pub fn enter_normal(ctx: &EditorCtx) -> Result<()> {
     editor.focus = Focus::Session;
     editor.char_at_cursor = None;
 
-    if session.mode == Mode::Insert {
-        // TODO Apply insert log
-    }
     session.mode = Mode::Normal;
 
     let cursor = buf_view.cursor;

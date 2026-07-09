@@ -255,8 +255,7 @@ impl NormalInputHandler {
                         op,
                     }
                 } else {
-                    // TODO Fix
-                    let cmd = Cmd::new(op).reps(reps);
+                    let cmd = Cmd::new(op).reps(reps).reg(Some(reg));
                     self.done(ctx, cmd)?;
                 };
             }
@@ -389,7 +388,6 @@ impl NormalInputHandler {
             None => self.reset(ctx)?,
             Some(kind) => {
                 let text_object = TextObject { scope, kind };
-                // TODO Fix
                 let cmd = Cmd::new(op).reps(reps).reg(reg).text_object(text_object);
                 self.done(ctx, cmd)?;
             }
