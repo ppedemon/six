@@ -131,7 +131,7 @@ impl NormalInputHandler {
                         op,
                     };
                 } else {
-                    let cmd = Cmd::new(op);
+                    let cmd = Cmd::new(op).reps(default_reps(op));
                     self.done(ctx, cmd)?;
                 }
             }
@@ -217,7 +217,7 @@ impl NormalInputHandler {
                         op,
                     }
                 } else {
-                    let cmd = Cmd::new(op).reg(Some(reg));
+                    let cmd = Cmd::new(op).reg(Some(reg)).reps(default_reps(op));
                     self.done(ctx, cmd)?;
                 };
             }
@@ -278,7 +278,10 @@ impl NormalInputHandler {
         match &op {
             Operator::Search(_) => {
                 if let Some(c) = as_char(&event) {
-                    let cmd = Cmd::new(op).reps(reps).reg(reg).secondary(Secondary::Char(c));
+                    let cmd = Cmd::new(op)
+                        .reps(reps)
+                        .reg(reg)
+                        .secondary(Secondary::Char(c));
                     return self.done(ctx, cmd);
                 }
                 self.reset(ctx)?
@@ -286,13 +289,13 @@ impl NormalInputHandler {
             _ => {}
         }
 
-        let (motion, scope, special) = (
+        let (motion, scope, secondary) = (
             Motion::from(event),
             Scope::from(event),
             Secondary::from(event),
         );
 
-        match (motion, scope, special) {
+        match (motion, scope, secondary) {
             (None, None, None) => match as_digit(&event) {
                 None => self.reset(ctx)?,
                 Some(d) => {
@@ -304,11 +307,15 @@ impl NormalInputHandler {
                     }
                 }
             },
-            (Some(motion), None, None) => {
+            (_, _, Some(special)) => {
+                let cmd = Cmd::new(op).reps(reps).reg(reg).secondary(special);
+                self.done(ctx, cmd)?;
+            }
+            (Some(motion), _, _) => {
                 let cmd = Cmd::new(op).reps(reps).reg(reg).motion(motion);
                 self.done(ctx, cmd)?;
             }
-            (None, Some(scope), None) => {
+            (_, Some(scope), _) => {
                 self.state = State::TextObject {
                     reps,
                     reg,
@@ -316,11 +323,6 @@ impl NormalInputHandler {
                     scope,
                 }
             }
-            (None, None, Some(special)) => {
-                let cmd = Cmd::new(op).reps(reps).reg(reg).secondary(special);
-                self.done(ctx, cmd)?;
-            }
-            _ => self.reset(ctx)?,
         }
         Ok(())
     }
@@ -423,4 +425,11 @@ fn as_reg(event: &KeyEvent) -> Option<char> {
         _ if "%#.:/=-_".contains(c) => Some(c),
         _ => None,
     })
+}
+
+fn default_reps(op: Operator) -> usize {
+    match op {
+        Operator::Move(Motion::BigGotoLine) => usize::MAX,
+        _ => 1,
+    }
 }

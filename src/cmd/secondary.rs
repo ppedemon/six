@@ -4,6 +4,7 @@ use crossterm::event::{KeyCode, KeyEvent};
 pub enum Secondary {
     HardQuit,
     CondWriteAndQuit,
+    GotoLine,
     Char(char),
 }
 
@@ -12,6 +13,7 @@ impl Secondary {
         match event.code {
             KeyCode::Char('Q') => Some(Secondary::HardQuit),
             KeyCode::Char('Z') => Some(Secondary::CondWriteAndQuit),
+            KeyCode::Char('g') => Some(Secondary::GotoLine),
             _ => None,
         }
     }

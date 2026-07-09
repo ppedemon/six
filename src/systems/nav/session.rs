@@ -6,7 +6,7 @@ use super::{
     buffer,
     rules::{InsertNav, NavRules, NormalNav},
 };
-use crate::cmd::Motion;
+use crate::cmd::{Motion, Secondary, Target};
 use crate::components::{
     Buffer, BufferView, Config, EditorCtx, EditorState, ExSession, Focus, Mode, Session, Viewport,
 };
@@ -14,11 +14,16 @@ use crate::components::{
 pub struct NavArgs {
     pub motion: Motion,
     pub reps: usize,
+    pub target: Target,
 }
 
 impl NavArgs {
-    pub fn new(motion: Motion, reps: usize) -> Self {
-        Self { motion, reps }
+    pub fn new(motion: Motion, reps: usize, target: Target) -> Self {
+        Self {
+            motion,
+            reps,
+            target,
+        }
     }
 }
 
@@ -37,7 +42,7 @@ fn handle_ex_nav(ctx: &EditorCtx, nav_args: NavArgs) -> Result<()> {
         .query_one::<(&ExSession, &mut BufferView)>(ctx.ex_session_id);
     let (ex_session, buf_view) = q_ex.get()?;
 
-    let NavArgs { motion, reps } = nav_args;
+    let NavArgs { motion, reps, .. } = nav_args;
     match motion {
         Motion::Left => {
             if buf_view.cursor.col > 1 {
@@ -95,7 +100,11 @@ fn session_nav<R: NavRules>(
     buf_view: &mut BufferView,
     nav_args: NavArgs,
 ) {
-    let NavArgs { motion, reps } = nav_args;
+    let NavArgs {
+        motion,
+        reps,
+        target,
+    } = nav_args;
     match motion {
         Motion::Up => buffer::move_up::<R>(config, rope, buf_view, reps),
         Motion::Down => buffer::move_down::<R>(config, rope, buf_view, reps),
@@ -124,6 +133,13 @@ fn session_nav<R: NavRules>(
         Motion::FirstNonBlankInFile => buffer::file_first_non_blank::<R>(config, rope, buf_view),
         Motion::StartOfFile => buffer::start_of_file::<R>(config, rope, buf_view),
         Motion::EndOfFile => buffer::end_of_file::<R>(config, rope, buf_view),
+
+        Motion::BigGotoLine => goto_line::<R>(config, rope, viewport, buf_view, reps),
+        Motion::SmallGotoLine => {
+            if let Target::Secondary(Secondary::GotoLine) = target {
+                goto_line::<R>(config, rope, viewport, buf_view, reps);
+            }
+        }
     }
 }
 
@@ -141,4 +157,28 @@ pub fn init_cursor_pos(ctx: &EditorCtx) -> Result<()> {
     buffer::file_first_non_blank::<NormalNav>(&config, &buffer.rope, buf_view);
 
     Ok(())
+}
+
+pub fn goto_line<R: NavRules>(
+    config: &Config,
+    rope: &Rope,
+    viewport: &mut Viewport,
+    buf_view: &mut BufferView,
+    line: usize,
+) {
+    let old_line = buf_view.cursor.row;
+    buffer::goto_line::<R>(config, rope, buf_view, line);
+
+    let h = viewport.area.height.saturating_div(2) as usize;
+    let scroll_start = viewport.scroll.row;
+    let scroll_end = viewport.scroll.row + viewport.area.height as usize;
+
+    if buf_view.cursor.row + h <= scroll_start
+        || buf_view.cursor.row.saturating_sub(h) >= scroll_end
+    {
+        viewport.scroll.row = buf_view.cursor.row.saturating_sub(h).min(
+            rope.len_lines()
+                .saturating_sub(viewport.area.height as usize),
+        );
+    }
 }

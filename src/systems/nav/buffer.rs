@@ -207,6 +207,17 @@ pub fn line_first_non_blank<R: NavRules>(config: &Config, rope: &Rope, buf_view:
     buf_view.target_col = buf_view.cursor.col;
 }
 
+pub fn file_first_non_blank<R: NavRules>(config: &Config, rope: &Rope, buf_view: &mut BufferView) {
+    let char_idx = rope::first_non_blank_char_idx(rope);
+    let coords = char_idx_to_coords(config, rope, buf_view, char_idx);
+    let line = buf_view.display_buf.ensure_line(config, rope, coords.row);
+    let col = R::first_non_blank(&line);
+
+    buf_view.cursor.row = coords.row;
+    buf_view.cursor.col = col;
+    buf_view.target_col = col
+}
+
 pub fn start_of_line<R: NavRules>(config: &Config, rope: &Rope, buf_view: &mut BufferView) {
     let line = curr_line(config, rope, buf_view);
     let col = R::snap_col(&line, 0);
@@ -224,17 +235,6 @@ pub fn end_of_line<R: NavRules>(config: &Config, rope: &Rope, buf_view: &mut Buf
     buf_view.target_col = col;
 }
 
-pub fn file_first_non_blank<R: NavRules>(config: &Config, rope: &Rope, buf_view: &mut BufferView) {
-    let char_idx = rope::first_non_blank_char_idx(rope);
-    let coords = char_idx_to_coords(config, rope, buf_view, char_idx);
-    let line = buf_view.display_buf.ensure_line(config, rope, coords.row);
-    let col = R::first_non_blank(&line);
-
-    buf_view.cursor.row = coords.row;
-    buf_view.cursor.col = col;
-    buf_view.target_col = col
-}
-
 pub fn start_of_file<R: NavRules>(config: &Config, rope: &Rope, buf_view: &mut BufferView) {
     let line = buf_view.display_buf.ensure_line(config, rope, 0);
     let col = R::snap_col(&line, 0);
@@ -245,13 +245,26 @@ pub fn start_of_file<R: NavRules>(config: &Config, rope: &Rope, buf_view: &mut B
 }
 
 pub fn end_of_file<R: NavRules>(config: &Config, rope: &Rope, buf_view: &mut BufferView) {
-    let char_idx = rope.len_chars().saturating_sub(1);
-    let coords = char_idx_to_coords(config, rope, buf_view, char_idx);
-    let line = buf_view.display_buf.ensure_line(config, rope, coords.row);
+    let row = rope.len_lines().saturating_sub(1);
+    let line = buf_view.display_buf.ensure_line(config, rope, row);
     let col = R::max_allowed_width(&line);
     let col = R::snap_col(&line, col);
 
-    buf_view.cursor.row = coords.row;
+    buf_view.cursor.row = row;
     buf_view.cursor.col = col;
     buf_view.target_col = col;
+}
+
+pub fn goto_line<R: NavRules>(
+    config: &Config,
+    rope: &Rope,
+    buf_view: &mut BufferView,
+    line: usize,
+) {
+    let norm_line = line.min(rope.len_lines()).saturating_sub(1);
+    let line = buf_view.display_buf.ensure_line(config, rope, norm_line);
+
+    buf_view.cursor.row = norm_line;
+    buf_view.cursor.col = R::first_non_blank(&line);
+    buf_view.target_col = buf_view.cursor.col;
 }

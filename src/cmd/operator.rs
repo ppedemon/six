@@ -108,7 +108,7 @@ impl Operator {
             Self::Search(SearchOp::FindPrevChar) => true,
             Self::Search(SearchOp::TillNextChar) => true,
             Self::Search(SearchOp::TillPrevChar) => true,
-            
+            Self::Move(Motion::SmallGotoLine) => true,
             _ => false,
         }
     }

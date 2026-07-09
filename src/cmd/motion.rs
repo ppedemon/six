@@ -20,6 +20,8 @@ pub enum Motion {
     FirstNonBlankInFile,
     StartOfFile,
     EndOfFile,
+    BigGotoLine,
+    SmallGotoLine,
 }
 
 impl Motion {
@@ -61,6 +63,9 @@ impl Motion {
                     Some(Motion::EndOfLine)
                 }
             }
+
+            KeyCode::Char('G') => Some(Motion::BigGotoLine),
+            KeyCode::Char('g') => Some(Motion::SmallGotoLine),
             _ => None,
         }
     }
