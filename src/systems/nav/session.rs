@@ -6,23 +6,23 @@ use super::{
     buffer,
     rules::{InsertNav, NavRules, NormalNav},
 };
-use crate::cmd::{Motion, Secondary, Target};
+use crate::cmd::{Motion, Secondary, Arg};
 use crate::components::{
     Buffer, BufferView, Config, EditorCtx, EditorState, ExSession, Focus, Mode, Session, Viewport,
 };
 
 pub struct NavArgs {
     pub motion: Motion,
-    pub reps: usize,
-    pub target: Target,
+    pub reps: Option<usize>,
+    pub arg: Arg,
 }
 
 impl NavArgs {
-    pub fn new(motion: Motion, reps: usize, target: Target) -> Self {
+    pub fn new(motion: Motion, reps: Option<usize>, arg: Arg) -> Self {
         Self {
             motion,
             reps,
-            target,
+            arg,
         }
     }
 }
@@ -43,6 +43,8 @@ fn handle_ex_nav(ctx: &EditorCtx, nav_args: NavArgs) -> Result<()> {
     let (ex_session, buf_view) = q_ex.get()?;
 
     let NavArgs { motion, reps, .. } = nav_args;
+    let reps = reps.unwrap_or(1);
+
     match motion {
         Motion::Left => {
             if buf_view.cursor.col > 1 {
@@ -103,8 +105,10 @@ fn session_nav<R: NavRules>(
     let NavArgs {
         motion,
         reps,
-        target,
+        arg,
     } = nav_args;
+    let reps = default_reps(&nav_args);
+
     match motion {
         Motion::Up => buffer::move_up::<R>(config, rope, buf_view, reps),
         Motion::Down => buffer::move_down::<R>(config, rope, buf_view, reps),
@@ -136,11 +140,18 @@ fn session_nav<R: NavRules>(
 
         Motion::BigGotoLine => goto_line::<R>(config, rope, viewport, buf_view, reps),
         Motion::SmallGotoLine => {
-            if let Target::Secondary(Secondary::GotoLine) = target {
+            if let Arg::Secondary(Secondary::GotoLine) = arg {
                 goto_line::<R>(config, rope, viewport, buf_view, reps);
             }
         }
     }
+}
+
+fn default_reps(args: &NavArgs) -> usize {
+    args.reps.unwrap_or_else(|| match args.motion {
+        Motion::BigGotoLine => usize::MAX,
+        _ => 1,
+    })
 }
 
 // On startup, move cursor to the first non-blank character of the active session

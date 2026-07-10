@@ -33,24 +33,25 @@ enum State {
         reps: usize,
         reg: char,
     },
-    // We have an op, must follow motion reps or target
+    // We have an op, must follow arg reps or arg
     Operator {
-        reps: usize,
+        reps: Option<usize>,
         reg: Option<char>,
         op: Operator,
     },
-    // Saw motion reps, target must follow
-    MotionReps {
-        reps: usize,
+    // Saw motion reps, arg must follow
+    ArgReps {
+        reps: Option<usize>,
         reg: Option<char>,
         op: Operator,
-        motion_reps: usize,
+        arg_reps: usize,
     },
-    // Target was text object, and we have the text object's scope
+    // Arg was text object, and we have the text object's scope, text object kind must follow
     TextObject {
-        reps: usize,
+        reps: Option<usize>,
         reg: Option<char>,
         op: Operator,
+        arg_reps: Option<usize>,
         scope: Scope,
     },
 }
@@ -106,32 +107,33 @@ impl NormalInputHandler {
             State::Reg2 { reg } => self.handle_reg2(ctx, event, reg),
             State::RegReps { reg, reps } => self.handle_reg_reps(ctx, event, reg, reps),
             State::Operator { reps, reg, op } => self.handle_op(ctx, event, reps, reg, op),
-            State::MotionReps {
+            State::ArgReps {
                 reps,
                 reg,
                 op,
-                motion_reps,
-            } => self.handle_motion_reps(ctx, event, reps, reg, op, motion_reps),
+                arg_reps,
+            } => self.handle_arg_reps(ctx, event, reps, reg, op, arg_reps),
             State::TextObject {
                 reps,
                 reg,
                 op,
+                arg_reps,
                 scope,
-            } => self.handle_text_object(ctx, event, reps, reg, op, scope),
+            } => self.handle_text_object(ctx, event, reps, reg, op, arg_reps, scope),
         }
     }
 
     fn handle_init(&mut self, ctx: &EditorCtx, event: KeyEvent) -> Result<()> {
         match (Operator::from(event), as_digit(&event), starts_reg(&event)) {
             (Some(op), _, _) => {
-                if op.needs_target() {
+                if op.needs_arg() {
                     self.state = State::Operator {
-                        reps: 1,
+                        reps: None,
                         reg: None,
                         op,
                     };
                 } else {
-                    let cmd = Cmd::new(op).reps(default_reps(op));
+                    let cmd = Cmd::new(op);
                     self.done(ctx, cmd)?;
                 }
             }
@@ -149,9 +151,9 @@ impl NormalInputHandler {
                 self.state = State::Reps { reps: new_reps };
             }
             (_, Some(op), _) => {
-                if op.needs_target() {
+                if op.needs_arg() {
                     self.state = State::Operator {
-                        reps,
+                        reps: Some(reps),
                         reg: None,
                         op,
                     }
@@ -183,14 +185,14 @@ impl NormalInputHandler {
     ) -> Result<()> {
         match Operator::from(event) {
             Some(op) => {
-                if op.needs_target() {
+                if op.needs_arg() {
                     self.state = State::Operator {
-                        reps,
+                        reps: Some(reps),
                         reg: Some(reg),
                         op,
                     }
                 } else {
-                    let cmd = Cmd::new(op).reps(reps).reg(Some(reg));
+                    let cmd = Cmd::new(op).reps(reps).reg(reg);
                     self.done(ctx, cmd)?;
                 }
             }
@@ -210,14 +212,14 @@ impl NormalInputHandler {
     fn handle_reg2(&mut self, ctx: &EditorCtx, event: KeyEvent, reg: char) -> Result<()> {
         match (Operator::from(event), as_digit(&event)) {
             (Some(op), _) => {
-                if op.needs_target() {
+                if op.needs_arg() {
                     self.state = State::Operator {
-                        reps: 1,
+                        reps: None,
                         reg: Some(reg),
                         op,
                     }
                 } else {
-                    let cmd = Cmd::new(op).reg(Some(reg)).reps(default_reps(op));
+                    let cmd = Cmd::new(op).reg(reg);
                     self.done(ctx, cmd)?;
                 };
             }
@@ -248,14 +250,14 @@ impl NormalInputHandler {
                 };
             }
             (_, Some(op)) => {
-                if op.needs_target() {
+                if op.needs_arg() {
                     self.state = State::Operator {
-                        reps,
+                        reps: Some(reps),
                         reg: Some(reg),
                         op,
                     }
                 } else {
-                    let cmd = Cmd::new(op).reps(reps).reg(Some(reg));
+                    let cmd = Cmd::new(op).reps(reps).reg(reg);
                     self.done(ctx, cmd)?;
                 };
             }
@@ -268,18 +270,18 @@ impl NormalInputHandler {
         &mut self,
         ctx: &EditorCtx,
         event: KeyEvent,
-        reps: usize,
+        reps: Option<usize>,
         reg: Option<char>,
         op: Operator,
     ) -> Result<()> {
-        // The find char operator family must interprect whetever follows as
+        // The find char operator family must interpret whetever follows as
         // the char to find, so we need to prematurely match on the operator
         match &op {
             Operator::Search(_) => {
                 if let Some(c) = as_char(&event) {
                     let cmd = Cmd::new(op)
-                        .reps(reps)
-                        .reg(reg)
+                        .opt_reps(reps)
+                        .opt_reg(reg)
                         .secondary(Secondary::Char(c));
                     return self.done(ctx, cmd);
                 }
@@ -298,20 +300,20 @@ impl NormalInputHandler {
             (None, None, None) => match as_digit(&event) {
                 None => self.reset(ctx)?,
                 Some(d) => {
-                    self.state = State::MotionReps {
+                    self.state = State::ArgReps {
                         reps,
                         reg,
                         op,
-                        motion_reps: d as usize,
+                        arg_reps: d as usize,
                     }
                 }
             },
             (_, _, Some(special)) => {
-                let cmd = Cmd::new(op).reps(reps).reg(reg).secondary(special);
+                let cmd = Cmd::new(op).opt_reps(reps).opt_reg(reg).secondary(special);
                 self.done(ctx, cmd)?;
             }
             (Some(motion), _, _) => {
-                let cmd = Cmd::new(op).reps(reps).reg(reg).motion(motion);
+                let cmd = Cmd::new(op).opt_reps(reps).opt_reg(reg).motion(motion);
                 self.done(ctx, cmd)?;
             }
             (_, Some(scope), _) => {
@@ -319,6 +321,7 @@ impl NormalInputHandler {
                     reps,
                     reg,
                     op,
+                    arg_reps: None,
                     scope,
                 }
             }
@@ -326,14 +329,14 @@ impl NormalInputHandler {
         Ok(())
     }
 
-    fn handle_motion_reps(
+    fn handle_arg_reps(
         &mut self,
         ctx: &EditorCtx,
         event: KeyEvent,
-        reps: usize,
+        reps: Option<usize>,
         reg: Option<char>,
         op: Operator,
-        motion_reps: usize,
+        arg_reps: usize,
     ) -> Result<()> {
         let (d, motion, scope, special) = (
             as_digit(&event),
@@ -343,32 +346,33 @@ impl NormalInputHandler {
         );
         match (d, motion, scope, special) {
             (Some(d), _, _, _) => {
-                let new_motion_reps = motion_reps.saturating_mul(10).saturating_add(d as usize);
-                self.state = State::MotionReps {
+                let new_args_reps = arg_reps.saturating_mul(10).saturating_add(d as usize);
+                self.state = State::ArgReps {
                     reps,
                     reg,
                     op,
-                    motion_reps: new_motion_reps,
+                    arg_reps: new_args_reps,
                 };
+            }
+            (_, _, _, Some(special)) => {
+                let cmd = Cmd::new(op).opt_reps(reps).opt_reg(reg).secondary(special);
+                self.done(ctx, cmd)?;
             }
             (_, Some(motion), _, _) => {
                 let cmd = Cmd::new(op)
-                    .reps(reps.saturating_mul(motion_reps))
-                    .reg(reg)
-                    .motion(motion);
+                    .opt_reps(reps)
+                    .opt_reg(reg)
+                    .rep_motion(arg_reps, motion);
                 self.done(ctx, cmd)?;
             }
             (_, _, Some(scope), _) => {
                 self.state = State::TextObject {
-                    reps: reps.saturating_mul(motion_reps),
+                    reps,
                     reg,
                     op,
+                    arg_reps: Some(arg_reps),
                     scope,
                 }
-            }
-            (_, _, _, Some(special)) => {
-                let cmd = Cmd::new(op).reps(reps).reg(reg).secondary(special);
-                self.done(ctx, cmd)?;
             }
             _ => self.reset(ctx)?,
         }
@@ -379,16 +383,20 @@ impl NormalInputHandler {
         &mut self,
         ctx: &EditorCtx,
         event: KeyEvent,
-        reps: usize,
+        reps: Option<usize>,
         reg: Option<char>,
         op: Operator,
+        arg_reps: Option<usize>,
         scope: Scope,
     ) -> Result<()> {
         match Kind::from(event) {
             None => self.reset(ctx)?,
             Some(kind) => {
                 let text_object = TextObject { scope, kind };
-                let cmd = Cmd::new(op).reps(reps).reg(reg).text_object(text_object);
+                let cmd = Cmd::new(op)
+                    .opt_reps(reps)
+                    .opt_reg(reg)
+                    .text_object(arg_reps, text_object);
                 self.done(ctx, cmd)?;
             }
         }
@@ -423,11 +431,4 @@ fn as_reg(event: &KeyEvent) -> Option<char> {
         _ if "%#.:/=-_".contains(c) => Some(c),
         _ => None,
     })
-}
-
-fn default_reps(op: Operator) -> usize {
-    match op {
-        Operator::Move(Motion::BigGotoLine) => usize::MAX,
-        _ => 1,
-    }
 }

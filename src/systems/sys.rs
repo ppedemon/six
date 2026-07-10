@@ -1,5 +1,5 @@
 use crate::{
-    cmd::{ExMode, InsertPoint, Secondary, SysOp, Target},
+    cmd::{ExMode, InsertPoint, Secondary, SysOp, Arg},
     components::{
         Buffer, BufferView, Config, EditorCtx, EditorState, ExSession, Focus, Level, Mode, Session,
         Status,
@@ -18,29 +18,31 @@ use ropey::Rope;
 
 pub struct SysArgs {
     pub op: SysOp,
-    pub reps: usize,
-    pub target: Target,
+    pub reps: Option<usize>,
+    pub arg: Arg,
 }
 
 impl SysArgs {
-    pub fn new(op: SysOp, reps: usize, target: Target) -> Self {
-        Self { op, reps, target }
+    pub fn new(op: SysOp, reps: Option<usize>, arg: Arg) -> Self {
+        Self { op, reps, arg }
     }
 }
 
 pub fn handle_sys(ctx: &EditorCtx, sys_args: SysArgs) -> Result<()> {
     match sys_args.op {
         SysOp::EnterNormal => enter_normal(ctx),
-        SysOp::EnterInsert(insert_point) => enter_insert(ctx, insert_point, sys_args.reps),
+        SysOp::EnterInsert(insert_point) => {
+            enter_insert(ctx, insert_point, sys_args.reps.unwrap_or(1))
+        }
         SysOp::EnterEx(ex_mode) => enter_ex(ctx, ex_mode),
-        SysOp::BufferOp => handle_buffer_op(ctx, sys_args.target),
+        SysOp::BufferOp => handle_buffer_op(ctx, sys_args.arg),
     }
 }
 
-fn handle_buffer_op(ctx: &EditorCtx, target: Target) -> Result<()> {
-    match target {
-        Target::Secondary(Secondary::HardQuit) => quit_editor(ctx),
-        Target::Secondary(Secondary::CondWriteAndQuit) => {
+fn handle_buffer_op(ctx: &EditorCtx, arg: Arg) -> Result<()> {
+    match arg {
+        Arg::Secondary(Secondary::HardQuit) => quit_editor(ctx),
+        Arg::Secondary(Secondary::CondWriteAndQuit) => {
             ex::save_active(ctx, None, false, true, ExRange::All)?;
             quit_editor(ctx)
         }

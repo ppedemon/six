@@ -53,15 +53,15 @@ pub fn dispatch(ctx: &EditorCtx, cmd: Cmd) -> Result<()> {
         Operator::Nop => Ok(()),
         Operator::Edit(op) => handle_edit(ctx, op),
         Operator::Sys(op) => {
-            let args = SysArgs::new(op, reps, cmd.target);
+            let args = SysArgs::new(op, reps, cmd.arg);
             handle_sys(ctx, args)
         }
         Operator::Move(motion) => {
-            let args = NavArgs::new(motion, reps, cmd.target);
+            let args = NavArgs::new(motion, reps, cmd.arg);
             handle_nav(ctx, args)
         }
         Operator::Search(op) => {
-            let args = SearchArgs::new(op, reps, cmd.target);
+            let args = SearchArgs::new(op, reps, cmd.arg);
             handle_search(ctx, args)
         }
     }

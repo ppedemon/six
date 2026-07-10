@@ -101,7 +101,7 @@ impl Operator {
         }
     }
 
-    pub fn needs_target(&self) -> bool {
+    pub fn needs_arg(&self) -> bool {
         match self {
             Self::Sys(SysOp::BufferOp) => true,
             Self::Search(SearchOp::FindNextChar) => true,
