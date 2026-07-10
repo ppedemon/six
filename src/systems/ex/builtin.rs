@@ -1,5 +1,5 @@
 use crate::{
-    cmd::{Motion, Target},
+    cmd::{Motion, Arg},
     components::{Buffer, EditorCtx, Level},
     ex::{BuiltIn, ExError, ExRange},
     systems::{
@@ -63,7 +63,7 @@ pub fn exec_builtin(
         BuiltIn::GotoLine(line) => {
             adapt(handle_nav(
                 ctx,
-                NavArgs::new(Motion::BigGotoLine, line, Target::None),
+                NavArgs::new(Motion::BigGotoLine, Some(line), Arg::None),
             ))?;
             adapt(status::set_msg(ctx, Level::Info, &format!(":{}", line)))
         }

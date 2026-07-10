@@ -615,8 +615,11 @@ fn scan_char_forward(rope: &Rope, c: char, reps: usize, char_idx: usize, inclusi
     let line_end = line_start.saturating_add(rope.line(line_idx).len_chars());
 
     let mut n = reps;
+    let mut best_idx = i;
+
     while i < line_end.saturating_sub(1) && n > 0 {
         if rope.char(i.saturating_add(1)) == c {
+            best_idx = i;
             n -= 1;
             if n == 0 {
                 return if inclusive { i.saturating_add(1) } else { i };
@@ -625,7 +628,7 @@ fn scan_char_forward(rope: &Rope, c: char, reps: usize, char_idx: usize, inclusi
         i += 1;
     }
 
-    char_idx
+    best_idx
 }
 
 pub fn find_char_backward(rope: &Rope, c: char, reps: usize, char_idx: usize) -> usize {
@@ -650,8 +653,11 @@ fn scan_char_backward(
     let line_start = rope.line_to_char(line_idx);
 
     let mut n = reps;
+    let mut best_idx = i;
+
     while i > line_start && n > 0 {
         if rope.char(i.saturating_sub(1)) == c {
+            best_idx = i;
             n -= 1;
             if n == 0 {
                 return if inclusive { i.saturating_sub(1) } else { i };
@@ -660,5 +666,5 @@ fn scan_char_backward(
         i -= 1;
     }
 
-    char_idx
+    best_idx
 }

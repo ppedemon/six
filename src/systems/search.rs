@@ -2,7 +2,7 @@ use anyhow::Result;
 use ropey::Rope;
 
 use crate::{
-    cmd::{SearchOp, Secondary, Target},
+    cmd::{SearchOp, Secondary, Arg},
     components::{Buffer, BufferView, Config, EditorCtx, EditorState, LastSearch, Session},
     rope,
     systems::commons::{char_idx_to_coords, cursor_to_char_idx, snap_coords},
@@ -10,18 +10,18 @@ use crate::{
 
 pub struct SearchArgs {
     pub op: SearchOp,
-    pub reps: usize,
-    pub target: Target,
+    pub reps: Option<usize>,
+    pub arg: Arg,
 }
 
 impl SearchArgs {
-    pub fn new(op: SearchOp, reps: usize, target: Target) -> Self {
-        Self { op, reps, target }
+    pub fn new(op: SearchOp, reps: Option<usize>, arg: Arg) -> Self {
+        Self { op, reps, arg }
     }
 
     fn as_char(&self) -> Option<char> {
-        match self.target {
-            Target::Secondary(Secondary::Char(c)) => Some(c),
+        match self.arg {
+            Arg::Secondary(Secondary::Char(c)) => Some(c),
             _ => None,
         }
     }
@@ -40,36 +40,38 @@ pub fn handle_search(ctx: &EditorCtx, args: SearchArgs) -> Result<()> {
     let mut q_search = ctx.world.query::<&mut LastSearch>();
     let last_search = q_search.iter().next().expect("No search data");
 
+    let reps = args.reps.unwrap_or(1);
+
     match args.op {
         SearchOp::FindNextChar => {
             if let Some(c) = args.as_char() {
                 last_search.set_char(c, args.op);
-                find_char_forward(&config, &buffer.rope, buf_view, c, args.reps);
+                find_char_forward(&config, &buffer.rope, buf_view, c, reps);
             }
         }
         SearchOp::FindPrevChar => {
             if let Some(c) = args.as_char() {
                 last_search.set_char(c, args.op);
-                find_char_backward(&config, &buffer.rope, buf_view, c, args.reps);
+                find_char_backward(&config, &buffer.rope, buf_view, c, reps);
             }
         }
         SearchOp::TillNextChar => {
             if let Some(c) = args.as_char() {
                 last_search.set_char(c, args.op);
-                till_char_forward(&config, &buffer.rope, buf_view, c, args.reps, false);
+                till_char_forward(&config, &buffer.rope, buf_view, c, reps, false);
             }
         }
         SearchOp::TillPrevChar => {
             if let Some(c) = args.as_char() {
                 last_search.set_char(c, args.op);
-                till_char_backward(&config, &buffer.rope, buf_view, c, args.reps, false);
+                till_char_backward(&config, &buffer.rope, buf_view, c, reps, false);
             }
         }
         SearchOp::RepeatForward => {
-            repeat_forward(&config, &buffer.rope, buf_view, last_search, args.reps)
+            repeat_forward(&config, &buffer.rope, buf_view, last_search, reps)
         }
         SearchOp::RepeatBackward => {
-            repeat_backward(&config, &buffer.rope, buf_view, last_search, args.reps)
+            repeat_backward(&config, &buffer.rope, buf_view, last_search, reps)
         }
     }
 
