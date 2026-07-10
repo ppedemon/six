@@ -67,10 +67,6 @@ pub fn post_edit(ctx: &EditorCtx) -> Result<()> {
         let editor = ctx.world.get::<&EditorState>(ctx.editor_id)?;
         let mut session = ctx.world.get::<&mut Session>(editor.session_id)?;
 
-        if session.mode == Mode::Insert {
-            return Ok(());
-        }
-
         let insert_log = &mut session.insert_log;
         if !insert_log.log.is_empty() {
             let mut registers = ctx.world.get::<&mut Registers>(ctx.registers_id)?;

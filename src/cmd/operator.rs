@@ -41,6 +41,7 @@ pub enum SysOp {
     EnterNormal,
     EnterEx(ExMode),
     EnterInsert(InsertPoint),
+    OpenLineUp,
     BufferOp,
 }
 
@@ -87,7 +88,7 @@ impl Operator {
             KeyCode::Char(':') => Some(SysOp::EnterEx(ExMode::Colon).into()),
             KeyCode::Char('/') => Some(SysOp::EnterEx(ExMode::SearchForward).into()),
             KeyCode::Char('?') => Some(SysOp::EnterEx(ExMode::SearchBackward).into()),
-
+            KeyCode::Char('O') => Some(SysOp::OpenLineUp.into()),
             KeyCode::Char('Z') => Some(SysOp::BufferOp.into()),
 
             KeyCode::Char('f') => Some(SearchOp::FindNextChar.into()),
