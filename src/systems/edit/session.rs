@@ -5,7 +5,7 @@ use crate::{
     cmd::EditOp,
     components::{
         Buffer, BufferView, Config, Coords, EditorCtx, EditorState, ExSession, ExState, Focus,
-        Mode, Registers, Session,
+        Registers, Session,
     },
     systems::edit::{
         batch::apply_insert_log,
