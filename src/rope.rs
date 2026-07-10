@@ -619,10 +619,10 @@ fn scan_char_forward(rope: &Rope, c: char, reps: usize, char_idx: usize, inclusi
 
     while i < line_end.saturating_sub(1) && n > 0 {
         if rope.char(i.saturating_add(1)) == c {
-            best_idx = i;
+            best_idx = if inclusive { i.saturating_add(1) } else { i };
             n -= 1;
             if n == 0 {
-                return if inclusive { i.saturating_add(1) } else { i };
+                break;
             }
         }
         i += 1;
@@ -657,10 +657,10 @@ fn scan_char_backward(
 
     while i > line_start && n > 0 {
         if rope.char(i.saturating_sub(1)) == c {
-            best_idx = i;
+            best_idx = if inclusive { i.saturating_sub(1) } else { i };
             n -= 1;
             if n == 0 {
-                return if inclusive { i.saturating_sub(1) } else { i };
+                break;
             }
         }
         i -= 1;

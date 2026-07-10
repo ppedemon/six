@@ -5,7 +5,7 @@ use crate::{
     cmd::EditOp,
     components::{
         Buffer, BufferView, Config, Coords, EditorCtx, EditorState, ExSession, ExState, Focus,
-        Mode, Registers, Session,
+        Registers, Session,
     },
     systems::edit::{
         batch::apply_insert_log,
@@ -66,10 +66,6 @@ pub fn post_edit(ctx: &EditorCtx) -> Result<()> {
     let reps = {
         let editor = ctx.world.get::<&EditorState>(ctx.editor_id)?;
         let mut session = ctx.world.get::<&mut Session>(editor.session_id)?;
-
-        if session.mode == Mode::Insert {
-            return Ok(());
-        }
 
         let insert_log = &mut session.insert_log;
         if !insert_log.log.is_empty() {

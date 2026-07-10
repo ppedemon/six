@@ -1,6 +1,7 @@
 mod buffer;
 mod rules;
 mod session;
+pub mod utils;
 
 pub use buffer::{move_down, move_left, move_right, move_up};
 pub use rules::{InsertNav, NormalNav};

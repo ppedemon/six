@@ -89,7 +89,6 @@ fn editor_loop(
             input_handler.handle_event(&ctx, event)?;
         }
 
-        systems::post_edit(&ctx)?;
         systems::handle_ex_state(&ctx);
     }
 

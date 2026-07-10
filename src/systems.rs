@@ -11,7 +11,6 @@ mod search;
 mod status;
 mod sys;
 
-pub use edit::post_edit;
 pub use ex::handle_ex_state;
 pub use input::InputHandler;
 pub use lifecycle::{create_editor, create_empty_session, load_session, quit_editor, should_quit};
