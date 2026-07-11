@@ -29,10 +29,8 @@ fn scroll_sessions(ctx: &mut EditorCtx) {
 }
 
 fn scroll_ex(ctx: &EditorCtx) -> Result<()> {
-    let cursor = {
-        let buf_view = ctx.world.get::<&BufferView>(ctx.ex_session_id)?;
-        buf_view.cursor
-    };
+    let buf_view = ctx.world.get::<&BufferView>(ctx.ex_session_id)?;
+    let cursor = buf_view.cursor;
     let mut ex_session = ctx.world.get::<&mut ExSession>(ctx.ex_session_id)?;
     scroll(cursor, &mut ex_session.viewport);
     Ok(())
@@ -46,10 +44,8 @@ fn resize_sessions(ctx: &mut EditorCtx, area: Rect) {
 }
 
 fn resize_ex(ctx: &EditorCtx, area: Rect) -> Result<()> {
-    let cursor = {
-        let buf_view = ctx.world.get::<&BufferView>(ctx.ex_session_id)?;
-        buf_view.cursor // Se copia/clona aquí
-    };
+    let buf_view = ctx.world.get::<&BufferView>(ctx.ex_session_id)?;
+    let cursor = buf_view.cursor;
     let mut ex_session = ctx.world.get::<&mut ExSession>(ctx.ex_session_id)?;
     resize_ex_session(area, cursor, &mut ex_session.viewport);
     Ok(())
@@ -78,30 +74,19 @@ fn get_areas(ctx: &EditorCtx, area: Rect) -> Result<(Rect, Rect)> {
 }
 
 fn sync_sessions(ctx: &mut EditorCtx) -> Result<()> {
-    let mut targets = Vec::new();
+    let config = ctx.world.get::<&Config>(ctx.config_id)?;
+    let mut q_sessions = ctx.world.query::<(Entity, &Session)>();
 
-    {
-        let q_sessions = ctx.world.query_mut::<(Entity, &Session)>();
-        for (entity, session) in q_sessions {
-            targets.push((
-                session.buf_id,
-                session.viewport.scroll.row,
-                session.viewport.area.height,
-                entity,
-            ));
-        }
-    }
-
-    for (buf_id, scroll_row, area_height, session_entity) in targets {
-        let config = ctx.world.get::<&Config>(ctx.config_id)?;
-        let buffer = ctx.world.get::<&Buffer>(buf_id)?;
-
+    for (entity, session) in &mut q_sessions {
+        let buffer = ctx.world.get::<&Buffer>(session.buf_id)?;
         let len_lines = buffer.rope.len_lines();
-        let height = area_height as usize;
+
+        let height = session.viewport.area.height as usize;
+        let scroll_row = session.viewport.scroll.row;
         let start = scroll_row.saturating_sub(height);
         let end = (scroll_row + height * 2).min(len_lines);
 
-        let mut buf_view = ctx.world.get::<&mut BufferView>(session_entity)?;
+        let mut buf_view = ctx.world.get::<&mut BufferView>(entity)?;
         buf_view
             .display_buf
             .ensure_range(&config, &buffer.rope, start..end);

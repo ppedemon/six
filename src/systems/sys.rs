@@ -30,13 +30,16 @@ impl SysArgs {
 }
 
 pub fn handle_sys(ctx: &EditorCtx, sys_args: SysArgs) -> Result<()> {
+    let reps = sys_args.reps.unwrap_or(1);
+
     match sys_args.op {
         SysOp::EnterNormal => enter_normal(ctx),
         SysOp::EnterInsert(insert_point) => {
-            enter_insert(ctx, insert_point, sys_args.reps.unwrap_or(1))
+            enter_insert(ctx, insert_point, reps)
         }
         SysOp::EnterEx(ex_mode) => enter_ex(ctx, ex_mode),
-        SysOp::OpenLineUp => open_line_up(ctx, sys_args.reps.unwrap_or(1)),
+        SysOp::OpenAbove => open_above(ctx, reps),
+        SysOp::OpenBelow => open_below(ctx, reps),
         SysOp::BufferOp => handle_buffer_op(ctx, sys_args.arg),
     }
 }
@@ -128,16 +131,21 @@ fn enter_ex(ctx: &EditorCtx, ex_mode: ExMode) -> Result<()> {
     Ok(())
 }
 
-fn open_line_up(ctx: &EditorCtx, reps: usize) -> Result<()> {
+fn open_above(ctx: &EditorCtx, reps: usize) -> Result<()> {
     {
         let editor = ctx.world.get::<&EditorState>(ctx.editor_id)?;
         let mut buf_view = ctx.world.get::<&mut BufferView>(editor.session_id)?;
         buf_view.cursor.col = 0;
     }
 
-    enter_insert(ctx, InsertPoint::First, reps)?;
+    enter_insert(ctx, InsertPoint::Curr, reps)?;
     edit::utils::open_line(ctx)?;
     nav::utils::cursor_up::<InsertNav>(ctx)
+}
+
+fn open_below(ctx: &EditorCtx, reps: usize) -> Result<()> {
+    enter_insert(ctx, InsertPoint::Last, reps)?;
+    edit::utils::open_line(ctx)
 }
 
 fn restore_cursor(ctx: &EditorCtx) -> Result<()> {
