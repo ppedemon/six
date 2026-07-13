@@ -2,7 +2,7 @@ use anyhow::Result;
 
 use crate::{
     cmd::{Cmd, InsertPoint, InteractiveOp},
-    components::{BufferView, EditorCtx, EditorState, RepeatBuffer},
+    components::{BufferView, EditorCtx, EditorState},
     systems::{
         enter_insert, insert,
         nav::{self, InsertNav},

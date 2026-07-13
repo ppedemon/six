@@ -10,7 +10,7 @@ pub fn post_insert(ctx: &EditorCtx) -> Result<()> {
     let ops = get_insert_log(ctx)?;
     commit_to_regs(ctx, ops.clone())?;
     commit_to_repbuf(ctx, ops)?;
-    post_edit_repeat(ctx)
+    post_insert_repeat(ctx)
 }
 
 fn get_insert_log(ctx: &EditorCtx) -> Result<Vec<EditOp>> {
@@ -32,7 +32,7 @@ fn commit_to_repbuf(ctx: &EditorCtx, insert_log: Vec<EditOp>) -> Result<()> {
     Ok(())
 }
 
-fn post_edit_repeat(ctx: &EditorCtx) -> Result<()> {
+fn post_insert_repeat(ctx: &EditorCtx) -> Result<()> {
     let repbuf = ctx.world.get::<&RepeatBuffer>(ctx.repbuf_id)?;
     match &repbuf.item {
         RepeatBufferItem::Interactive(cmd, ops) => {
