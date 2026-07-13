@@ -6,7 +6,7 @@ use crate::{
     components::{Buffer, BufferView, Config, EditorCtx, EditorState, Session},
     systems::{
         commons::{char_idx_to_coords, cursor_to_char_idx},
-        edit::{
+        insert::{
             buffer::Damage,
             session::{DamageEvent, broadcast_damage},
         },

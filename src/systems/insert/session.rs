@@ -8,7 +8,7 @@ use crate::{
         Session,
     },
     systems::{
-        edit::buffer::{Damage, backspace, delete, enter, insert_char},
+        insert::buffer::{Damage, backspace, delete, enter, insert_char},
         sys::enter_normal,
     },
 };

@@ -1,7 +1,7 @@
 use crate::{
     cmd::EditOp,
     components::{Buffer, BufferView, Config, EditorCtx, EditorState, Session},
-    systems::edit::{
+    systems::insert::{
         buffer::enter,
         session::{DamageEvent, broadcast_damage},
     },

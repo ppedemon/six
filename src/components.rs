@@ -15,7 +15,7 @@ pub use config::Config;
 pub use display::{DisplayBuffer, DisplayLine, DisplayLineRef};
 pub use insert_log::InsertLog;
 pub use registers::Registers;
-pub use repeat::{CmdItem, RepeatBuffer};
+pub use repeat::{RepeatBufferItem, RepeatBuffer};
 pub use search::LastSearch;
 pub use session::{BufferName, BufferView, Coords, ExSession, ExState, Mode, Session, Viewport};
 pub use state::{EditorState, Focus, Level, Status};

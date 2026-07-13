@@ -9,36 +9,30 @@ use crate::{
     },
     ex::ExRange,
     systems::{
-        commons,
-        edit::{self, clear_ex, insert_char, post_edit},
-        ex,
-        nav::{self, InsertNav, NormalNav, move_left},
+        commons, ex,
+        insert::{clear_ex, insert_char, post_insert},
+        nav::{NormalNav, move_left},
         quit_editor,
     },
 };
 
 pub struct SysArgs {
     pub op: SysOp,
-    pub reps: Option<usize>,
-    pub arg: Arg,
+    cmd: Cmd,
 }
 
 impl SysArgs {
-    pub fn new(op: SysOp, reps: Option<usize>, arg: Arg) -> Self {
-        Self { op, reps, arg }
+    pub fn new(op: SysOp, cmd: Cmd) -> Self {
+        Self { op, cmd }
     }
 }
 
-pub fn handle_sys(ctx: &EditorCtx, sys_args: SysArgs) -> Result<()> {
-    let reps = sys_args.reps.unwrap_or(1);
-
-    match sys_args.op {
+pub fn handle_sys(ctx: &EditorCtx, args: SysArgs) -> Result<()> {
+    match args.op {
         SysOp::EnterNormal => enter_normal(ctx),
-        SysOp::EnterInsert(insert_point) => enter_insert(ctx, insert_point, reps),
+        SysOp::EnterInsert(insert_point) => enter_insert(ctx, insert_point, args.cmd),
         SysOp::EnterEx(ex_mode) => enter_ex(ctx, ex_mode),
-        SysOp::OpenAbove => open_above(ctx, reps),
-        SysOp::OpenBelow => open_below(ctx, reps),
-        SysOp::BufferOp => handle_buffer_op(ctx, sys_args.arg),
+        SysOp::BufferOp => handle_buffer_op(ctx, args.cmd.arg),
     }
 }
 
@@ -53,7 +47,7 @@ fn handle_buffer_op(ctx: &EditorCtx, arg: Arg) -> Result<()> {
     }
 }
 
-fn enter_insert(ctx: &EditorCtx, insert_point: InsertPoint, reps: usize) -> Result<()> {
+pub fn enter_insert(ctx: &EditorCtx, insert_point: InsertPoint, cmd: Cmd) -> Result<()> {
     clear_ex(ctx)?;
 
     let mut status = ctx.world.get::<&mut Status>(ctx.status_id)?;
@@ -61,7 +55,7 @@ fn enter_insert(ctx: &EditorCtx, insert_point: InsertPoint, reps: usize) -> Resu
     status.set_msg(Level::Info, "--INSERT--");
 
     let mut rep_buf = ctx.world.get::<&mut RepeatBuffer>(ctx.repbuf_id)?;
-    rep_buf.start_interaction(Cmd::new(SysOp::EnterInsert(insert_point).into()).reps(reps));
+    rep_buf.start_interaction(cmd);
 
     let config = ctx.world.get::<&Config>(ctx.config_id)?;
     let mut editor = ctx.world.get::<&mut EditorState>(ctx.editor_id)?;
@@ -75,7 +69,9 @@ fn enter_insert(ctx: &EditorCtx, insert_point: InsertPoint, reps: usize) -> Resu
     editor.char_at_cursor = None;
 
     session.mode = Mode::Insert;
-    session.insert_log.init(reps.saturating_sub(1));
+    session
+        .insert_log
+        .init(cmd.reps.unwrap_or(1).saturating_sub(1));
 
     apply_insert_point(&config, &buffer.rope, buf_view, insert_point);
     Ok(())
@@ -101,7 +97,7 @@ pub fn enter_normal(ctx: &EditorCtx) -> Result<()> {
     };
 
     if old_mode == Mode::Insert {
-        post_edit(ctx)?;
+        post_insert(ctx)?;
     }
 
     restore_cursor(ctx)
@@ -128,31 +124,6 @@ fn enter_ex(ctx: &EditorCtx, ex_mode: ExMode) -> Result<()> {
 
     apply_insert_point(&config, &ex_session.rope, buf_view, InsertPoint::Last);
     Ok(())
-}
-
-fn open_above(ctx: &EditorCtx, reps: usize) -> Result<()> {
-    {
-        let editor = ctx.world.get::<&EditorState>(ctx.editor_id)?;
-        let mut buf_view = ctx.world.get::<&mut BufferView>(editor.session_id)?;
-        buf_view.cursor.col = 0;
-
-        let mut rep_buf = ctx.world.get::<&mut RepeatBuffer>(ctx.repbuf_id)?;
-        rep_buf.start_interaction(Cmd::new(SysOp::OpenAbove.into()).reps(reps));
-    }
-
-    enter_insert(ctx, InsertPoint::Curr, reps)?;
-    edit::utils::open_line(ctx)?;
-    nav::utils::cursor_up::<InsertNav>(ctx)
-}
-
-fn open_below(ctx: &EditorCtx, reps: usize) -> Result<()> {
-    {
-        let mut rep_buf = ctx.world.get::<&mut RepeatBuffer>(ctx.repbuf_id)?;
-        rep_buf.start_interaction(Cmd::new(SysOp::OpenAbove.into()).reps(reps));
-    }
-
-    enter_insert(ctx, InsertPoint::Last, reps)?;
-    edit::utils::open_line(ctx)
 }
 
 fn restore_cursor(ctx: &EditorCtx) -> Result<()> {

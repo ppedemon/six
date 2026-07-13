@@ -1,8 +1,9 @@
 mod commons;
-mod edit;
 mod event;
 mod ex;
 mod input;
+mod insert;
+mod interactive;
 mod lifecycle;
 mod nav;
 mod pre_render;
@@ -17,3 +18,4 @@ pub use lifecycle::{create_editor, create_empty_session, load_session, quit_edit
 pub use nav::init_cursor_pos;
 pub use pre_render::pre_render;
 pub use render::{cursor_pos, render};
+pub use sys::enter_insert;

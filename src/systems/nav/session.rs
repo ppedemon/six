@@ -6,24 +6,19 @@ use super::{
     buffer,
     rules::{InsertNav, NavRules, NormalNav},
 };
-use crate::cmd::{Motion, Secondary, Arg};
+use crate::cmd::{Arg, Cmd, Motion, Secondary};
 use crate::components::{
     Buffer, BufferView, Config, EditorCtx, EditorState, ExSession, Focus, Mode, Session, Viewport,
 };
 
 pub struct NavArgs {
-    pub motion: Motion,
-    pub reps: Option<usize>,
-    pub arg: Arg,
+    motion: Motion,
+    cmd: Cmd,
 }
 
 impl NavArgs {
-    pub fn new(motion: Motion, reps: Option<usize>, arg: Arg) -> Self {
-        Self {
-            motion,
-            reps,
-            arg,
-        }
+    pub fn new(motion: Motion, cmd: Cmd) -> Self {
+        Self { motion, cmd }
     }
 }
 
@@ -35,17 +30,16 @@ pub fn handle_nav(ctx: &EditorCtx, nav_args: NavArgs) -> Result<()> {
     }
 }
 
-fn handle_ex_nav(ctx: &EditorCtx, nav_args: NavArgs) -> Result<()> {
+fn handle_ex_nav(ctx: &EditorCtx, args: NavArgs) -> Result<()> {
     let config = ctx.world.get::<&Config>(ctx.config_id)?;
     let mut q_ex = ctx
         .world
         .query_one::<(&ExSession, &mut BufferView)>(ctx.ex_session_id);
     let (ex_session, buf_view) = q_ex.get()?;
 
-    let NavArgs { motion, reps, .. } = nav_args;
-    let reps = reps.unwrap_or(1);
+    let reps = args.cmd.reps.unwrap_or(1);
 
-    match motion {
+    match args.motion {
         Motion::Left => {
             if buf_view.cursor.col > 1 {
                 buffer::move_left::<InsertNav>(&config, &ex_session.rope, buf_view, reps);
@@ -60,7 +54,7 @@ fn handle_ex_nav(ctx: &EditorCtx, nav_args: NavArgs) -> Result<()> {
     Ok(())
 }
 
-fn handle_session_nav(ctx: &EditorCtx, session_id: Entity, nav_args: NavArgs) -> Result<()> {
+fn handle_session_nav(ctx: &EditorCtx, session_id: Entity, args: NavArgs) -> Result<()> {
     let config = ctx.world.get::<&Config>(ctx.config_id)?;
     let mut q_session = ctx
         .world
@@ -71,22 +65,10 @@ fn handle_session_nav(ctx: &EditorCtx, session_id: Entity, nav_args: NavArgs) ->
     match session.mode {
         Mode::Insert => {
             session.insert_log.reset();
-            session_nav::<InsertNav>(
-                &config,
-                &buffer.rope,
-                &mut session.viewport,
-                buf_view,
-                nav_args,
-            );
+            session_nav::<InsertNav>(&config, &buffer.rope, &mut session.viewport, buf_view, args);
         }
         Mode::Normal => {
-            session_nav::<NormalNav>(
-                &config,
-                &buffer.rope,
-                &mut session.viewport,
-                buf_view,
-                nav_args,
-            );
+            session_nav::<NormalNav>(&config, &buffer.rope, &mut session.viewport, buf_view, args);
         }
     }
 
@@ -100,16 +82,11 @@ fn session_nav<R: NavRules>(
     rope: &Rope,
     viewport: &mut Viewport,
     buf_view: &mut BufferView,
-    nav_args: NavArgs,
+    args: NavArgs,
 ) {
-    let NavArgs {
-        motion,
-        reps,
-        arg,
-    } = nav_args;
-    let reps = default_reps(&nav_args);
+    let reps = default_reps(&args);
 
-    match motion {
+    match args.motion {
         Motion::Up => buffer::move_up::<R>(config, rope, buf_view, reps),
         Motion::Down => buffer::move_down::<R>(config, rope, buf_view, reps),
         Motion::Left => buffer::move_left::<R>(config, rope, buf_view, reps),
@@ -140,7 +117,7 @@ fn session_nav<R: NavRules>(
 
         Motion::BigGotoLine => goto_line::<R>(config, rope, viewport, buf_view, reps),
         Motion::SmallGotoLine => {
-            if let Arg::Secondary(Secondary::GotoLine) = arg {
+            if let Arg::Secondary(Secondary::GotoLine) = args.cmd.arg {
                 goto_line::<R>(config, rope, viewport, buf_view, reps);
             }
         }
@@ -148,7 +125,7 @@ fn session_nav<R: NavRules>(
 }
 
 fn default_reps(args: &NavArgs) -> usize {
-    args.reps.unwrap_or_else(|| match args.motion {
+    args.cmd.reps.unwrap_or_else(|| match args.motion {
         Motion::BigGotoLine => usize::MAX,
         _ => 1,
     })

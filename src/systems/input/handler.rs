@@ -2,11 +2,12 @@ use anyhow::Result;
 use crossterm::event::Event;
 
 use crate::{
-    cmd::{Arg, Cmd, InsertOp, Operator},
+    cmd::{Cmd, InsertOp, Operator},
     components::{EditorCtx, EditorState, Focus, Mode, Session},
     systems::{
-        edit::handle_edit,
         input::{insert::InsertInputHandler, normal::NormalInputHandler},
+        insert::handle_edit,
+        interactive::{InteractiveArgs, handle_interactive},
         nav::{NavArgs, handle_nav},
         search::{SearchArgs, handle_search},
         sys::{SysArgs, handle_sys},
@@ -52,16 +53,20 @@ pub fn dispatch_cmd(ctx: &EditorCtx, cmd: Cmd) -> Result<()> {
     match cmd.op {
         Operator::Nop => Ok(()),
         Operator::Sys(op) => {
-            let args = SysArgs::new(op, reps, cmd.arg);
+            let args = SysArgs::new(op, cmd);
             handle_sys(ctx, args)
         }
         Operator::Move(motion) => {
-            let args = NavArgs::new(motion, reps, cmd.arg);
+            let args = NavArgs::new(motion, cmd);
             handle_nav(ctx, args)
         }
         Operator::Search(op) => {
             let args = SearchArgs::new(op, reps, cmd.arg);
             handle_search(ctx, args)
+        }
+        Operator::Interactive(op) => {
+            let args = InteractiveArgs::new(op, cmd);
+            handle_interactive(ctx, args)
         }
     }
 }
@@ -70,7 +75,7 @@ pub fn dispatch_insert(ctx: &EditorCtx, op: InsertOp) -> Result<()> {
     match op {
         InsertOp::Edit(edit_op) => handle_edit(ctx, edit_op),
         InsertOp::Move(motion) => {
-            let nav_args = NavArgs::new(motion, Some(1), Arg::None);
+            let nav_args = NavArgs::new(motion, Cmd::new(motion.into()));
             handle_nav(ctx, nav_args)
         }
     }
