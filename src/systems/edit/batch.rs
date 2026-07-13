@@ -13,8 +13,8 @@ use crate::{
     },
 };
 
-pub fn apply_insert_log(ctx: &EditorCtx, reps: usize) -> Result<()> {
-    let damage_evt = intepret_insert_log(ctx, reps)?;
+pub fn apply_insert_log(ctx: &EditorCtx, ops: &Vec<EditOp>, reps: usize) -> Result<()> {
+    let damage_evt = intepret_insert_log(ctx, ops, reps)?;
 
     let session_id = {
         let editor = ctx.world.get::<&EditorState>(ctx.editor_id)?;
@@ -23,7 +23,7 @@ pub fn apply_insert_log(ctx: &EditorCtx, reps: usize) -> Result<()> {
     broadcast_damage(ctx, session_id, damage_evt)
 }
 
-pub fn intepret_insert_log(ctx: &EditorCtx, reps: usize) -> Result<DamageEvent> {
+pub fn intepret_insert_log(ctx: &EditorCtx, ops: &Vec<EditOp>, reps: usize) -> Result<DamageEvent> {
     let editor = ctx.world.get::<&EditorState>(ctx.editor_id)?;
     let mut q_session = ctx
         .world
@@ -33,9 +33,6 @@ pub fn intepret_insert_log(ctx: &EditorCtx, reps: usize) -> Result<DamageEvent> 
     let config = ctx.world.get::<&Config>(ctx.config_id)?;
     let mut buffer = ctx.world.get::<&mut Buffer>(session.buf_id)?;
     let mut interpreter = InsertLogInterpreter::new(&config, buf_view, &mut buffer.rope);
-
-    let registers = ctx.world.get::<&Registers>(ctx.registers_id)?;
-    let ops = &registers.last_insert;
 
     let damage = interpreter.interpret(ops, reps);
     Ok(DamageEvent::new(session.buf_id, damage))

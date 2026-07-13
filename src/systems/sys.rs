@@ -2,15 +2,15 @@ use anyhow::Result;
 use ropey::Rope;
 
 use crate::{
-    cmd::{Arg, ExMode, InsertPoint, Secondary, SysOp},
+    cmd::{Arg, Cmd, ExMode, InsertPoint, Secondary, SysOp},
     components::{
-        Buffer, BufferView, Config, EditorCtx, EditorState, ExSession, Focus, Level, Mode, Session,
-        Status,
+        Buffer, BufferView, Config, EditorCtx, EditorState, ExSession, Focus, Level, Mode,
+        RepeatBuffer, Session, Status,
     },
     ex::ExRange,
     systems::{
         commons,
-        edit::{self, clear_ex, insert_char},
+        edit::{self, clear_ex, insert_char, post_edit},
         ex,
         nav::{self, InsertNav, NormalNav, move_left},
         quit_editor,
@@ -34,9 +34,7 @@ pub fn handle_sys(ctx: &EditorCtx, sys_args: SysArgs) -> Result<()> {
 
     match sys_args.op {
         SysOp::EnterNormal => enter_normal(ctx),
-        SysOp::EnterInsert(insert_point) => {
-            enter_insert(ctx, insert_point, reps)
-        }
+        SysOp::EnterInsert(insert_point) => enter_insert(ctx, insert_point, reps),
         SysOp::EnterEx(ex_mode) => enter_ex(ctx, ex_mode),
         SysOp::OpenAbove => open_above(ctx, reps),
         SysOp::OpenBelow => open_below(ctx, reps),
@@ -58,11 +56,12 @@ fn handle_buffer_op(ctx: &EditorCtx, arg: Arg) -> Result<()> {
 fn enter_insert(ctx: &EditorCtx, insert_point: InsertPoint, reps: usize) -> Result<()> {
     clear_ex(ctx)?;
 
-    {
-        let mut status = ctx.world.get::<&mut Status>(ctx.status_id)?;
-        status.clear_cmd();
-        status.set_msg(Level::Info, "--INSERT--");
-    }
+    let mut status = ctx.world.get::<&mut Status>(ctx.status_id)?;
+    status.clear_cmd();
+    status.set_msg(Level::Info, "--INSERT--");
+
+    let mut rep_buf = ctx.world.get::<&mut RepeatBuffer>(ctx.repbuf_id)?;
+    rep_buf.start_interaction(Cmd::new(SysOp::EnterInsert(insert_point).into()).reps(reps));
 
     let config = ctx.world.get::<&Config>(ctx.config_id)?;
     let mut editor = ctx.world.get::<&mut EditorState>(ctx.editor_id)?;
@@ -102,7 +101,7 @@ pub fn enter_normal(ctx: &EditorCtx) -> Result<()> {
     };
 
     if old_mode == Mode::Insert {
-        edit::post_edit(ctx)?;
+        post_edit(ctx)?;
     }
 
     restore_cursor(ctx)
@@ -136,6 +135,9 @@ fn open_above(ctx: &EditorCtx, reps: usize) -> Result<()> {
         let editor = ctx.world.get::<&EditorState>(ctx.editor_id)?;
         let mut buf_view = ctx.world.get::<&mut BufferView>(editor.session_id)?;
         buf_view.cursor.col = 0;
+
+        let mut rep_buf = ctx.world.get::<&mut RepeatBuffer>(ctx.repbuf_id)?;
+        rep_buf.start_interaction(Cmd::new(SysOp::OpenAbove.into()).reps(reps));
     }
 
     enter_insert(ctx, InsertPoint::Curr, reps)?;
@@ -144,6 +146,11 @@ fn open_above(ctx: &EditorCtx, reps: usize) -> Result<()> {
 }
 
 fn open_below(ctx: &EditorCtx, reps: usize) -> Result<()> {
+    {
+        let mut rep_buf = ctx.world.get::<&mut RepeatBuffer>(ctx.repbuf_id)?;
+        rep_buf.start_interaction(Cmd::new(SysOp::OpenAbove.into()).reps(reps));
+    }
+
     enter_insert(ctx, InsertPoint::Last, reps)?;
     edit::utils::open_line(ctx)
 }

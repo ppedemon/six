@@ -6,7 +6,7 @@ use ropey::Rope;
 
 use crate::{
     components::{
-        Buffer, BufferName, BufferView, Config, EditorCtx, EditorState, ExSession, LastSearch, Registers, Session, Status,
+        Buffer, BufferName, BufferView, Config, EditorCtx, EditorState, ExSession, LastSearch, Registers, RepeatBuffer, Session, Status,
     }, misc::path::norm_filename, rope::{self}, systems::event,
 };
 
@@ -16,6 +16,7 @@ pub fn create_editor(world: &mut World) -> EditorCtx<'_> {
     let ex_session_id = world.spawn((ExSession::new(), BufferView::empty()));
     let status_id = world.spawn((Status::new(),));
     let registers_id = world.spawn((Registers::empty(),));
+    let repeat_id = world.spawn((RepeatBuffer::new(),));
     let search_id = world.spawn((LastSearch::empty(),));
 
     EditorCtx {
@@ -25,6 +26,7 @@ pub fn create_editor(world: &mut World) -> EditorCtx<'_> {
         ex_session_id,
         status_id,
         registers_id,
+        repbuf_id: repeat_id,
         search_id,
     }
 }

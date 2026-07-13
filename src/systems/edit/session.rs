@@ -5,12 +5,9 @@ use crate::{
     cmd::EditOp,
     components::{
         Buffer, BufferView, Config, Coords, EditorCtx, EditorState, ExSession, ExState, Focus,
-        Registers, Session,
+        Session,
     },
-    systems::edit::{
-        batch::apply_insert_log,
-        buffer::{Damage, backspace, delete, enter, insert_char},
-    },
+    systems::edit::buffer::{Damage, backspace, delete, enter, insert_char},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -60,28 +57,6 @@ fn handle_session_edit(ctx: &EditorCtx, session_id: Entity, op: EditOp) -> Resul
 
     buffer.dirty = true;
     Ok(DamageEvent::new(session.buf_id, damage))
-}
-
-pub fn post_edit(ctx: &EditorCtx) -> Result<()> {
-    let reps = {
-        let editor = ctx.world.get::<&EditorState>(ctx.editor_id)?;
-        let mut session = ctx.world.get::<&mut Session>(editor.session_id)?;
-
-        let insert_log = &mut session.insert_log;
-        if !insert_log.log.is_empty() {
-            let mut registers = ctx.world.get::<&mut Registers>(ctx.registers_id)?;
-            registers.commit_insert_log(std::mem::take(&mut insert_log.log));
-            insert_log.reps
-        } else {
-            return Ok(());
-        }
-    };
-
-    if reps > 0 {
-        apply_insert_log(ctx, reps)?;
-    }
-
-    Ok(())
 }
 
 pub fn clear_ex(ctx: &EditorCtx) -> Result<()> {
