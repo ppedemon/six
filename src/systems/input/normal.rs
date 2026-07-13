@@ -24,7 +24,7 @@ enum State {
     Reps {
         reps: usize,
     },
-    // Saw ", if follows a reg
+    // Saw ", reg must follow
     RepsReg1 {
         reps: usize,
     },
@@ -282,7 +282,7 @@ impl NormalInputHandler {
                     let cmd = Cmd::new(op)
                         .opt_reps(reps)
                         .opt_reg(reg)
-                        .secondary(Secondary::Char(c));
+                        .secondary(Secondary::FindChar(c));
                     return self.done(ctx, cmd);
                 }
                 self.reset(ctx)?

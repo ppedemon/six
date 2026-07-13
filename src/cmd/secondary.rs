@@ -5,7 +5,7 @@ pub enum Secondary {
     HardQuit,
     CondWriteAndQuit,
     GotoLine,
-    Char(char),
+    FindChar(char),
 }
 
 impl Secondary {

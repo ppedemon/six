@@ -61,7 +61,7 @@ pub fn dispatch_cmd(ctx: &EditorCtx, cmd: Cmd) -> Result<()> {
             handle_nav(ctx, args)
         }
         Operator::Search(op) => {
-            let args = SearchArgs::new(op, reps, cmd.arg);
+            let args = SearchArgs::new(op, cmd);
             handle_search(ctx, args)
         }
         Operator::Interactive(op) => {

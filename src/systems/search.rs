@@ -2,26 +2,25 @@ use anyhow::Result;
 use ropey::Rope;
 
 use crate::{
-    cmd::{SearchOp, Secondary, Arg},
+    cmd::{Arg, Cmd, SearchOp, Secondary},
     components::{Buffer, BufferView, Config, EditorCtx, EditorState, LastSearch, Session},
     rope,
     systems::commons::{char_idx_to_coords, cursor_to_char_idx, snap_coords},
 };
 
 pub struct SearchArgs {
-    pub op: SearchOp,
-    pub reps: Option<usize>,
-    pub arg: Arg,
+    op: SearchOp,
+    cmd: Cmd,
 }
 
 impl SearchArgs {
-    pub fn new(op: SearchOp, reps: Option<usize>, arg: Arg) -> Self {
-        Self { op, reps, arg }
+    pub fn new(op: SearchOp, cmd: Cmd) -> Self {
+        Self { op, cmd }
     }
 
     fn as_char(&self) -> Option<char> {
-        match self.arg {
-            Arg::Secondary(Secondary::Char(c)) => Some(c),
+        match self.cmd.arg {
+            Arg::Secondary(Secondary::FindChar(c)) => Some(c),
             _ => None,
         }
     }
@@ -40,7 +39,7 @@ pub fn handle_search(ctx: &EditorCtx, args: SearchArgs) -> Result<()> {
     let mut q_search = ctx.world.query::<&mut LastSearch>();
     let last_search = q_search.iter().next().expect("No search data");
 
-    let reps = args.reps.unwrap_or(1);
+    let reps = args.cmd.reps.unwrap_or(1);
 
     match args.op {
         SearchOp::FindNextChar => {
