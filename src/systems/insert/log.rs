@@ -81,7 +81,6 @@ impl<'a> InsertLogInterpreter<'a> {
         for _ in 0..reps {
             for op in log {
                 match op {
-                    EditOp::Esc => {}
                     EditOp::InsertChar(c) => self.insert(*c),
                     EditOp::Tab => self.insert('\t'),
                     EditOp::Enter => self.enter(),

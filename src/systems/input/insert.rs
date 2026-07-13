@@ -49,7 +49,7 @@ impl InsertInputHandler {
                 return Ok(());
             }
 
-            KeyCode::Esc => EditOp::Esc.into(),
+            KeyCode::Esc => InsertOp::Esc,
 
             KeyCode::Char(c) => EditOp::InsertChar(c).into(),
             KeyCode::Enter => EditOp::Enter.into(),

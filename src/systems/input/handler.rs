@@ -2,15 +2,8 @@ use anyhow::Result;
 use crossterm::event::Event;
 
 use crate::{
-    cmd::{Cmd, InsertOp, Operator},
-    components::{EditorCtx, EditorState, Focus, Mode, Session},
-    systems::{
-        input::{insert::InsertInputHandler, normal::NormalInputHandler},
-        insert::handle_edit,
-        interactive::{InteractiveArgs, handle_interactive},
-        nav::{NavArgs, handle_nav},
-        search::{SearchArgs, handle_search},
-        sys::{SysArgs, handle_sys},
+    cmd::{Cmd, InsertOp, Operator}, components::{EditorCtx, EditorState, Focus, Mode, Session}, systems::{
+        input::{insert::InsertInputHandler, normal::NormalInputHandler}, insert::handle_edit, interactive::{InteractiveArgs, handle_interactive}, nav::{NavArgs, handle_nav}, search::{SearchArgs, handle_search}, sys::{SysArgs, enter_normal, handle_sys},
     },
 };
 
@@ -73,6 +66,7 @@ pub fn dispatch_cmd(ctx: &EditorCtx, cmd: Cmd) -> Result<()> {
 
 pub fn dispatch_insert(ctx: &EditorCtx, op: InsertOp) -> Result<()> {
     match op {
+        InsertOp::Esc => enter_normal(ctx),
         InsertOp::Edit(edit_op) => handle_edit(ctx, edit_op),
         InsertOp::Move(motion) => {
             let nav_args = NavArgs::new(motion, Cmd::new(motion.into()));

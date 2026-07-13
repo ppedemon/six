@@ -7,10 +7,7 @@ use crate::{
         Buffer, BufferView, Config, Coords, EditorCtx, EditorState, ExSession, ExState, Focus,
         Session,
     },
-    systems::{
-        insert::buffer::{Damage, backspace, delete, enter, insert_char},
-        sys::enter_normal,
-    },
+    systems::insert::buffer::{Damage, backspace, delete, enter, insert_char},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -26,11 +23,6 @@ impl DamageEvent {
 }
 
 pub fn handle_edit(ctx: &EditorCtx, op: EditOp) -> Result<()> {
-    if op == EditOp::Esc {
-        enter_normal(ctx)?;
-        return Ok(());
-    }
-
     let (focus, session_id) = {
         let editor = ctx.world.get::<&EditorState>(ctx.editor_id)?;
         (editor.focus, editor.session_id)
@@ -53,15 +45,9 @@ fn handle_session_edit(ctx: &EditorCtx, session_id: Entity, op: EditOp) -> Resul
     let (session, buf_view) = q_session.get()?;
     let mut buffer = ctx.world.get::<&mut Buffer>(session.buf_id)?;
 
-    if op != EditOp::Esc {
-        session.insert_log.append(op);
-    }
-
+    session.insert_log.append(op);
+    
     let damage = match op {
-        EditOp::Esc => {
-            enter_normal(ctx)?;
-            Damage::Intact
-        }
         EditOp::InsertChar(c) => insert_char(&config, buf_view, &mut buffer.rope, c),
         EditOp::Tab => insert_char(&config, buf_view, &mut buffer.rope, '\t'),
         EditOp::Enter => enter(&config, buf_view, &mut buffer.rope),
@@ -97,10 +83,6 @@ fn handle_ex_edit(ctx: &EditorCtx, op: EditOp) -> Result<()> {
     let (ex_session, buf_view) = q_ex.get()?;
 
     match op {
-        EditOp::Esc => {
-            enter_normal(ctx)?;
-            Damage::Intact
-        }
         EditOp::InsertChar(c) => insert_char(&config, buf_view, &mut ex_session.rope, c),
         EditOp::Tab => insert_char(&config, buf_view, &mut ex_session.rope, '\t'),
         EditOp::Backspace => backspace(&config, buf_view, &mut ex_session.rope),

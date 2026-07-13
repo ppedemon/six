@@ -2,7 +2,6 @@ use crate::cmd::Motion;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EditOp {
-    Esc,
     InsertChar(char),
     Tab,
     Enter,
@@ -11,6 +10,7 @@ pub enum EditOp {
 }
 
 pub enum InsertOp {
+    Esc,
     Edit(EditOp),
     Move(Motion),
 }
