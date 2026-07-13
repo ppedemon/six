@@ -1,10 +1,12 @@
+mod insert;
 mod motion;
 mod operator;
 mod secondary;
 mod text_object;
 
+pub use insert::{EditOp, InsertOp};
 pub use motion::Motion;
-pub use operator::{EditOp, ExMode, InsertPoint, Operator, SearchOp, SysOp};
+pub use operator::{ExMode, InsertPoint, InteractiveOp, Operator, SearchOp, SysOp};
 pub use secondary::Secondary;
 pub use text_object::{Kind, Scope, TextObject};
 

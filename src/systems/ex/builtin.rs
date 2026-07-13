@@ -1,5 +1,5 @@
 use crate::{
-    cmd::{Motion, Arg},
+    cmd::{Cmd, Motion},
     components::{Buffer, EditorCtx, Level},
     ex::{BuiltIn, ExError, ExRange},
     systems::{
@@ -61,10 +61,8 @@ pub fn exec_builtin(
             fs::save_active(ctx, name, append, false, range)
         }
         BuiltIn::GotoLine(line) => {
-            adapt(handle_nav(
-                ctx,
-                NavArgs::new(Motion::BigGotoLine, Some(line), Arg::None),
-            ))?;
+            let cmd = Cmd::new(Motion::BigGotoLine.into()).reps(line);
+            adapt(handle_nav(ctx, NavArgs::new(Motion::BigGotoLine, cmd)))?;
             adapt(status::set_msg(ctx, Level::Info, &format!(":{}", line)))
         }
         _ => unreachable!("Unimplemented builtin: {builtin:?}"),

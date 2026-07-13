@@ -2,10 +2,10 @@ use anyhow::Result;
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
 
 use crate::{
-    cmd::{Cmd, EditOp, Motion, Operator, SysOp},
+    cmd::{EditOp, InsertOp, Motion},
     components::{EditorCtx, EditorState},
     digraphs,
-    systems::{input::handler::dispatch, status},
+    systems::{input::handler::dispatch_insert, status},
 };
 
 enum State {
@@ -46,10 +46,10 @@ impl InsertInputHandler {
         let op = match event.code {
             KeyCode::Char('k') | KeyCode::Char('K') if event.modifiers == KeyModifiers::CONTROL => {
                 self.dg_start(ctx)?;
-                Operator::Nop
+                return Ok(());
             }
 
-            KeyCode::Esc => SysOp::EnterNormal.into(),
+            KeyCode::Esc => EditOp::Esc.into(),
 
             KeyCode::Char(c) => EditOp::InsertChar(c).into(),
             KeyCode::Enter => EditOp::Enter.into(),
@@ -78,11 +78,9 @@ impl InsertInputHandler {
                     Motion::EndOfLine.into()
                 }
             }
-
-            _ => Operator::Nop,
+            _ => return Ok(()),
         };
-        let cmd = Cmd::new(op);
-        dispatch(ctx, cmd)
+        dispatch_insert(ctx, op)
     }
 
     fn handle_digraph0(&mut self, ctx: &EditorCtx, event: KeyEvent) -> Result<()> {
@@ -96,8 +94,7 @@ impl InsertInputHandler {
         match event.code {
             KeyCode::Char(c1) => {
                 let op = self.dg_end(ctx, c0, c1)?;
-                let cmd = Cmd::new(op);
-                dispatch(ctx, cmd)
+                dispatch_insert(ctx, op)
             }
             _ => self.dg_esc(ctx),
         }
@@ -129,7 +126,7 @@ impl InsertInputHandler {
         set_char_at_cursor(ctx, c)
     }
 
-    fn dg_end(&mut self, ctx: &EditorCtx, c0: char, c1: char) -> Result<Operator> {
+    fn dg_end(&mut self, ctx: &EditorCtx, c0: char, c1: char) -> Result<InsertOp> {
         self.state = State::Immediate;
         self.dg_buf.clear();
 
