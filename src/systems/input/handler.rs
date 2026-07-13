@@ -2,7 +2,7 @@ use anyhow::Result;
 use crossterm::event::Event;
 
 use crate::{
-    cmd::{Cmd, Operator},
+    cmd::{Arg, Cmd, InsertOp, Operator},
     components::{EditorCtx, EditorState, Focus, Mode, Session},
     systems::{
         edit::handle_edit,
@@ -47,11 +47,10 @@ impl InputHandler {
     }
 }
 
-pub fn dispatch(ctx: &EditorCtx, cmd: Cmd) -> Result<()> {
+pub fn dispatch_cmd(ctx: &EditorCtx, cmd: Cmd) -> Result<()> {
     let reps = cmd.reps;
     match cmd.op {
         Operator::Nop => Ok(()),
-        Operator::Edit(op) => handle_edit(ctx, op),
         Operator::Sys(op) => {
             let args = SysArgs::new(op, reps, cmd.arg);
             handle_sys(ctx, args)
@@ -63,6 +62,16 @@ pub fn dispatch(ctx: &EditorCtx, cmd: Cmd) -> Result<()> {
         Operator::Search(op) => {
             let args = SearchArgs::new(op, reps, cmd.arg);
             handle_search(ctx, args)
+        }
+    }
+}
+
+pub fn dispatch_insert(ctx: &EditorCtx, op: InsertOp) -> Result<()> {
+    match op {
+        InsertOp::Edit(edit_op) => handle_edit(ctx, edit_op),
+        InsertOp::Move(motion) => {
+            let nav_args = NavArgs::new(motion, Some(1), Arg::None);
+            handle_nav(ctx, nav_args)
         }
     }
 }

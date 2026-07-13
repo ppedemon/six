@@ -3,15 +3,6 @@ use crossterm::event::{KeyCode, KeyEvent};
 use crate::cmd::Motion;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum EditOp {
-    InsertChar(char),
-    Tab,
-    Enter,
-    Backspace,
-    Delete,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SearchOp {
     FindNextChar,
     FindPrevChar,
@@ -52,7 +43,6 @@ pub enum Operator {
     Sys(SysOp),
     Move(Motion),
     Search(SearchOp),
-    Edit(EditOp),
 }
 
 impl From<SysOp> for Operator {
@@ -70,12 +60,6 @@ impl From<Motion> for Operator {
 impl From<SearchOp> for Operator {
     fn from(find_op: SearchOp) -> Self {
         Self::Search(find_op)
-    }
-}
-
-impl From<EditOp> for Operator {
-    fn from(edit_op: EditOp) -> Self {
-        Self::Edit(edit_op)
     }
 }
 

@@ -3,7 +3,7 @@ use ropey::Rope;
 
 use crate::{
     cmd::EditOp,
-    components::{Buffer, BufferView, Config, EditorCtx, EditorState, Registers, Session},
+    components::{Buffer, BufferView, Config, EditorCtx, EditorState, Session},
     systems::{
         commons::{char_idx_to_coords, cursor_to_char_idx},
         edit::{
@@ -81,6 +81,7 @@ impl<'a> InsertLogInterpreter<'a> {
         for _ in 0..reps {
             for op in log {
                 match op {
+                    EditOp::Esc => {}
                     EditOp::InsertChar(c) => self.insert(*c),
                     EditOp::Tab => self.insert('\t'),
                     EditOp::Enter => self.enter(),

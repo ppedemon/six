@@ -4,7 +4,7 @@ use crossterm::event::{Event, KeyCode, KeyEvent};
 use crate::{
     cmd::{Cmd, Kind, Motion, Operator, Scope, Secondary, TextObject},
     components::EditorCtx,
-    systems::{input::handler::dispatch, status},
+    systems::{input::handler::dispatch_cmd, status},
 };
 
 enum State {
@@ -78,7 +78,7 @@ impl NormalInputHandler {
 
     fn done(&mut self, ctx: &EditorCtx, cmd: Cmd) -> Result<()> {
         self.reset(ctx)?;
-        dispatch(ctx, cmd)
+        dispatch_cmd(ctx, cmd)
     }
 
     pub fn handle_event(&mut self, ctx: &EditorCtx, event: Event) -> Result<()> {
