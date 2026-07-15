@@ -35,6 +35,7 @@ pub fn intepret_insert_log(ctx: &EditorCtx, ops: &Vec<EditOp>, reps: usize) -> R
     let mut interpreter = InsertLogInterpreter::new(&config, buf_view, &mut buffer.rope);
 
     let damage = interpreter.interpret(ops, reps);
+    buffer.dirty = true;
     Ok(DamageEvent::new(session.buf_id, damage))
 }
 
