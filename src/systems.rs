@@ -8,7 +8,6 @@ mod lifecycle;
 mod nav;
 mod pre_render;
 mod render;
-mod search;
 mod status;
 mod sys;
 

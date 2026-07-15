@@ -1,14 +1,12 @@
 mod insert;
 mod motion;
 mod operator;
-mod secondary;
 mod text_object;
 
 pub use insert::{EditOp, InsertOp};
 pub use motion::Motion;
-pub use operator::{ExMode, InsertPoint, InteractiveOp, Operator, SearchOp, SysOp};
-pub use secondary::Secondary;
-pub use text_object::{Kind, Scope, TextObject};
+pub use operator::{ExMode, InsertPoint, InteractiveOp, Operator, SysOp};
+pub use text_object::{TextObject, TextObjectKind, TextObjectScope};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Arg {
@@ -21,7 +19,16 @@ pub enum Arg {
         reps: Option<usize>,
         text_object: TextObject,
     },
-    Secondary(Secondary),
+}
+
+impl Arg {
+    pub fn motion(reps: Option<usize>, motion: Motion) -> Self {
+        Self::Motion { reps, motion }
+    }
+
+    pub fn text_object(reps: Option<usize>, text_object: TextObject) -> Self {
+        Self::TextObject { reps, text_object }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -42,49 +49,18 @@ impl Cmd {
         }
     }
 
-    pub fn reps(mut self, reps: usize) -> Self {
-        self.reps = Some(reps);
-        self
-    }
-
-    pub fn opt_reps(mut self, reps: Option<usize>) -> Self {
+    pub fn reps(mut self, reps: Option<usize>) -> Self {
         self.reps = reps;
         self
     }
 
-    pub fn reg(mut self, reg: char) -> Self {
-        self.reg = Some(reg);
-        self
-    }
-
-    pub fn opt_reg(mut self, reg: Option<char>) -> Self {
+    pub fn reg(mut self, reg: Option<char>) -> Self {
         self.reg = reg;
         self
     }
 
-    pub fn motion(mut self, motion: Motion) -> Self {
-        self.arg = Arg::Motion { reps: None, motion };
-        self
-    }
-
-    pub fn rep_motion(mut self, reps: usize, motion: Motion) -> Self {
-        self.arg = Arg::Motion {
-            reps: Some(reps),
-            motion,
-        };
-        self
-    }
-
-    pub fn text_object(mut self, reps: Option<usize>, text_object: TextObject) -> Self {
-        self.arg = Arg::TextObject {
-            reps: reps,
-            text_object,
-        };
-        self
-    }
-
-    pub fn secondary(mut self, special: Secondary) -> Self {
-        self.arg = Arg::Secondary(special);
+    pub fn arg(mut self, arg: Arg) -> Self {
+        self.arg = arg;
         self
     }
 }

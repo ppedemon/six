@@ -61,8 +61,9 @@ pub fn exec_builtin(
             fs::save_active(ctx, name, append, false, range)
         }
         BuiltIn::GotoLine(line) => {
-            let cmd = Cmd::new(Motion::BigGotoLine.into()).reps(line);
-            adapt(handle_nav(ctx, NavArgs::new(Motion::BigGotoLine, cmd)))?;
+            let motion = Motion::GotoLine(line);
+            let cmd = Cmd::new(motion.into());
+            adapt(handle_nav(ctx, NavArgs::new(motion, cmd)))?;
             adapt(status::set_msg(ctx, Level::Info, &format!(":{}", line)))
         }
         _ => unreachable!("Unimplemented builtin: {builtin:?}"),

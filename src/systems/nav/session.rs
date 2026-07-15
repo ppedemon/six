@@ -6,9 +6,14 @@ use super::{
     buffer,
     rules::{InsertNav, NavRules, NormalNav},
 };
-use crate::cmd::{Arg, Cmd, Motion, Secondary};
 use crate::components::{
-    Buffer, BufferView, Config, EditorCtx, EditorState, ExSession, Focus, Mode, Session, Viewport,
+    Buffer, BufferView, Config, EditorCtx, EditorState, ExSession, Focus, LastSearch, Mode,
+    Session, Viewport,
+};
+use crate::{
+    cmd::{Cmd, Motion},
+    rope,
+    systems::commons::{char_idx_to_coords, cursor_to_char_idx, snap_coords},
 };
 
 pub struct NavArgs {
@@ -56,6 +61,8 @@ fn handle_ex_nav(ctx: &EditorCtx, args: NavArgs) -> Result<()> {
 
 fn handle_session_nav(ctx: &EditorCtx, session_id: Entity, args: NavArgs) -> Result<()> {
     let config = ctx.world.get::<&Config>(ctx.config_id)?;
+    let mut last_search = ctx.world.get::<&mut LastSearch>(ctx.search_id)?;
+
     let mut q_session = ctx
         .world
         .query_one::<(&mut Session, &mut BufferView)>(session_id);
@@ -65,10 +72,24 @@ fn handle_session_nav(ctx: &EditorCtx, session_id: Entity, args: NavArgs) -> Res
     match session.mode {
         Mode::Insert => {
             session.insert_log.reset();
-            session_nav::<InsertNav>(&config, &buffer.rope, &mut session.viewport, buf_view, args);
+            session_nav::<InsertNav>(
+                &config,
+                &buffer.rope,
+                &mut last_search,
+                &mut session.viewport,
+                buf_view,
+                args,
+            );
         }
         Mode::Normal => {
-            session_nav::<NormalNav>(&config, &buffer.rope, &mut session.viewport, buf_view, args);
+            session_nav::<NormalNav>(
+                &config,
+                &buffer.rope,
+                &mut last_search,
+                &mut session.viewport,
+                buf_view,
+                args,
+            );
         }
     }
 
@@ -80,11 +101,12 @@ const PAGE_SCROLL_MARGIN: u16 = 3;
 fn session_nav<R: NavRules>(
     config: &Config,
     rope: &Rope,
+    last_search: &mut LastSearch,
     viewport: &mut Viewport,
     buf_view: &mut BufferView,
     args: NavArgs,
 ) {
-    let reps = default_reps(&args);
+    let reps = args.cmd.reps.unwrap_or(1);
 
     match args.motion {
         Motion::Up => buffer::move_up::<R>(config, rope, buf_view, reps),
@@ -108,6 +130,25 @@ fn session_nav<R: NavRules>(
         Motion::EndBigWord => buffer::end_big_word(config, rope, buf_view, reps),
         Motion::EndSubWord => buffer::end_sub_word(config, rope, buf_view, reps),
 
+        Motion::FindNextChar(c) => {
+            last_search.save_char_search(args.motion);
+            find_char_forward(config, rope, buf_view, c, reps);
+        }
+        Motion::FindPrevChar(c) => {
+            last_search.save_char_search(args.motion);
+            find_char_backward(config, rope, buf_view, c, reps);
+        }
+        Motion::TillNextChar(c) => {
+            last_search.save_char_search(args.motion);
+            till_char_forward(config, rope, buf_view, c, reps, false);
+        }
+        Motion::TillPrevChar(c) => {
+            last_search.save_char_search(args.motion);
+            till_char_backward(config, rope, buf_view, c, reps, false);
+        }
+        Motion::RepeatForward => repeat_forward(config, rope, &last_search, buf_view, reps),
+        Motion::RepeatBackward => repeat_backward(config, rope, last_search, buf_view, reps),
+
         Motion::FirstNonBlankInLine => buffer::line_first_non_blank::<R>(config, rope, buf_view),
         Motion::StartOfLine => buffer::start_of_line::<R>(config, rope, buf_view),
         Motion::EndOfLine => buffer::end_of_line::<R>(config, rope, buf_view),
@@ -115,20 +156,9 @@ fn session_nav<R: NavRules>(
         Motion::StartOfFile => buffer::start_of_file::<R>(config, rope, buf_view),
         Motion::EndOfFile => buffer::end_of_file::<R>(config, rope, buf_view),
 
-        Motion::BigGotoLine => goto_line::<R>(config, rope, viewport, buf_view, reps),
-        Motion::SmallGotoLine => {
-            if let Arg::Secondary(Secondary::GotoLine) = args.cmd.arg {
-                goto_line::<R>(config, rope, viewport, buf_view, reps);
-            }
-        }
+        Motion::GotoLine(line) => buffer::goto_line::<R>(config, rope, buf_view, line),
+        Motion::Line => {}
     }
-}
-
-fn default_reps(args: &NavArgs) -> usize {
-    args.cmd.reps.unwrap_or_else(|| match args.motion {
-        Motion::BigGotoLine => usize::MAX,
-        _ => 1,
-    })
 }
 
 // On startup, move cursor to the first non-blank character of the active session
@@ -168,5 +198,108 @@ pub fn goto_line<R: NavRules>(
             rope.len_lines()
                 .saturating_sub(viewport.area.height as usize),
         );
+    }
+}
+
+fn find_char_forward(
+    config: &Config,
+    rope: &Rope,
+    buf_view: &mut BufferView,
+    c: char,
+    reps: usize,
+) {
+    let mut char_idx = cursor_to_char_idx(config, buf_view, rope);
+    char_idx = rope::find_char_forward(rope, c, reps, char_idx);
+    let coords = char_idx_to_coords(config, rope, buf_view, char_idx);
+    snap_coords(config, rope, buf_view, coords);
+}
+
+fn find_char_backward(
+    config: &Config,
+    rope: &Rope,
+    buf_view: &mut BufferView,
+    c: char,
+    reps: usize,
+) {
+    let mut char_idx = cursor_to_char_idx(config, buf_view, rope);
+    char_idx = rope::find_char_backward(rope, c, reps, char_idx);
+    let coords = char_idx_to_coords(config, rope, buf_view, char_idx);
+    snap_coords(config, rope, buf_view, coords);
+}
+
+fn till_char_forward(
+    config: &Config,
+    rope: &Rope,
+    buf_view: &mut BufferView,
+    c: char,
+    reps: usize,
+    repeats_last: bool,
+) {
+    let mut char_idx = cursor_to_char_idx(config, buf_view, rope);
+
+    let mut n = reps;
+    if repeats_last && char_idx < rope.len_chars().saturating_sub(1) && rope.char(char_idx + 1) == c
+    {
+        n += 1;
+    }
+
+    char_idx = rope::till_char_forward(rope, c, n, char_idx);
+    let coords = char_idx_to_coords(config, rope, buf_view, char_idx);
+    snap_coords(config, rope, buf_view, coords);
+}
+
+fn till_char_backward(
+    config: &Config,
+    rope: &Rope,
+    buf_view: &mut BufferView,
+    c: char,
+    reps: usize,
+    repeats_last: bool,
+) {
+    let mut char_idx = cursor_to_char_idx(config, buf_view, rope);
+
+    let mut n = reps;
+    if repeats_last && char_idx > 0 && rope.char(char_idx - 1) == c {
+        n += 1;
+    }
+
+    char_idx = rope::till_char_backward(rope, c, n, char_idx);
+    let coords = char_idx_to_coords(config, rope, buf_view, char_idx);
+    snap_coords(config, rope, buf_view, coords);
+}
+
+fn repeat_forward(
+    config: &Config,
+    rope: &Rope,
+    last_search: &LastSearch,
+    buf_view: &mut BufferView,
+    reps: usize,
+) {
+    if let Some(&m) = last_search.get_char_search().as_ref() {
+        match m {
+            Motion::FindNextChar(c) => find_char_forward(config, rope, buf_view, c, reps),
+            Motion::FindPrevChar(c) => find_char_backward(config, rope, buf_view, c, reps),
+            Motion::TillNextChar(c) => till_char_forward(config, rope, buf_view, c, reps, true),
+            Motion::TillPrevChar(c) => till_char_backward(config, rope, buf_view, c, reps, true),
+            _ => {}
+        }
+    }
+}
+
+fn repeat_backward(
+    config: &Config,
+    rope: &Rope,
+    last_search: &LastSearch,
+    buf_view: &mut BufferView,
+    reps: usize,
+) {
+    if let Some(&m) = last_search.get_char_search().as_ref() {
+        match m {
+            Motion::FindNextChar(c) => find_char_backward(config, rope, buf_view, c, reps),
+            Motion::FindPrevChar(c) => find_char_forward(config, rope, buf_view, c, reps),
+            Motion::TillNextChar(c) => till_char_backward(config, rope, buf_view, c, reps, true),
+            Motion::TillPrevChar(c) => till_char_forward(config, rope, buf_view, c, reps, true),
+            _ => {}
+        }
     }
 }

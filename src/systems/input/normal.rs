@@ -1,78 +1,62 @@
+use crate::{
+    cmd::{Arg, Cmd, Operator, TextObject, TextObjectScope},
+    components::EditorCtx,
+    systems::{
+        input::{handler::dispatch_cmd, parsers::*},
+        status,
+    },
+};
 use anyhow::Result;
 use crossterm::event::{Event, KeyCode, KeyEvent};
 
-use crate::{
-    cmd::{Cmd, Kind, Motion, Operator, Scope, Secondary, TextObject},
-    components::EditorCtx,
-    systems::{input::handler::dispatch_cmd, status},
-};
-
 enum State {
     Init,
-    // Saw: ", we want a reg
     Reg1,
-    // We have a reg, follows either reps or op
-    Reg2 {
-        reg: char,
-    },
-    // We have a reg and then reps, we need an op
-    RegReps {
-        reg: char,
-        reps: usize,
-    },
-    // We have reps, follows either reg or op
-    Reps {
-        reps: usize,
-    },
-    // Saw ", reg must follow
-    RepsReg1 {
-        reps: usize,
-    },
-    // We have reps and a reg, we need an op
-    RepsReg2 {
-        reps: usize,
-        reg: char,
-    },
-    // We have an op, must follow arg reps or arg
-    Operator {
-        reps: Option<usize>,
-        reg: Option<char>,
-        op: Operator,
-    },
-    // Saw motion reps, arg must follow
-    ArgReps {
-        reps: Option<usize>,
-        reg: Option<char>,
-        op: Operator,
-        arg_reps: usize,
-    },
-    // Arg was text object, and we have the text object's scope, text object kind must follow
-    TextObject {
-        reps: Option<usize>,
-        reg: Option<char>,
-        op: Operator,
-        arg_reps: Option<usize>,
-        scope: Scope,
-    },
+    Reg2,
+    RegReps,
+    Reps,
+    RepsReg1,
+    Op,
+    ArgInit,
+    ArgReps,
+    ArgMotion,
+    ToKind,
 }
 
 pub struct NormalInputHandler {
     state: State,
-    buffer: String,
+    reg: Option<char>,
+    reps: Option<usize>,
+    op: Operator,
+    arg_reps: Option<usize>,
+    to_scope: Option<TextObjectScope>,
+    input: String,
+    cmd_buffer: String,
 }
 
 impl NormalInputHandler {
     pub fn new() -> Self {
         Self {
             state: State::Init,
-            buffer: String::with_capacity(256),
+            reg: None,
+            reps: None,
+            op: Operator::Nop,
+            arg_reps: None,
+            to_scope: None,
+            input: String::with_capacity(256),
+            cmd_buffer: String::with_capacity(256),
         }
     }
 
     fn reset(&mut self, ctx: &EditorCtx) -> Result<()> {
         status::clear_cmd(ctx)?;
         self.state = State::Init;
-        self.buffer.clear();
+        self.reg = None;
+        self.reps = None;
+        self.op = Operator::Nop;
+        self.to_scope = None;
+        self.input.clear();
+        self.cmd_buffer.clear();
         Ok(())
     }
 
@@ -81,354 +65,269 @@ impl NormalInputHandler {
         dispatch_cmd(ctx, cmd)
     }
 
-    pub fn handle_event(&mut self, ctx: &EditorCtx, event: Event) -> Result<()> {
-        match event {
-            Event::Key(key_event) => self.handle_key(ctx, key_event),
+    pub fn handle_event(&mut self, ctx: &EditorCtx, evt: Event) -> Result<()> {
+        match evt {
+            Event::Key(key_evt) => self.handle_key(ctx, key_evt),
             _ => Ok(()),
         }
     }
 
-    fn handle_key(&mut self, ctx: &EditorCtx, event: KeyEvent) -> Result<()> {
-        if event.code == KeyCode::Esc {
+    fn handle_key(&mut self, ctx: &EditorCtx, evt: KeyEvent) -> Result<()> {
+        if evt.code == KeyCode::Esc {
             self.reset(ctx)?;
             return Ok(());
         }
 
-        self.buffer.extend(event.code.to_string().chars());
-        status::set_cmd(ctx, &self.buffer)?;
+        self.cmd_buffer.extend(evt.code.to_string().chars());
+        status::set_cmd(ctx, &self.cmd_buffer)?;
 
-        let curr_state = std::mem::replace(&mut self.state, State::Init);
-        match curr_state {
-            State::Init => self.handle_init(ctx, event),
-            State::Reps { reps } => self.handle_reps(ctx, event, reps),
-            State::RepsReg1 { reps } => self.handle_reps_reg1(ctx, event, reps),
-            State::RepsReg2 { reps, reg } => self.handle_reps_reg2(ctx, event, reps, reg),
-            State::Reg1 => self.handle_reg1(ctx, event),
-            State::Reg2 { reg } => self.handle_reg2(ctx, event, reg),
-            State::RegReps { reg, reps } => self.handle_reg_reps(ctx, event, reg, reps),
-            State::Operator { reps, reg, op } => self.handle_op(ctx, event, reps, reg, op),
-            State::ArgReps {
-                reps,
-                reg,
-                op,
-                arg_reps,
-            } => self.handle_arg_reps(ctx, event, reps, reg, op, arg_reps),
-            State::TextObject {
-                reps,
-                reg,
-                op,
-                arg_reps,
-                scope,
-            } => self.handle_text_object(ctx, event, reps, reg, op, arg_reps, scope),
+        match self.state {
+            State::Init => self.handle_init(ctx, evt),
+            State::Reg1 => self.handle_reg1(ctx, evt),
+            State::Reg2 => self.handle_reg2(ctx, evt),
+            State::RegReps => self.handle_reg_reps(ctx, evt),
+            State::Reps => self.handle_reps(ctx, evt),
+            State::RepsReg1 => self.handle_reps_reg1(ctx, evt),
+            State::Op => self.handle_op(ctx, evt),
+            State::ArgInit => self.handle_arg_init(ctx, evt),
+            State::ArgReps => self.handle_arg_reps(ctx, evt),
+            State::ArgMotion => self.handle_arg_motion(ctx, evt),
+            State::ToKind => self.handle_to_kind(ctx, evt),
         }
     }
 
-    fn handle_init(&mut self, ctx: &EditorCtx, event: KeyEvent) -> Result<()> {
-        match (Operator::from(event), as_digit(&event), starts_reg(&event)) {
-            (Some(op), _, _) => {
-                if op.needs_arg() {
-                    self.state = State::Operator {
-                        reps: None,
-                        reg: None,
-                        op,
-                    };
+    fn handle_init(&mut self, ctx: &EditorCtx, evt: KeyEvent) -> Result<()> {
+        let (starts_reg, digit, op) = (
+            starts_reg(evt),
+            parse_non_zero_digit(evt),
+            parse_op(None, &mut self.input, evt),
+        );
+
+        match (starts_reg, digit, op) {
+            (true, None, ParseResult::Error) => self.state = State::Reg1,
+            (false, Some(d), _) => {
+                self.reps = Some(d as usize);
+                self.state = State::Reps;
+            }
+            (false, None, ParseResult::Cont) => self.state = State::Op,
+            (false, None, ParseResult::Done { result, needs_args }) => {
+                if needs_args {
+                    self.input.clear();
+                    self.state = State::ArgInit;
                 } else {
-                    let cmd = Cmd::new(op);
-                    self.done(ctx, cmd)?;
+                    let cmd = Cmd::new(result);
+                    self.done(&ctx, cmd)?;
                 }
             }
-            (_, Some(d), _) => self.state = State::Reps { reps: d as usize },
-            (_, _, true) => self.state = State::Reg1,
-            _ => self.reset(ctx)?,
+            _ => self.reset(&ctx)?,
         }
         Ok(())
     }
 
-    fn handle_reps(&mut self, ctx: &EditorCtx, event: KeyEvent, reps: usize) -> Result<()> {
-        match (as_digit(&event), Operator::from(event), starts_reg(&event)) {
-            (Some(d), _, _) => {
-                let new_reps = reps.saturating_mul(10).saturating_add(d as usize);
-                self.state = State::Reps { reps: new_reps };
-            }
-            (_, Some(op), _) => {
-                if op.needs_arg() {
-                    self.state = State::Operator {
-                        reps: Some(reps),
-                        reg: None,
-                        op,
-                    }
-                } else {
-                    let cmd = Cmd::new(op).reps(reps);
-                    self.done(ctx, cmd)?;
-                };
-            }
-            (_, _, true) => self.state = State::RepsReg1 { reps },
-            _ => self.reset(ctx)?,
-        }
-        Ok(())
-    }
-
-    fn handle_reps_reg1(&mut self, ctx: &EditorCtx, event: KeyEvent, reps: usize) -> Result<()> {
-        match as_reg(&event) {
-            Some(reg) => self.state = State::RepsReg2 { reps, reg },
-            None => self.reset(ctx)?,
-        }
-        Ok(())
-    }
-
-    fn handle_reps_reg2(
-        &mut self,
-        ctx: &EditorCtx,
-        event: KeyEvent,
-        reps: usize,
-        reg: char,
-    ) -> Result<()> {
-        match Operator::from(event) {
-            Some(op) => {
-                if op.needs_arg() {
-                    self.state = State::Operator {
-                        reps: Some(reps),
-                        reg: Some(reg),
-                        op,
-                    }
-                } else {
-                    let cmd = Cmd::new(op).reps(reps).reg(reg);
-                    self.done(ctx, cmd)?;
-                }
+    fn handle_reg1(&mut self, ctx: &EditorCtx, evt: KeyEvent) -> Result<()> {
+        match parse_reg(evt) {
+            Some(reg) => {
+                self.reg = Some(reg);
+                self.state = State::Reg2;
             }
             None => self.reset(ctx)?,
         }
         Ok(())
     }
 
-    fn handle_reg1(&mut self, ctx: &EditorCtx, event: KeyEvent) -> Result<()> {
-        match as_reg(&event) {
-            Some(reg) => self.state = State::Reg2 { reg },
-            None => self.reset(ctx)?,
-        }
-        Ok(())
-    }
+    fn handle_reg2(&mut self, ctx: &EditorCtx, evt: KeyEvent) -> Result<()> {
+        let (digit, op) = (
+            parse_non_zero_digit(evt),
+            parse_op(self.reps, &mut self.input, evt),
+        );
 
-    fn handle_reg2(&mut self, ctx: &EditorCtx, event: KeyEvent, reg: char) -> Result<()> {
-        match (Operator::from(event), as_digit(&event)) {
-            (Some(op), _) => {
-                if op.needs_arg() {
-                    self.state = State::Operator {
-                        reps: None,
-                        reg: Some(reg),
-                        op,
-                    }
-                } else {
-                    let cmd = Cmd::new(op).reg(reg);
-                    self.done(ctx, cmd)?;
-                };
-            }
-            (_, Some(d)) => {
-                self.state = State::RegReps {
-                    reg,
-                    reps: d as usize,
-                }
-            }
-            _ => self.reset(ctx)?,
-        }
-        Ok(())
-    }
-
-    fn handle_reg_reps(
-        &mut self,
-        ctx: &EditorCtx,
-        event: KeyEvent,
-        reg: char,
-        reps: usize,
-    ) -> Result<()> {
-        match (as_digit(&event), Operator::from(event)) {
+        match (digit, op) {
             (Some(d), _) => {
-                let new_reps = reps.saturating_mul(10).saturating_add(d as usize);
-                self.state = State::RegReps {
-                    reg,
-                    reps: new_reps,
-                };
+                self.reps = Some(d as usize);
+                self.state = State::RegReps;
             }
-            (_, Some(op)) => {
-                if op.needs_arg() {
-                    self.state = State::Operator {
-                        reps: Some(reps),
-                        reg: Some(reg),
-                        op,
-                    }
+            (None, ParseResult::Cont) => self.state = State::Op,
+            (None, ParseResult::Done { result, needs_args }) => {
+                if needs_args {
+                    self.input.clear();
+                    self.state = State::ArgInit;
                 } else {
-                    let cmd = Cmd::new(op).reps(reps).reg(reg);
+                    let cmd = Cmd::new(result).reg(self.reg);
+                    self.done(&ctx, cmd)?;
+                }
+            }
+            _ => self.reset(ctx)?,
+        }
+        Ok(())
+    }
+
+    fn handle_reg_reps(&mut self, ctx: &EditorCtx, evt: KeyEvent) -> Result<()> {
+        let (digit, op) = (
+            parse_non_zero_digit(evt),
+            parse_op(self.reps, &mut self.input, evt),
+        );
+
+        match (digit, op) {
+            (Some(d), _) => {
+                self.reps = self
+                    .reps
+                    .map(|reps| reps.saturating_mul(10).saturating_add(d as usize));
+            }
+            (None, ParseResult::Cont) => self.state = State::Op,
+            (None, ParseResult::Done { result, needs_args }) => {
+                if needs_args {
+                    self.input.clear();
+                    self.state = State::ArgInit;
+                } else {
+                    let cmd = Cmd::new(result).reg(self.reg).reps(self.reps);
+                    self.done(&ctx, cmd)?;
+                }
+            }
+            _ => self.reset(ctx)?,
+        }
+        Ok(())
+    }
+
+    fn handle_reps(&mut self, ctx: &EditorCtx, evt: KeyEvent) -> Result<()> {
+        let (starts_reg, digit, op) = (
+            starts_reg(evt),
+            parse_digit(evt),
+            parse_op(None, &mut self.input, evt),
+        );
+
+        match (starts_reg, digit, op) {
+            (true, None, ParseResult::Error) => self.state = State::RepsReg1,
+            (false, Some(d), _) => {
+                self.reps = self
+                    .reps
+                    .map(|reps| reps.saturating_mul(10).saturating_add(d as usize))
+            }
+            (false, None, ParseResult::Cont) => self.state = State::Op,
+            (false, None, ParseResult::Done { result, needs_args }) => {
+                if needs_args {
+                    self.input.clear();
+                    self.state = State::ArgInit;
+                } else {
+                    let cmd = Cmd::new(result).reps(self.reps);
+                    self.done(&ctx, cmd)?;
+                }
+            }
+            _ => self.reset(ctx)?,
+        }
+        Ok(())
+    }
+
+    fn handle_reps_reg1(&mut self, ctx: &EditorCtx, evt: KeyEvent) -> Result<()> {
+        match parse_reg(evt) {
+            Some(reg) => {
+                self.reg = Some(reg);
+                self.input.clear();
+                self.state = State::Op;
+            }
+            None => self.reset(ctx)?,
+        }
+        Ok(())
+    }
+
+    fn handle_op(&mut self, ctx: &EditorCtx, evt: KeyEvent) -> Result<()> {
+        match parse_op(self.reps, &mut self.input, evt) {
+            ParseResult::Cont => {}
+            ParseResult::Done { result, needs_args } => {
+                if needs_args {
+                    self.input.clear();
+                    self.state = State::ArgInit;
+                } else {
+                    let cmd = Cmd::new(result).reg(self.reg).reps(self.reps);
                     self.done(ctx, cmd)?;
-                };
+                }
+            }
+            ParseResult::Error => self.reset(ctx)?,
+        }
+        Ok(())
+    }
+
+    fn handle_arg_init(&mut self, ctx: &EditorCtx, evt: KeyEvent) -> Result<()> {
+        let (digit, motion, to_scope) = (
+            parse_non_zero_digit(evt),
+            parse_motion_arg(self.op, self.arg_reps, &mut self.input, evt),
+            parse_textobject_scope(evt),
+        );
+
+        match (digit, motion, to_scope) {
+            (Some(d), _, None) => {
+                self.arg_reps = Some(d as usize);
+                self.state = State::ArgReps;
+            }
+            (None, ParseResult::Cont, None) => self.state = State::ArgMotion,
+            (None, ParseResult::Done { result, needs_args }, None) => {
+                let arg = Arg::motion(self.arg_reps, result);
+                let cmd = Cmd::new(self.op).reg(self.reg).arg(arg);
+                self.done(ctx, cmd)?;
+            }
+            (None, ParseResult::Error, Some(scope)) => {
+                self.to_scope = Some(scope);
+                self.state = State::ToKind;
             }
             _ => self.reset(ctx)?,
         }
         Ok(())
     }
 
-    fn handle_op(
-        &mut self,
-        ctx: &EditorCtx,
-        event: KeyEvent,
-        reps: Option<usize>,
-        reg: Option<char>,
-        op: Operator,
-    ) -> Result<()> {
-        // The find char operator family must interpret whetever follows as
-        // the char to find, so we need to prematurely match on the operator
-        match &op {
-            Operator::Search(_) => {
-                if let Some(c) = as_char(&event) {
-                    let cmd = Cmd::new(op)
-                        .opt_reps(reps)
-                        .opt_reg(reg)
-                        .secondary(Secondary::FindChar(c));
-                    return self.done(ctx, cmd);
-                }
-                self.reset(ctx)?
-            }
-            _ => {}
-        }
-
-        let (motion, scope, secondary) = (
-            Motion::from(event),
-            Scope::from(event),
-            Secondary::from(event),
+    fn handle_arg_reps(&mut self, ctx: &EditorCtx, evt: KeyEvent) -> Result<()> {
+        let (digit, motion, to_scope) = (
+            parse_digit(evt),
+            parse_motion_arg(self.op, self.arg_reps, &mut self.input, evt),
+            parse_textobject_scope(evt),
         );
 
-        match (motion, scope, secondary) {
-            (None, None, None) => match as_digit(&event) {
-                None => self.reset(ctx)?,
-                Some(d) => {
-                    self.state = State::ArgReps {
-                        reps,
-                        reg,
-                        op,
-                        arg_reps: d as usize,
-                    }
-                }
-            },
-            (_, _, Some(special)) => {
-                let cmd = Cmd::new(op).opt_reps(reps).opt_reg(reg).secondary(special);
+        match (digit, motion, to_scope) {
+            (Some(d), _, None) => {
+                self.arg_reps = self
+                    .arg_reps
+                    .map(|reps| reps.saturating_mul(10).saturating_add(d as usize));
+            }
+            (None, ParseResult::Cont, None) => self.state = State::ArgMotion,
+            (None, ParseResult::Done { result, .. }, None) => {
+                let arg = Arg::motion(self.arg_reps, result);
+                let cmd = Cmd::new(self.op).reg(self.reg).reps(self.reps).arg(arg);
                 self.done(ctx, cmd)?;
             }
-            (Some(motion), _, _) => {
-                let cmd = Cmd::new(op).opt_reps(reps).opt_reg(reg).motion(motion);
-                self.done(ctx, cmd)?;
-            }
-            (_, Some(scope), _) => {
-                self.state = State::TextObject {
-                    reps,
-                    reg,
-                    op,
-                    arg_reps: None,
-                    scope,
-                }
-            }
-        }
-        Ok(())
-    }
-
-    fn handle_arg_reps(
-        &mut self,
-        ctx: &EditorCtx,
-        event: KeyEvent,
-        reps: Option<usize>,
-        reg: Option<char>,
-        op: Operator,
-        arg_reps: usize,
-    ) -> Result<()> {
-        let (d, motion, scope, special) = (
-            as_digit(&event),
-            Motion::from(event),
-            Scope::from(event),
-            Secondary::from(event),
-        );
-        match (d, motion, scope, special) {
-            (Some(d), _, _, _) => {
-                let new_args_reps = arg_reps.saturating_mul(10).saturating_add(d as usize);
-                self.state = State::ArgReps {
-                    reps,
-                    reg,
-                    op,
-                    arg_reps: new_args_reps,
-                };
-            }
-            (_, _, _, Some(special)) => {
-                let cmd = Cmd::new(op).opt_reps(reps).opt_reg(reg).secondary(special);
-                self.done(ctx, cmd)?;
-            }
-            (_, Some(motion), _, _) => {
-                let cmd = Cmd::new(op)
-                    .opt_reps(reps)
-                    .opt_reg(reg)
-                    .rep_motion(arg_reps, motion);
-                self.done(ctx, cmd)?;
-            }
-            (_, _, Some(scope), _) => {
-                self.state = State::TextObject {
-                    reps,
-                    reg,
-                    op,
-                    arg_reps: Some(arg_reps),
-                    scope,
-                }
+            (None, ParseResult::Error, Some(scope)) => {
+                self.to_scope = Some(scope);
+                self.state = State::ToKind;
             }
             _ => self.reset(ctx)?,
         }
         Ok(())
     }
 
-    fn handle_text_object(
-        &mut self,
-        ctx: &EditorCtx,
-        event: KeyEvent,
-        reps: Option<usize>,
-        reg: Option<char>,
-        op: Operator,
-        arg_reps: Option<usize>,
-        scope: Scope,
-    ) -> Result<()> {
-        match Kind::from(event) {
+    fn handle_arg_motion(&mut self, ctx: &EditorCtx, evt: KeyEvent) -> Result<()> {
+        match parse_motion_arg(self.op, self.arg_reps, &mut self.input, evt) {
+            ParseResult::Cont => {}
+            ParseResult::Done { result, .. } => {
+                let arg = Arg::motion(self.arg_reps, result);
+                let cmd = Cmd::new(self.op).reg(self.reg).reps(self.reps).arg(arg);
+                self.done(ctx, cmd)?;
+            }
+            ParseResult::Error => self.reset(ctx)?,
+        }
+        Ok(())
+    }
+
+    fn handle_to_kind(&mut self, ctx: &EditorCtx, evt: KeyEvent) -> Result<()> {
+        match parse_textobject_kind(evt) {
             None => self.reset(ctx)?,
             Some(kind) => {
-                let text_object = TextObject { scope, kind };
-                let cmd = Cmd::new(op)
-                    .opt_reps(reps)
-                    .opt_reg(reg)
-                    .text_object(arg_reps, text_object);
-                self.done(ctx, cmd)?;
+                if let Some(scope) = self.to_scope {
+                    let text_object = TextObject::new(scope, kind);
+                    let arg = Arg::text_object(self.arg_reps, text_object);
+                    let cmd = Cmd::new(self.op).reg(self.reg).reps(self.reps).arg(arg);
+                    self.done(ctx, cmd)?;
+                } else {
+                    self.reset(ctx)?;
+                }
             }
         }
         Ok(())
     }
-}
-
-fn as_digit(event: &KeyEvent) -> Option<u32> {
-    if event.modifiers.is_empty() {
-        event.code.as_char().and_then(|c| c.to_digit(10))
-    } else {
-        None
-    }
-}
-
-fn as_char(event: &KeyEvent) -> Option<char> {
-    match event.code {
-        KeyCode::Char(c) => Some(c),
-        KeyCode::Tab => Some('\t'),
-        _ => None,
-    }
-}
-
-fn starts_reg(event: &KeyEvent) -> bool {
-    event.code.as_char().is_some_and(|c| c == '"')
-}
-
-fn as_reg(event: &KeyEvent) -> Option<char> {
-    event.code.as_char().and_then(|c| match c {
-        _ if c.is_ascii_digit() => Some(c),
-        _ if c.is_ascii_alphabetic() => Some(c),
-        _ if "%#.:/=-_".contains(c) => Some(c),
-        _ => None,
-    })
 }

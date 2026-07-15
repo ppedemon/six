@@ -2,7 +2,7 @@ use anyhow::Result;
 use ropey::Rope;
 
 use crate::{
-    cmd::{Arg, Cmd, ExMode, InsertPoint, Secondary, SysOp},
+    cmd::{Cmd, ExMode, InsertPoint, SysOp},
     components::{
         Buffer, BufferView, Config, EditorCtx, EditorState, ExSession, Focus, Level, Mode,
         RepeatBuffer, Session, Status,
@@ -32,18 +32,11 @@ pub fn handle_sys(ctx: &EditorCtx, args: SysArgs) -> Result<()> {
         SysOp::EnterNormal => enter_normal(ctx),
         SysOp::EnterInsert(insert_point) => enter_insert(ctx, insert_point, args.cmd),
         SysOp::EnterEx(ex_mode) => enter_ex(ctx, ex_mode),
-        SysOp::BufferOp => handle_buffer_op(ctx, args.cmd.arg),
-    }
-}
-
-fn handle_buffer_op(ctx: &EditorCtx, arg: Arg) -> Result<()> {
-    match arg {
-        Arg::Secondary(Secondary::HardQuit) => quit_editor(ctx),
-        Arg::Secondary(Secondary::CondWriteAndQuit) => {
+        SysOp::HardQuit => quit_editor(ctx),
+        SysOp::CondWriteAndQuit => {
             ex::save_active(ctx, None, false, true, ExRange::All)?;
             quit_editor(ctx)
         }
-        _ => Ok(()),
     }
 }
 

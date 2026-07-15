@@ -49,7 +49,7 @@ pub fn backspace(config: &Config, buf_view: &mut BufferView, rope: &mut Rope) ->
 
         Damage::Line(buf_view.cursor.row)
     } else if buf_view.cursor.row > 0 {
-        merge_with_row_above(config, buf_view, rope)
+        join_above(config, buf_view, rope)
     } else {
         Damage::Intact
     }
@@ -78,13 +78,13 @@ pub fn delete(config: &Config, buf_view: &mut BufferView, rope: &mut Rope) -> Da
         Damage::Line(buf_view.cursor.row)
     } else if buf_view.cursor.row < rope.len_lines().saturating_sub(1) {
         buf_view.cursor.row += 1;
-        merge_with_row_above(config, buf_view, rope)
+        join_above(config, buf_view, rope)
     } else {
         Damage::Intact
     }
 }
 
-fn merge_with_row_above(config: &Config, buf_view: &mut BufferView, rope: &mut Rope) -> Damage {
+fn join_above(config: &Config, buf_view: &mut BufferView, rope: &mut Rope) -> Damage {
     assert!(
         buf_view.cursor.row > 0,
         "already at top row, nothing to merge"

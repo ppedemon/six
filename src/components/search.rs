@@ -1,22 +1,26 @@
-use crate::cmd::SearchOp;
-
-pub struct CharSearch {
-    pub c: char,
-    pub op: SearchOp,
-}
+use crate::cmd::Motion;
 
 pub struct LastSearch {
-    pub char_search: Option<CharSearch>,
+    pub char_search: Option<Motion>,
 }
 
 impl LastSearch {
     pub fn empty() -> Self {
-        Self {
-            char_search: None,
-        }
+        Self { char_search: None }
     }
 
-    pub fn set_char(&mut self, c: char, op: SearchOp) {
-        self.char_search = Some(CharSearch { c, op });
+    pub fn save_char_search(&mut self, m: Motion) {
+        assert!(matches!(
+            m,
+            Motion::FindNextChar(_)
+                | Motion::FindPrevChar(_)
+                | Motion::TillNextChar(_)
+                | Motion::TillPrevChar(_)
+        ));
+        self.char_search = Some(m);
+    }
+
+    pub fn get_char_search(&self) -> Option<Motion> {
+        self.char_search
     }
 }
