@@ -30,9 +30,7 @@ impl RepeatBuffer {
 
     pub fn finish_interaction(&mut self, ops: Vec<EditOp>) {
         match self.item {
-            RepeatBufferItem::Partial(cmd) => {
-                self.item = RepeatBufferItem::Interactive(cmd, ops)
-            }
+            RepeatBufferItem::Partial(cmd) => self.item = RepeatBufferItem::Interactive(cmd, ops),
             _ => panic!("No interaction to finish for cmd {:?}", self.item),
         }
     }

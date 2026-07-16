@@ -2,8 +2,9 @@ use anyhow::Result;
 
 use crate::{
     cmd::{Cmd, InsertPoint, InteractiveOp},
-    components::{BufferView, EditorCtx, EditorState},
+    components::{BufferView, EditorCtx},
     systems::{
+        commons::active_session_id,
         enter_insert, insert,
         nav::{self, InsertNav},
     },
@@ -29,8 +30,8 @@ pub fn handle_interactive(ctx: &EditorCtx, args: InteractiveArgs) -> Result<()> 
 
 fn open_above(ctx: &EditorCtx, cmd: Cmd) -> Result<()> {
     {
-        let editor = ctx.world.get::<&EditorState>(ctx.editor_id)?;
-        let mut buf_view = ctx.world.get::<&mut BufferView>(editor.session_id)?;
+        let session_id = active_session_id(ctx)?;
+        let mut buf_view = ctx.world.get::<&mut BufferView>(session_id)?;
         buf_view.cursor.col = 0;
     }
 

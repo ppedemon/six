@@ -3,7 +3,8 @@ use anyhow::Result;
 use super::log;
 use crate::{
     cmd::{Cmd, EditOp, InteractiveOp, Operator, SysOp},
-    components::{EditorCtx, EditorState, Registers, RepeatBuffer, RepeatBufferItem, Session},
+    components::{EditorCtx, Registers, RepeatBuffer, RepeatBufferItem, Session},
+    systems::commons::active_session_id,
 };
 
 pub fn post_insert(ctx: &EditorCtx) -> Result<()> {
@@ -14,8 +15,8 @@ pub fn post_insert(ctx: &EditorCtx) -> Result<()> {
 }
 
 fn get_insert_log(ctx: &EditorCtx) -> Result<Vec<EditOp>> {
-    let editor = ctx.world.get::<&EditorState>(ctx.editor_id)?;
-    let mut session = ctx.world.get::<&mut Session>(editor.session_id)?;
+    let session_id = active_session_id(ctx)?;
+    let mut session = ctx.world.get::<&mut Session>(session_id)?;
     let log = std::mem::take(&mut session.insert_log.log);
     Ok(log)
 }

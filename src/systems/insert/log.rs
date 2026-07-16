@@ -3,9 +3,11 @@ use ropey::Rope;
 
 use crate::{
     cmd::EditOp,
-    components::{Buffer, BufferView, Config, EditorCtx, EditorState, Session},
+    components::{Buffer, BufferView, Config, EditorCtx},
     systems::{
-        commons::{char_idx_to_coords, cursor_to_char_idx},
+        commons::{
+            active_session_id, char_idx_to_coords, cursor_to_char_idx, mut_active_session_query,
+        },
         insert::{
             buffer::Damage,
             session::{DamageEvent, broadcast_damage},
@@ -16,18 +18,13 @@ use crate::{
 pub fn apply_insert_log(ctx: &EditorCtx, ops: &Vec<EditOp>, reps: usize) -> Result<()> {
     let damage_evt = intepret_insert_log(ctx, ops, reps)?;
 
-    let session_id = {
-        let editor = ctx.world.get::<&EditorState>(ctx.editor_id)?;
-        editor.session_id
-    };
+    let session_id = active_session_id(&ctx)?;
     broadcast_damage(ctx, session_id, damage_evt)
 }
 
 pub fn intepret_insert_log(ctx: &EditorCtx, ops: &Vec<EditOp>, reps: usize) -> Result<DamageEvent> {
-    let editor = ctx.world.get::<&EditorState>(ctx.editor_id)?;
-    let mut q_session = ctx
-        .world
-        .query_one::<(&mut Session, &mut BufferView)>(editor.session_id);
+    let session_id = active_session_id(ctx)?;
+    let mut q_session = mut_active_session_query(ctx)?;
     let (session, buf_view) = q_session.get()?;
 
     let config = ctx.world.get::<&Config>(ctx.config_id)?;

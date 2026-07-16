@@ -1,6 +1,10 @@
+use anyhow::Result;
+use hecs::QueryOne;
 use ropey::Rope;
 
-use crate::components::{BufferView, Config, Coords, DisplayLineRef};
+use crate::components::{
+    BufferView, Config, Coords, DisplayLineRef, EditorCtx, EditorState, ExSession, Session,
+};
 
 pub fn curr_line<'a>(
     config: &Config,
@@ -56,4 +60,45 @@ pub fn snap_coords(config: &Config, rope: &Rope, buf_view: &mut BufferView, coor
     buf_view.cursor.row = coords.row;
     buf_view.cursor.col = col;
     buf_view.target_col = col;
+}
+
+//
+// Convenience World operations
+//
+
+pub fn active_session_id(ctx: &EditorCtx) -> Result<hecs::Entity> {
+    let editor = ctx.world.get::<&EditorState>(ctx.editor_id)?;
+    Ok(editor.session_id)
+}
+
+pub fn active_session_query<'a>(
+    ctx: &'a EditorCtx,
+) -> Result<QueryOne<'a, (&'a Session, &'a BufferView)>> {
+    let session_id = active_session_id(ctx)?;
+    Ok(ctx.world.query_one::<(&Session, &BufferView)>(session_id))
+}
+
+pub fn mut_active_session_query<'a>(
+    ctx: &'a EditorCtx,
+) -> Result<QueryOne<'a, (&'a mut Session, &'a mut BufferView)>> {
+    let session_id = active_session_id(ctx)?;
+    Ok(ctx
+        .world
+        .query_one::<(&mut Session, &mut BufferView)>(session_id))
+}
+
+pub fn ex_session_query<'a>(
+    ctx: &'a EditorCtx,
+) -> Result<QueryOne<'a, (&'a ExSession, &'a BufferView)>> {
+    Ok(ctx
+        .world
+        .query_one::<(&ExSession, &BufferView)>(ctx.ex_session_id))
+}
+
+pub fn mut_ex_session_query<'a>(
+    ctx: &'a EditorCtx,
+) -> Result<QueryOne<'a, (&'a mut ExSession, &'a mut BufferView)>> {
+    Ok(ctx
+        .world
+        .query_one::<(&mut ExSession, &mut BufferView)>(ctx.ex_session_id))
 }

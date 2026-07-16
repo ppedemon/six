@@ -6,14 +6,16 @@ use super::{
     buffer,
     rules::{InsertNav, NavRules, NormalNav},
 };
-use crate::components::{
-    Buffer, BufferView, Config, EditorCtx, EditorState, ExSession, Focus, LastSearch, Mode,
-    Session, Viewport,
-};
 use crate::{
     cmd::{Cmd, Motion},
     rope,
     systems::commons::{char_idx_to_coords, cursor_to_char_idx, snap_coords},
+};
+use crate::{
+    components::{
+        Buffer, BufferView, Config, EditorCtx, EditorState, Focus, LastSearch, Mode, Viewport,
+    },
+    systems::commons::{mut_active_session_query, mut_ex_session_query},
 };
 
 pub struct NavArgs {
@@ -37,9 +39,7 @@ pub fn handle_nav(ctx: &EditorCtx, nav_args: NavArgs) -> Result<()> {
 
 fn handle_ex_nav(ctx: &EditorCtx, args: NavArgs) -> Result<()> {
     let config = ctx.world.get::<&Config>(ctx.config_id)?;
-    let mut q_ex = ctx
-        .world
-        .query_one::<(&ExSession, &mut BufferView)>(ctx.ex_session_id);
+    let mut q_ex = mut_ex_session_query(ctx)?;
     let (ex_session, buf_view) = q_ex.get()?;
 
     let reps = args.cmd.reps.unwrap_or(1);
@@ -63,9 +63,7 @@ fn handle_session_nav(ctx: &EditorCtx, session_id: Entity, args: NavArgs) -> Res
     let config = ctx.world.get::<&Config>(ctx.config_id)?;
     let mut last_search = ctx.world.get::<&mut LastSearch>(ctx.search_id)?;
 
-    let mut q_session = ctx
-        .world
-        .query_one::<(&mut Session, &mut BufferView)>(session_id);
+    let mut q_session = mut_active_session_query(ctx)?;
     let (session, buf_view) = q_session.get()?;
     let buffer = ctx.world.get::<&Buffer>(session.buf_id)?;
 
@@ -164,11 +162,7 @@ fn session_nav<R: NavRules>(
 // On startup, move cursor to the first non-blank character of the active session
 pub fn init_cursor_pos(ctx: &EditorCtx) -> Result<()> {
     let config = ctx.world.get::<&Config>(ctx.config_id)?;
-    let editor = ctx.world.get::<&EditorState>(ctx.editor_id)?;
-
-    let mut q_session = ctx
-        .world
-        .query_one::<(&Session, &mut BufferView)>(editor.session_id);
+    let mut q_session = mut_active_session_query(ctx)?;
     let (session, buf_view) = q_session.get()?;
 
     let buffer = ctx.world.get::<&Buffer>(session.buf_id)?;

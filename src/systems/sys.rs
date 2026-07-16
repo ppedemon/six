@@ -4,12 +4,13 @@ use ropey::Rope;
 use crate::{
     cmd::{Cmd, ExMode, InsertPoint, SysOp},
     components::{
-        Buffer, BufferView, Config, EditorCtx, EditorState, ExSession, Focus, Level, Mode,
-        RepeatBuffer, Session, Status,
+        Buffer, BufferView, Config, EditorCtx, EditorState, Focus, Level, Mode, RepeatBuffer,
+        Session, Status,
     },
     ex::ExRange,
     systems::{
-        commons, ex,
+        commons::{self, mut_active_session_query, mut_ex_session_query},
+        ex,
         insert::{clear_ex, insert_char, post_insert},
         nav::{NormalNav, move_left},
         quit_editor,
@@ -52,9 +53,7 @@ pub fn enter_insert(ctx: &EditorCtx, insert_point: InsertPoint, cmd: Cmd) -> Res
 
     let config = ctx.world.get::<&Config>(ctx.config_id)?;
     let mut editor = ctx.world.get::<&mut EditorState>(ctx.editor_id)?;
-    let mut q_session = ctx
-        .world
-        .query_one::<(&mut Session, &mut BufferView)>(editor.session_id);
+    let mut q_session = mut_active_session_query(ctx)?;
     let (session, buf_view) = q_session.get()?;
     let buffer = ctx.world.get::<&Buffer>(session.buf_id)?;
 
@@ -101,9 +100,7 @@ fn enter_ex(ctx: &EditorCtx, ex_mode: ExMode) -> Result<()> {
 
     let config = ctx.world.get::<&Config>(ctx.config_id)?;
     let mut editor = ctx.world.get::<&mut EditorState>(ctx.editor_id)?;
-    let mut q_ex = ctx
-        .world
-        .query_one::<(&mut ExSession, &mut BufferView)>(ctx.ex_session_id);
+    let mut q_ex = mut_ex_session_query(ctx)?;
     let (ex_session, buf_view) = q_ex.get()?;
 
     editor.focus = Focus::Ex;
@@ -121,10 +118,7 @@ fn enter_ex(ctx: &EditorCtx, ex_mode: ExMode) -> Result<()> {
 
 fn restore_cursor(ctx: &EditorCtx) -> Result<()> {
     let config = ctx.world.get::<&Config>(ctx.config_id)?;
-    let editor = ctx.world.get::<&EditorState>(ctx.editor_id)?;
-    let mut q_session = ctx
-        .world
-        .query_one::<(&mut Session, &mut BufferView)>(editor.session_id);
+    let mut q_session = mut_active_session_query(ctx)?;
     let (session, buf_view) = q_session.get()?;
     let buffer = ctx.world.get::<&Buffer>(session.buf_id)?;
 

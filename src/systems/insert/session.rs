@@ -4,10 +4,12 @@ use hecs::Entity;
 use crate::{
     cmd::EditOp,
     components::{
-        Buffer, BufferView, Config, Coords, EditorCtx, EditorState, ExSession, ExState, Focus,
-        Session,
+        Buffer, BufferView, Config, Coords, EditorCtx, EditorState, ExState, Focus, Session,
     },
-    systems::insert::buffer::{Damage, backspace, delete, enter, insert_char},
+    systems::{
+        commons::{mut_active_session_query, mut_ex_session_query},
+        insert::buffer::{Damage, backspace, delete, enter, insert_char},
+    },
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -39,14 +41,12 @@ pub fn handle_edit(ctx: &EditorCtx, op: EditOp) -> Result<()> {
 
 fn handle_session_edit(ctx: &EditorCtx, session_id: Entity, op: EditOp) -> Result<DamageEvent> {
     let config = ctx.world.get::<&Config>(ctx.config_id)?;
-    let mut q_session = ctx
-        .world
-        .query_one::<(&mut Session, &mut BufferView)>(session_id);
+    let mut q_session = mut_active_session_query(ctx)?;
     let (session, buf_view) = q_session.get()?;
     let mut buffer = ctx.world.get::<&mut Buffer>(session.buf_id)?;
 
     session.insert_log.append(op);
-    
+
     let damage = match op {
         EditOp::InsertChar(c) => insert_char(&config, buf_view, &mut buffer.rope, c),
         EditOp::Tab => insert_char(&config, buf_view, &mut buffer.rope, '\t'),
@@ -60,9 +60,7 @@ fn handle_session_edit(ctx: &EditorCtx, session_id: Entity, op: EditOp) -> Resul
 }
 
 pub fn clear_ex(ctx: &EditorCtx) -> Result<()> {
-    let mut q_ex = ctx
-        .world
-        .query_one::<(&mut ExSession, &mut BufferView)>(ctx.ex_session_id);
+    let mut q_ex = mut_ex_session_query(ctx)?;
     let (ex_session, buf_view) = q_ex.get()?;
 
     let len_chars = ex_session.rope.len_chars();
@@ -77,9 +75,7 @@ pub fn clear_ex(ctx: &EditorCtx) -> Result<()> {
 
 fn handle_ex_edit(ctx: &EditorCtx, op: EditOp) -> Result<()> {
     let config = ctx.world.get::<&Config>(ctx.config_id)?;
-    let mut q_ex = ctx
-        .world
-        .query_one::<(&mut ExSession, &mut BufferView)>(ctx.ex_session_id);
+    let mut q_ex = mut_ex_session_query(ctx)?;
     let (ex_session, buf_view) = q_ex.get()?;
 
     match op {

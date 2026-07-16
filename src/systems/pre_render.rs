@@ -2,8 +2,9 @@ use anyhow::Result;
 use hecs::Entity;
 use ratatui::layout::Rect;
 
-use crate::components::{
-    Buffer, BufferView, Config, Coords, EditorCtx, ExSession, Session, Viewport,
+use crate::{
+    components::{Buffer, BufferView, Config, Coords, EditorCtx, ExSession, Session, Viewport},
+    systems::commons::mut_ex_session_query,
 };
 
 pub fn pre_render(ctx: &mut EditorCtx, area: Rect) -> Result<()> {
@@ -36,9 +37,9 @@ fn scroll_ex(ctx: &EditorCtx) -> Result<()> {
     Ok(())
 }
 
-fn resize_sessions(ctx: &mut EditorCtx, area: Rect) {
-    let q_sessions = ctx.world.query_mut::<(&mut Session, &mut BufferView)>();
-    for (session, buf_view) in q_sessions {
+fn resize_sessions(ctx: &EditorCtx, area: Rect) {
+    let mut q_sessions = ctx.world.query::<(&mut Session, &mut BufferView)>();
+    for (session, buf_view) in q_sessions.into_iter() {
         resize_session(area, buf_view.cursor, &mut session.viewport);
     }
 }
@@ -97,10 +98,7 @@ fn sync_sessions(ctx: &mut EditorCtx) -> Result<()> {
 
 fn sync_ex(ctx: &EditorCtx) -> Result<()> {
     let config = ctx.world.get::<&Config>(ctx.config_id)?;
-
-    let mut q_ex = ctx
-        .world
-        .query_one::<(&ExSession, &mut BufferView)>(ctx.ex_session_id);
+    let mut q_ex = mut_ex_session_query(ctx)?;
     let (ex_session, buf_view) = q_ex.get()?;
 
     let len_lines = ex_session.rope.len_lines();

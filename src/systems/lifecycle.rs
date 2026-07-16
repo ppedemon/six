@@ -6,8 +6,12 @@ use ropey::Rope;
 
 use crate::{
     components::{
-        Buffer, BufferName, BufferView, Config, EditorCtx, EditorState, ExSession, LastSearch, Registers, RepeatBuffer, Session, Status,
-    }, misc::path::norm_filename, rope::{self}, systems::event,
+        Buffer, BufferName, BufferView, Config, EditorCtx, EditorState, ExSession, LastSearch,
+        Registers, RepeatBuffer, Session, Status,
+    },
+    misc::path::norm_filename,
+    rope::{self},
+    systems::event,
 };
 
 pub fn create_editor(world: &mut World) -> EditorCtx<'_> {
