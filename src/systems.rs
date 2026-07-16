@@ -1,10 +1,10 @@
 mod commons;
 mod event;
 mod ex;
+mod immediate;
 mod input;
 mod insert;
 mod interactive;
-mod immediate;
 mod lifecycle;
 mod nav;
 mod pre_render;

@@ -1,7 +1,8 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use crate::cmd::{
-    ExMode, ImmediateOp, InsertPoint, InteractiveOp, Motion, Operator, SysOp, TextObjectKind, TextObjectScope,
+    ExMode, ImmediateOp, InsertPoint, InteractiveOp, Motion, Operator, SysOp, TextObjectKind,
+    TextObjectScope,
 };
 
 pub fn parse_digit(evt: KeyEvent) -> Option<u32> {
