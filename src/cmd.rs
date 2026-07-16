@@ -5,7 +5,7 @@ mod text_object;
 
 pub use insert::{EditOp, InsertOp};
 pub use motion::Motion;
-pub use operator::{ExMode, InsertPoint, InteractiveOp, Operator, SysOp};
+pub use operator::{ExMode, ImmediateOp, InsertPoint, InteractiveOp, Operator, SysOp};
 pub use text_object::{TextObject, TextObjectKind, TextObjectScope};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

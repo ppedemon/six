@@ -36,12 +36,20 @@ pub enum InteractiveOp {
     OpenBelow,
 }
 
+// Immediate commands: just mutate the text or registers.
+// Example: x, d, y, p
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ImmediateOp {
+    DeleteChar,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Operator {
     Nop,
     Move(Motion),
     Sys(SysOp),
     Interactive(InteractiveOp),
+    Immediate(ImmediateOp),
 }
 
 impl From<Motion> for Operator {
@@ -59,6 +67,12 @@ impl From<SysOp> for Operator {
 impl From<InteractiveOp> for Operator {
     fn from(interactive_op: InteractiveOp) -> Self {
         Self::Interactive(interactive_op)
+    }
+}
+
+impl From<ImmediateOp> for Operator {
+    fn from(immediate_op: ImmediateOp) -> Self {
+        Self::Immediate(immediate_op)
     }
 }
 

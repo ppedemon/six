@@ -5,6 +5,7 @@ use crate::{
     cmd::{Cmd, InsertOp, Operator},
     components::{EditorCtx, EditorState, Focus, Mode, Session},
     systems::{
+        immediate::{ImmediateArgs, handle_immediate},
         input::{insert::InsertInputHandler, normal::NormalInputHandler},
         insert::handle_edit,
         interactive::{InteractiveArgs, handle_interactive},
@@ -62,6 +63,10 @@ pub fn dispatch_cmd(ctx: &EditorCtx, cmd: Cmd) -> Result<()> {
         Operator::Interactive(op) => {
             let args = InteractiveArgs::new(op, cmd);
             handle_interactive(ctx, args)
+        }
+        Operator::Immediate(op) => {
+            let args = ImmediateArgs::new(op, cmd);
+            handle_immediate(ctx, args)
         }
     }
 }
