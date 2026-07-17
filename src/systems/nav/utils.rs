@@ -2,7 +2,7 @@ use crate::{
     components::{Buffer, Config, EditorCtx},
     systems::{
         commons::{curr_line, mut_active_session_query, snap_coords},
-        nav::{move_left, move_up, rules::NavRules},
+        nav::{move_up, rules::NavRules},
     },
 };
 use anyhow::Result;
