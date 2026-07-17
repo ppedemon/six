@@ -9,7 +9,7 @@ something non-trivial. A modal editor seems to be a reasonable undertaking.
 Nothing too fancy. I'm using the following crates:
 
   * [ropey](https://crates.io/crates/ropey) for backing the text buffers
-  * [hecs](https://crates.io/crates/hecs) for implementing the editor's state while keeping the borrow-checker happy
+  * [unicode-segmentation](https://crates.io/crates/unicode-segmentation) and [unicode-width](https://crates.io/crates/unicode-width) for dealing with unicode text
   * [nom](https://crates.io/crates/nom) for parsing ex commands
  
 ---

@@ -1,67 +1,52 @@
-use anyhow::Result;
-use hecs::Entity;
-
 use crate::{
     cmd::EditOp,
-    components::{
-        Buffer, BufferView, Config, Coords, EditorCtx, EditorState, ExState, Focus, Session,
-    },
-    systems::{
-        commons::{mut_active_session_query, mut_ex_session_query},
-        insert::buffer::{Damage, backspace, delete, enter, insert_char},
-    },
+    components::{BufferId, Coords, EditorCtx, ExState, Focus},
+    systems::insert::buffer::{Damage, backspace, delete, enter, insert_char},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DamageEvent {
-    buf_id: Entity,
+    buf_id: BufferId,
     damage: Damage,
 }
 
 impl DamageEvent {
-    pub fn new(buf_id: Entity, damage: Damage) -> Self {
+    pub fn new(buf_id: BufferId, damage: Damage) -> Self {
         Self { buf_id, damage }
     }
 }
 
-pub fn handle_edit(ctx: &EditorCtx, op: EditOp) -> Result<()> {
-    let (focus, session_id) = {
-        let editor = ctx.world.get::<&EditorState>(ctx.editor_id)?;
-        (editor.focus, editor.session_id)
-    };
-
-    match focus {
+pub fn handle_edit(ctx: &mut EditorCtx, op: EditOp) {
+    match ctx.editor.focus {
         Focus::Ex => handle_ex_edit(ctx, op),
         Focus::Session => {
-            let damage_evt = handle_session_edit(ctx, session_id, op)?;
-            broadcast_damage(ctx, session_id, damage_evt)
+            let damage_evt = handle_session_edit(ctx, op);
+            broadcast_damage(ctx, damage_evt)
         }
     }
 }
 
-fn handle_session_edit(ctx: &EditorCtx, session_id: Entity, op: EditOp) -> Result<DamageEvent> {
-    let config = ctx.world.get::<&Config>(ctx.config_id)?;
-    let mut q_session = mut_active_session_query(ctx)?;
-    let (session, buf_view) = q_session.get()?;
-    let mut buffer = ctx.world.get::<&mut Buffer>(session.buf_id)?;
+fn handle_session_edit(ctx: &mut EditorCtx, op: EditOp) -> DamageEvent {
+    let (session, buf_view) = ctx.sessions.get_mut(&ctx.editor.session_id).unwrap();
+    let buffer = ctx.buffers.get_mut(&session.buf_id).unwrap();
 
     session.insert_log.append(op);
 
     let damage = match op {
-        EditOp::InsertChar(c) => insert_char(&config, buf_view, &mut buffer.rope, c),
-        EditOp::Tab => insert_char(&config, buf_view, &mut buffer.rope, '\t'),
-        EditOp::Enter => enter(&config, buf_view, &mut buffer.rope),
-        EditOp::Backspace => backspace(&config, buf_view, &mut buffer.rope),
-        EditOp::Delete => delete(&config, buf_view, &mut buffer.rope),
+        EditOp::InsertChar(c) => insert_char(&ctx.config, buf_view, &mut buffer.rope, c),
+        EditOp::Tab => insert_char(&ctx.config, buf_view, &mut buffer.rope, '\t'),
+        EditOp::Enter => enter(&ctx.config, buf_view, &mut buffer.rope),
+        EditOp::Backspace => backspace(&ctx.config, buf_view, &mut buffer.rope),
+        EditOp::Delete => delete(&ctx.config, buf_view, &mut buffer.rope),
     };
 
     buffer.dirty = true;
-    Ok(DamageEvent::new(session.buf_id, damage))
+    DamageEvent::new(session.buf_id, damage)
 }
 
-pub fn clear_ex(ctx: &EditorCtx) -> Result<()> {
-    let mut q_ex = mut_ex_session_query(ctx)?;
-    let (ex_session, buf_view) = q_ex.get()?;
+pub fn clear_ex(ctx: &mut EditorCtx) {
+    let ex_session = &mut ctx.ex_session;
+    let buf_view = &mut ctx.ex_buffer_view;
 
     let len_chars = ex_session.rope.len_chars();
     ex_session.rope.remove(0..len_chars);
@@ -69,20 +54,17 @@ pub fn clear_ex(ctx: &EditorCtx) -> Result<()> {
     buf_view.display_buf.destroy_from(0);
     buf_view.cursor = Coords::default();
     buf_view.target_col = 0;
-
-    Ok(())
 }
 
-fn handle_ex_edit(ctx: &EditorCtx, op: EditOp) -> Result<()> {
-    let config = ctx.world.get::<&Config>(ctx.config_id)?;
-    let mut q_ex = mut_ex_session_query(ctx)?;
-    let (ex_session, buf_view) = q_ex.get()?;
+fn handle_ex_edit(ctx: &mut EditorCtx, op: EditOp) {
+    let ex_session = &mut ctx.ex_session;
+    let buf_view = &mut ctx.ex_buffer_view;
 
     match op {
-        EditOp::InsertChar(c) => insert_char(&config, buf_view, &mut ex_session.rope, c),
-        EditOp::Tab => insert_char(&config, buf_view, &mut ex_session.rope, '\t'),
-        EditOp::Backspace => backspace(&config, buf_view, &mut ex_session.rope),
-        EditOp::Delete => delete(&config, buf_view, &mut ex_session.rope),
+        EditOp::InsertChar(c) => insert_char(&ctx.config, buf_view, &mut ex_session.rope, c),
+        EditOp::Tab => insert_char(&ctx.config, buf_view, &mut ex_session.rope, '\t'),
+        EditOp::Backspace => backspace(&ctx.config, buf_view, &mut ex_session.rope),
+        EditOp::Delete => delete(&ctx.config, buf_view, &mut ex_session.rope),
         EditOp::Enter => Damage::Intact,
     };
 
@@ -91,39 +73,25 @@ fn handle_ex_edit(ctx: &EditorCtx, op: EditOp) -> Result<()> {
         _ if ex_session.rope.len_chars() == 0 => ExState::Cancel,
         _ => ExState::Idle,
     };
-
-    Ok(())
 }
 
-pub fn broadcast_damage(
-    ctx: &EditorCtx,
-    active_session_id: Entity,
-    damage_evt: DamageEvent,
-) -> Result<()> {
+pub fn broadcast_damage(ctx: &mut EditorCtx, damage_evt: DamageEvent) {
     if damage_evt.damage == Damage::Intact {
-        return Ok(());
+        return;
     }
 
-    let config = ctx.world.get::<&Config>(ctx.config_id)?;
-
-    for (session_id, session, buf_view) in ctx
-        .world
-        .query::<(Entity, &Session, &mut BufferView)>()
-        .iter()
-    {
-        if session_id != active_session_id && session.buf_id == damage_evt.buf_id {
+    for (session_id, (session, buf_view)) in ctx.sessions.iter_mut() {
+        if *session_id != ctx.editor.session_id && session.buf_id == damage_evt.buf_id {
             match damage_evt.damage {
                 Damage::Intact => {}
                 Damage::Line(row) => {
-                    let buffer = ctx.world.get::<&Buffer>(damage_evt.buf_id)?;
+                    let buffer = ctx.buffers.get_mut(&session.buf_id).unwrap();
                     buf_view
                         .display_buf
-                        .patch_range(&config, &buffer.rope, row..row + 1);
+                        .patch_range(&ctx.config, &buffer.rope, row..row + 1);
                 }
                 Damage::From(row) => buf_view.display_buf.destroy_from(row),
             }
         }
     }
-
-    Ok(())
 }

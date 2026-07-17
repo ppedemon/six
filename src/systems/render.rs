@@ -1,5 +1,3 @@
-use anyhow::Result;
-use hecs::Entity;
 use ratatui::{
     buffer::Buffer,
     layout::{Constraint, Direction, Layout, Position, Rect, Size},
@@ -11,76 +9,53 @@ use ropey::Rope;
 use unicode_width::UnicodeWidthStr;
 
 use crate::components::{
-    self, BufferView, Config, DisplayBuffer, EditorCtx, EditorState, ExSession, Focus, Level,
-    Session, Status, Viewport,
+    self, BufferView, Config, DisplayBuffer, EditorCtx, ExSession, Focus, Level, Session, Status,
+    Viewport,
 };
 
 const MIN_SIZE: Size = Size::new(6, 2);
 
-pub fn render(ctx: &EditorCtx, area: Rect, frame_buf: &mut Buffer) -> Result<()> {
+pub fn render(ctx: &mut EditorCtx, area: Rect, frame_buf: &mut Buffer) {
     if area.width < MIN_SIZE.width || area.height < MIN_SIZE.height {
-        return Ok(());
+        return;
     }
 
-    let config = ctx.world.get::<&Config>(ctx.config_id)?;
-    let editor = ctx.world.get::<&EditorState>(ctx.editor_id)?;
-    let ex_session = ctx.world.get::<&ExSession>(ctx.ex_session_id)?;
-    let status = ctx.world.get::<&Status>(ctx.status_id)?;
-
-    let mut session_entities = Vec::new();
-    {
-        let mut q_sessions = ctx.world.query::<(Entity, &Session)>();
-        for (entity, _) in q_sessions.into_iter() {
-            session_entities.push(entity);
-        }
+    for (session, buf_view) in ctx.sessions.values_mut() {
+        let buffer = ctx.buffers.get(&session.buf_id).unwrap();
+        render_session(&ctx.config, session, buf_view, buffer, frame_buf);
     }
 
-    for entity in session_entities {
-        let mut q_session = ctx.world.query_one::<(&Session, &mut BufferView)>(entity);
-        let (session, buf_view) = q_session.get()?;
-        let buffer = ctx.world.get::<&components::Buffer>(session.buf_id)?;
-        render_session(&config, session, buf_view, &buffer, frame_buf);
-    }
-
-    match editor.focus {
-        Focus::Ex => {
-            let mut buf_view = ctx.world.get::<&mut BufferView>(ctx.ex_session_id)?;
-            render_ex(&config, &ex_session, &mut buf_view, frame_buf);
-        }
+    match ctx.editor.focus {
+        Focus::Ex => render_ex(
+            &ctx.config,
+            &ctx.ex_session,
+            &mut ctx.ex_buffer_view,
+            frame_buf,
+        ),
         Focus::Session => {
             let chunks = Layout::default()
                 .direction(Direction::Vertical)
                 .constraints([Constraint::Fill(1), Constraint::Length(1)])
                 .split(area);
-            render_status(&status, chunks[1], frame_buf);
+            render_status(&ctx.status, chunks[1], frame_buf);
         }
     }
 
-    if let Some(c) = editor.char_at_cursor {
-        let pos = cursor_pos(ctx)?;
+    if let Some(c) = ctx.editor.char_at_cursor {
+        let pos = cursor_pos(ctx);
         frame_buf[pos].set_char(c);
     }
-
-    Ok(())
 }
 
-pub fn cursor_pos(ctx: &EditorCtx) -> Result<Position> {
-    let editor = ctx.world.get::<&EditorState>(ctx.editor_id)?;
-
-    match editor.focus {
+pub fn cursor_pos(ctx: &EditorCtx) -> Position {
+    match ctx.editor.focus {
         Focus::Ex => {
-            let mut q_ex = ctx
-                .world
-                .query_one::<(&ExSession, &BufferView)>(ctx.ex_session_id);
-            let (ex_session, buf_view) = q_ex.get()?;
-            Ok(ex_session.viewport.cursor_pos(buf_view.cursor))
+            let ex_cursor = ctx.ex_buffer_view.cursor;
+            ctx.ex_session.viewport.cursor_pos(ex_cursor)
         }
         Focus::Session => {
-            let mut q_session = ctx
-                .world
-                .query_one::<(&Session, &mut BufferView)>(editor.session_id);
-            let (session, buf_view) = q_session.get()?;
-            Ok(session.viewport.cursor_pos(buf_view.cursor))
+            let (session, buf_view) = ctx.active_session();
+            session.viewport.cursor_pos(buf_view.cursor)
         }
     }
 }

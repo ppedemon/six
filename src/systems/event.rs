@@ -1,13 +1,11 @@
-use anyhow::Result;
 use ropey::{Rope, RopeSlice};
 
 use crate::{
-    components::{BufferName, EditorCtx, Level},
+    components::{BufferName, Level, Status},
     rope,
-    systems::status,
 };
 
-pub fn on_buffer_loaded(ctx: &EditorCtx, name: &BufferName, rope: &Rope) -> Result<()> {
+pub fn on_buffer_loaded(status: &mut Status, name: &BufferName, rope: &Rope) {
     let msg = if name.file_path.exists() {
         let rope_info = rope::info(rope);
         let lines = rope_info.num_lines;
@@ -16,17 +14,15 @@ pub fn on_buffer_loaded(ctx: &EditorCtx, name: &BufferName, rope: &Rope) -> Resu
     } else {
         &format!("\"{}\" - [New]", name.orig_name)
     };
-    status::set_msg(ctx, Level::Info, msg)?;
-    Ok(())
+    status.set_msg(Level::Info, msg);
 }
 
-pub fn on_buffer_saved(ctx: &EditorCtx, name: &BufferName, rope: RopeSlice<'_>) -> Result<()> {
+pub fn on_buffer_saved(status: &mut Status, name: &BufferName, rope: RopeSlice<'_>) {
     let msg = {
         let rope_info = rope::info_slice(rope);
         let lines = rope_info.num_lines;
         let bytes = rope_info.num_bytes;
         &format!("\"{}\" - {}L, {}B written", name.orig_name, lines, bytes)
     };
-    status::set_msg(ctx, Level::Info, msg)?;
-    Ok(())
+    status.set_msg(Level::Info, msg);
 }

@@ -7,7 +7,6 @@ edition = "2024"
 anyhow = "1.0.102"
 color-eyre = { version = "0.6.5", optional = true }
 crossterm = "0.29.0"
-hecs = { version = "0.11.0", features = ["macros"] }
 nom = "8.0.0"
 ratatui = { version = "0.30.0", default-features = false, features = ["crossterm"] }
 regex = "1.12.4"

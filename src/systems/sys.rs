@@ -1,16 +1,11 @@
-use anyhow::Result;
 use ropey::Rope;
 
 use crate::{
     cmd::{Cmd, ExMode, InsertPoint, SysOp},
-    components::{
-        Buffer, BufferView, Config, EditorCtx, EditorState, Focus, Level, Mode, RepeatBuffer,
-        Session, Status,
-    },
+    components::{BufferView, Config, EditorCtx, Focus, Level, Mode},
     ex::ExRange,
     systems::{
-        commons::{self, mut_active_session_query, mut_ex_session_query},
-        ex,
+        commons, ex,
         insert::{clear_ex, insert_char, post_insert},
         nav::{NormalNav, move_left},
         quit_editor,
@@ -28,106 +23,87 @@ impl SysArgs {
     }
 }
 
-pub fn handle_sys(ctx: &EditorCtx, args: SysArgs) -> Result<()> {
+pub fn handle_sys(ctx: &mut EditorCtx, args: SysArgs) {
     match args.op {
         SysOp::EnterNormal => enter_normal(ctx),
         SysOp::EnterInsert(insert_point) => enter_insert(ctx, insert_point, args.cmd),
         SysOp::EnterEx(ex_mode) => enter_ex(ctx, ex_mode),
         SysOp::HardQuit => quit_editor(ctx),
         SysOp::CondWriteAndQuit => {
-            ex::save_active(ctx, None, false, true, ExRange::All)?;
+            ex::save_active(ctx, None, false, true, ExRange::All).unwrap();
             quit_editor(ctx)
         }
     }
 }
 
-pub fn enter_insert(ctx: &EditorCtx, insert_point: InsertPoint, cmd: Cmd) -> Result<()> {
-    clear_ex(ctx)?;
+pub fn enter_insert(ctx: &mut EditorCtx, insert_point: InsertPoint, cmd: Cmd) {
+    clear_ex(ctx);
 
-    let mut status = ctx.world.get::<&mut Status>(ctx.status_id)?;
-    status.clear_cmd();
-    status.set_msg(Level::Info, "--INSERT--");
+    ctx.status.clear_cmd();
+    ctx.status.set_msg(Level::Info, "--INSERT--");
 
-    let mut rep_buf = ctx.world.get::<&mut RepeatBuffer>(ctx.repbuf_id)?;
-    rep_buf.start_interaction(cmd);
+    ctx.repbuf.start_interaction(cmd);
 
-    let config = ctx.world.get::<&Config>(ctx.config_id)?;
-    let mut editor = ctx.world.get::<&mut EditorState>(ctx.editor_id)?;
-    let mut q_session = mut_active_session_query(ctx)?;
-    let (session, buf_view) = q_session.get()?;
-    let buffer = ctx.world.get::<&Buffer>(session.buf_id)?;
+    let (session, buf_view) = ctx.sessions.get_mut(&ctx.editor.session_id).unwrap();
+    let buffer = ctx.buffers.get_mut(&session.buf_id).unwrap();
 
-    editor.focus = Focus::Session;
-    editor.char_at_cursor = None;
+    ctx.editor.focus = Focus::Session;
+    ctx.editor.char_at_cursor = None;
 
     session.mode = Mode::Insert;
     session
         .insert_log
         .init(cmd.reps.unwrap_or(1).saturating_sub(1));
 
-    apply_insert_point(&config, &buffer.rope, buf_view, insert_point);
-    Ok(())
+    apply_insert_point(&ctx.config, &buffer.rope, buf_view, insert_point);
 }
 
-pub fn enter_normal(ctx: &EditorCtx) -> Result<()> {
-    clear_ex(ctx)?;
+pub fn enter_normal(ctx: &mut EditorCtx) {
+    clear_ex(ctx);
 
-    let old_mode = {
-        let mut status = ctx.world.get::<&mut Status>(ctx.status_id)?;
-        status.clear_msg();
-        status.clear_cmd();
+    ctx.editor.focus = Focus::Session;
+    ctx.editor.char_at_cursor = None;
 
-        let mut editor = ctx.world.get::<&mut EditorState>(ctx.editor_id)?;
-        editor.focus = Focus::Session;
-        editor.char_at_cursor = None;
+    ctx.status.clear_msg();
+    ctx.status.clear_cmd();
 
-        let mut session = ctx.world.get::<&mut Session>(editor.session_id)?;
-        let old_mode = session.mode;
-        session.mode = Mode::Normal;
-
-        old_mode
-    };
+    let (session, _) = ctx.active_session_mut();
+    let old_mode = session.mode;
+    session.mode = Mode::Normal;
 
     if old_mode == Mode::Insert {
-        post_insert(ctx)?;
+        post_insert(ctx);
     }
 
     restore_cursor(ctx)
 }
 
-fn enter_ex(ctx: &EditorCtx, ex_mode: ExMode) -> Result<()> {
-    clear_ex(ctx)?;
+fn enter_ex(ctx: &mut EditorCtx, ex_mode: ExMode) {
+    clear_ex(ctx);
 
-    let config = ctx.world.get::<&Config>(ctx.config_id)?;
-    let mut editor = ctx.world.get::<&mut EditorState>(ctx.editor_id)?;
-    let mut q_ex = mut_ex_session_query(ctx)?;
-    let (ex_session, buf_view) = q_ex.get()?;
+    ctx.editor.focus = Focus::Ex;
+    ctx.editor.char_at_cursor = None;
 
-    editor.focus = Focus::Ex;
-    editor.char_at_cursor = None;
+    let ex_session = &mut ctx.ex_session;
+    let buf_view = &mut ctx.ex_buffer_view;
 
     let _ = match ex_mode {
-        ExMode::Colon => insert_char(&config, buf_view, &mut ex_session.rope, ':'),
-        ExMode::SearchForward => insert_char(&config, buf_view, &mut ex_session.rope, '/'),
-        ExMode::SearchBackward => insert_char(&config, buf_view, &mut ex_session.rope, '?'),
+        ExMode::Colon => insert_char(&ctx.config, buf_view, &mut ex_session.rope, ':'),
+        ExMode::SearchForward => insert_char(&ctx.config, buf_view, &mut ex_session.rope, '/'),
+        ExMode::SearchBackward => insert_char(&ctx.config, buf_view, &mut ex_session.rope, '?'),
     };
 
-    apply_insert_point(&config, &ex_session.rope, buf_view, InsertPoint::Last);
-    Ok(())
+    apply_insert_point(&ctx.config, &ex_session.rope, buf_view, InsertPoint::Last);
 }
 
-fn restore_cursor(ctx: &EditorCtx) -> Result<()> {
-    let config = ctx.world.get::<&Config>(ctx.config_id)?;
-    let mut q_session = mut_active_session_query(ctx)?;
-    let (session, buf_view) = q_session.get()?;
-    let buffer = ctx.world.get::<&Buffer>(session.buf_id)?;
+fn restore_cursor(ctx: &mut EditorCtx) {
+    let (session, buf_view) = ctx.sessions.get_mut(&ctx.editor.session_id).unwrap();
+    let buffer = ctx.buffers.get_mut(&session.buf_id).unwrap();
 
     let cursor = buf_view.cursor;
-    let line = commons::curr_line(&config, &buffer.rope, buf_view);
+    let line = commons::curr_line(&ctx.config, &buffer.rope, buf_view);
     buf_view.cursor.col = line.snap_col(cursor.col);
-    move_left::<NormalNav>(&config, &buffer.rope, buf_view, 1);
-
-    Ok(())
+    move_left::<NormalNav>(&ctx.config, &buffer.rope, buf_view, 1);
 }
 
 fn apply_insert_point(

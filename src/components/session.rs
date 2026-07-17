@@ -4,8 +4,7 @@ use ratatui::layout::{Position, Rect};
 use ropey::Rope;
 
 use crate::{
-    components::{DisplayBuffer, InsertLog},
-    misc,
+    components::{BufferId, DisplayBuffer, InsertLog}, misc,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -108,13 +107,13 @@ impl<T: Into<String>> From<T> for BufferName {
 pub struct Session {
     pub mode: Mode,
     pub buf_name: Option<BufferName>,
-    pub buf_id: hecs::Entity,
+    pub buf_id: BufferId,
     pub viewport: Viewport,
     pub insert_log: InsertLog,
 }
 
 impl Session {
-    pub fn new(buf_name: BufferName, buf_id: hecs::Entity) -> Self {
+    pub fn new(buf_name: BufferName, buf_id: BufferId) -> Self {
         Self {
             mode: Mode::Normal,
             buf_name: Some(buf_name),
@@ -124,7 +123,7 @@ impl Session {
         }
     }
 
-    pub fn empty(buf_id: hecs::Entity) -> Self {
+    pub fn empty(buf_id: BufferId) -> Self {
         Self {
             mode: Mode::Normal,
             buf_name: None,

@@ -40,12 +40,11 @@ fn main() -> Result<()> {
 
     digraphs::load_digraphs();
 
-    let mut world = hecs::World::new();
-    let mut ctx = systems::create_editor(&mut world);
+    let mut ctx = systems::create_editor();
 
     let args = std::env::args().collect::<Vec<_>>();
     if args.len() == 1 {
-        systems::create_empty_session(&mut ctx)?;
+        systems::create_empty_session(&mut ctx);
     } else {
         systems::load_session(&mut ctx, &args[1])?;
     };
@@ -70,26 +69,26 @@ fn editor_loop(
     // the active sesssion, which might be anywere and hence force scrolling.
     // Since scrolling requires viewport size, we do a pre-render pass first.
     terminal.draw(|frame| {
-        systems::pre_render(&mut ctx, frame.area()).unwrap();
-        init_cursor_pos(&ctx).unwrap();
+        systems::pre_render(&mut ctx, frame.area());
+        init_cursor_pos(&mut ctx);
     })?;
 
-    while !systems::should_quit(&ctx)? {
+    while !systems::should_quit(&mut ctx) {
         terminal.draw(|frame| {
             let area = frame.area();
-            systems::pre_render(&mut ctx, area).unwrap();
-            systems::render(&ctx, area, frame.buffer_mut()).unwrap();
+            systems::pre_render(&mut ctx, area);
+            systems::render(&mut ctx, area, frame.buffer_mut());
 
-            let cursor_pos = systems::cursor_pos(&ctx).unwrap();
+            let cursor_pos = systems::cursor_pos(&ctx);
             frame.set_cursor_position(cursor_pos);
         })?;
 
         if event::poll(Duration::from_millis(250))? {
             let event = event::read()?;
-            input_handler.handle_event(&ctx, event)?;
+            input_handler.handle_event(&mut ctx, event);
         }
 
-        systems::handle_ex_state(&ctx);
+        systems::handle_ex_state(&mut ctx);
     }
 
     Ok(())

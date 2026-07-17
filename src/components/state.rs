@@ -1,4 +1,4 @@
-use hecs::Entity;
+use crate::components::SessionId;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Level {
@@ -65,7 +65,7 @@ pub enum Focus {
 pub struct EditorState {
     pub focus: Focus,
     pub quit: bool,
-    pub session_id: Entity,
+    pub session_id: SessionId,
     pub char_at_cursor: Option<char>,
 }
 
@@ -74,7 +74,7 @@ impl EditorState {
         Self {
             focus: Focus::Session,
             quit: false,
-            session_id: Entity::DANGLING,
+            session_id: 0,
             char_at_cursor: None,
         }
     }
