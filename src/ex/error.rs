@@ -40,12 +40,6 @@ pub enum ExError {
         #[from]
         source: std::io::Error,
     },
-
-    #[error("InternalError: {source} --this is an editor bug!")]
-    InternalError {
-        #[from]
-        source: anyhow::Error,
-    },
 }
 
 impl ExError {

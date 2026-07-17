@@ -1,62 +1,47 @@
-use anyhow::Result;
-use hecs::Entity;
 use ratatui::layout::Rect;
 
-use crate::{
-    components::{Buffer, BufferView, Config, Coords, EditorCtx, ExSession, Session, Viewport},
-    systems::commons::mut_ex_session_query,
-};
+use crate::components::{Coords, EditorCtx, Viewport};
 
-pub fn pre_render(ctx: &mut EditorCtx, area: Rect) -> Result<()> {
-    let (session_area, ex_area) = get_areas(ctx, area)?;
+pub fn pre_render(ctx: &mut EditorCtx, area: Rect) {
+    let (session_area, ex_area) = get_areas(ctx, area);
 
     scroll_sessions(ctx);
-    scroll_ex(ctx)?;
+    scroll_ex(ctx);
 
     resize_sessions(ctx, session_area);
-    resize_ex(ctx, ex_area)?;
+    resize_ex(ctx, ex_area);
 
-    sync_sessions(ctx)?;
-    sync_ex(ctx)?;
-
-    Ok(())
+    sync_sessions(ctx);
+    sync_ex(ctx);
 }
 
 fn scroll_sessions(ctx: &mut EditorCtx) {
-    let q_sessions = ctx.world.query_mut::<(&mut Session, &mut BufferView)>();
-    for (session, buf_view) in q_sessions {
+    for (session, buf_view) in ctx.sessions.values_mut() {
         scroll(buf_view.cursor, &mut session.viewport)
     }
 }
 
-fn scroll_ex(ctx: &EditorCtx) -> Result<()> {
-    let buf_view = ctx.world.get::<&BufferView>(ctx.ex_session_id)?;
-    let cursor = buf_view.cursor;
-    let mut ex_session = ctx.world.get::<&mut ExSession>(ctx.ex_session_id)?;
-    scroll(cursor, &mut ex_session.viewport);
-    Ok(())
+fn scroll_ex(ctx: &mut EditorCtx) {
+    let cursor = ctx.ex_buffer_view.cursor;
+    scroll(cursor, &mut ctx.ex_session.viewport);
 }
 
-fn resize_sessions(ctx: &EditorCtx, area: Rect) {
-    let mut q_sessions = ctx.world.query::<(&mut Session, &mut BufferView)>();
-    for (session, buf_view) in q_sessions.into_iter() {
+fn resize_sessions(ctx: &mut EditorCtx, area: Rect) {
+    for (session, buf_view) in ctx.sessions.values_mut() {
         resize_session(area, buf_view.cursor, &mut session.viewport);
     }
 }
 
-fn resize_ex(ctx: &EditorCtx, area: Rect) -> Result<()> {
-    let buf_view = ctx.world.get::<&BufferView>(ctx.ex_session_id)?;
-    let cursor = buf_view.cursor;
-    let mut ex_session = ctx.world.get::<&mut ExSession>(ctx.ex_session_id)?;
-    resize_ex_session(area, cursor, &mut ex_session.viewport);
-    Ok(())
+fn resize_ex(ctx: &mut EditorCtx, area: Rect) {
+    let cursor = ctx.ex_buffer_view.cursor;
+    resize_ex_session(area, cursor, &mut ctx.ex_session.viewport);
 }
 
-fn get_areas(ctx: &EditorCtx, area: Rect) -> Result<(Rect, Rect)> {
+fn get_areas(ctx: &EditorCtx, area: Rect) -> (Rect, Rect) {
     let total_height = area.height as usize;
 
-    let ex_session = ctx.world.get::<&ExSession>(ctx.ex_session_id)?;
-    let ex_height = ex_session
+    let ex_height = ctx
+        .ex_session
         .rope
         .len_lines()
         .clamp(1, total_height.saturating_sub(1));
@@ -71,15 +56,12 @@ fn get_areas(ctx: &EditorCtx, area: Rect) -> Result<(Rect, Rect)> {
         ex_height as u16,
     );
 
-    Ok((session_area, ex_area))
+    (session_area, ex_area)
 }
 
-fn sync_sessions(ctx: &mut EditorCtx) -> Result<()> {
-    let config = ctx.world.get::<&Config>(ctx.config_id)?;
-    let mut q_sessions = ctx.world.query::<(Entity, &Session)>();
-
-    for (entity, session) in &mut q_sessions {
-        let buffer = ctx.world.get::<&Buffer>(session.buf_id)?;
+fn sync_sessions(ctx: &mut EditorCtx) {
+    for (session, buf_view) in ctx.sessions.values_mut() {
+        let buffer = ctx.buffers.get(&session.buf_id).unwrap();
         let len_lines = buffer.rope.len_lines();
 
         let height = session.viewport.area.height as usize;
@@ -87,30 +69,21 @@ fn sync_sessions(ctx: &mut EditorCtx) -> Result<()> {
         let start = scroll_row.saturating_sub(height);
         let end = (scroll_row + height * 2).min(len_lines);
 
-        let mut buf_view = ctx.world.get::<&mut BufferView>(entity)?;
         buf_view
             .display_buf
-            .ensure_range(&config, &buffer.rope, start..end);
+            .ensure_range(&ctx.config, &buffer.rope, start..end);
     }
-
-    Ok(())
 }
 
-fn sync_ex(ctx: &EditorCtx) -> Result<()> {
-    let config = ctx.world.get::<&Config>(ctx.config_id)?;
-    let mut q_ex = mut_ex_session_query(ctx)?;
-    let (ex_session, buf_view) = q_ex.get()?;
+fn sync_ex(ctx: &mut EditorCtx) {
+    let len_lines = ctx.ex_session.rope.len_lines();
+    let height = ctx.ex_session.viewport.area.height as usize;
+    let start = ctx.ex_session.viewport.scroll.row.saturating_sub(height);
+    let end = (ctx.ex_session.viewport.scroll.row + height * 2).min(len_lines);
 
-    let len_lines = ex_session.rope.len_lines();
-    let height = ex_session.viewport.area.height as usize;
-    let start = ex_session.viewport.scroll.row.saturating_sub(height);
-    let end = (ex_session.viewport.scroll.row + height * 2).min(len_lines);
-
-    buf_view
+    ctx.ex_buffer_view
         .display_buf
-        .ensure_range(&config, &ex_session.rope, start..end);
-
-    Ok(())
+        .ensure_range(&ctx.config, &ctx.ex_session.rope, start..end);
 }
 
 fn scroll(cursor: Coords, viewport: &mut Viewport) {

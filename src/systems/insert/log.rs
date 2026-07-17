@@ -1,13 +1,10 @@
-use anyhow::Result;
 use ropey::Rope;
 
 use crate::{
     cmd::EditOp,
-    components::{Buffer, BufferView, Config, EditorCtx},
+    components::{BufferView, Config, EditorCtx},
     systems::{
-        commons::{
-            active_session_id, char_idx_to_coords, cursor_to_char_idx, mut_active_session_query,
-        },
+        commons::{char_idx_to_coords, cursor_to_char_idx},
         insert::{
             buffer::Damage,
             session::{DamageEvent, broadcast_damage},
@@ -15,25 +12,20 @@ use crate::{
     },
 };
 
-pub fn apply_insert_log(ctx: &EditorCtx, ops: &Vec<EditOp>, reps: usize) -> Result<()> {
-    let damage_evt = intepret_insert_log(ctx, ops, reps)?;
-
-    let session_id = active_session_id(&ctx)?;
-    broadcast_damage(ctx, session_id, damage_evt)
+pub fn apply_insert_log(ctx: &mut EditorCtx, ops: &Vec<EditOp>, reps: usize) {
+    let damage_evt = intepret_insert_log(ctx, ops, reps);
+    broadcast_damage(ctx, damage_evt)
 }
 
-pub fn intepret_insert_log(ctx: &EditorCtx, ops: &Vec<EditOp>, reps: usize) -> Result<DamageEvent> {
-    let session_id = active_session_id(ctx)?;
-    let mut q_session = mut_active_session_query(ctx)?;
-    let (session, buf_view) = q_session.get()?;
+pub fn intepret_insert_log(ctx: &mut EditorCtx, ops: &Vec<EditOp>, reps: usize) -> DamageEvent {
+    let (session, buf_view) = ctx.sessions.get_mut(&ctx.editor.session_id).unwrap();
+    let buffer = ctx.buffers.get_mut(&session.buf_id).unwrap();
 
-    let config = ctx.world.get::<&Config>(ctx.config_id)?;
-    let mut buffer = ctx.world.get::<&mut Buffer>(session.buf_id)?;
-    let mut interpreter = InsertLogInterpreter::new(&config, buf_view, &mut buffer.rope);
+    let mut interpreter = InsertLogInterpreter::new(&ctx.config, buf_view, &mut buffer.rope);
 
     let damage = interpreter.interpret(ops, reps);
     buffer.dirty = true;
-    Ok(DamageEvent::new(session.buf_id, damage))
+    DamageEvent::new(session.buf_id, damage)
 }
 
 struct InsertLogInterpreter<'a> {

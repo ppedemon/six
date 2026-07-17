@@ -1,34 +1,29 @@
 use crate::{
-    components::{EditorCtx, ExSession, ExState, Level},
+    components::{EditorCtx, ExState, Level},
     ex::{ExCmd, ExError, ExRange, parse_cmd_line},
-    systems::{ex::builtin::exec_builtin, status, sys::enter_normal},
+    systems::{ex::builtin::exec_builtin, sys::enter_normal},
 };
 
-pub fn handle_ex_state(ctx: &EditorCtx) {
-    let ex_state = {
-        let mut ex_session = ctx.world.get::<&mut ExSession>(ctx.ex_session_id).unwrap();
-        std::mem::replace(&mut ex_session.state, ExState::Idle)
-    };
+pub fn handle_ex_state(ctx: &mut EditorCtx) {
+    let ex_state = { std::mem::replace(&mut ctx.ex_session.state, ExState::Idle) };
 
     match ex_state {
         ExState::Idle => {}
-        ExState::Cancel => {
-            enter_normal(ctx).unwrap();
-        }
+        ExState::Cancel => enter_normal(ctx),
         ExState::Submit(s) => {
-            enter_normal(ctx).unwrap();
+            enter_normal(ctx);
             if let Some((head, cmd_line)) = split(&s)
                 && !cmd_line.is_empty()
             {
                 exec(ctx, head, cmd_line).unwrap_or_else(|err| {
-                    status::set_msg(ctx, Level::Error, &err.to_string()).unwrap();
+                    ctx.status.set_msg(Level::Error, &err.to_string());
                 });
             }
         }
     }
 }
 
-fn exec(ctx: &EditorCtx, head: char, cmd_line: &str) -> Result<(), ExError> {
+fn exec(ctx: &mut EditorCtx, head: char, cmd_line: &str) -> Result<(), ExError> {
     match head {
         ':' => {
             let ex_cmds = parse_cmd_line(cmd_line.as_ref())?;

@@ -1,75 +1,50 @@
+use ropey::Rope;
 use std::{fs::File, io::BufReader, path::PathBuf};
 
-use anyhow::Result;
-use hecs::{Entity, World};
-use ropey::Rope;
-
 use crate::{
-    components::{
-        Buffer, BufferName, BufferView, Config, EditorCtx, EditorState, ExSession, LastSearch,
-        Registers, RepeatBuffer, Session, Status,
-    },
+    components::{Buffer, BufferId, BufferName, BufferView, EditorCtx, Session, SessionId},
     misc::path::norm_filename,
-    rope::{self},
+    rope,
     systems::event,
 };
 
-pub fn create_editor(world: &mut World) -> EditorCtx<'_> {
-    let config_id = world.spawn((Config::default(),));
-    let editor_id = world.spawn((EditorState::new(),));
-    let ex_session_id = world.spawn((ExSession::new(), BufferView::empty()));
-    let status_id = world.spawn((Status::new(),));
-    let registers_id = world.spawn((Registers::empty(),));
-    let repeat_id = world.spawn((RepeatBuffer::new(),));
-    let search_id = world.spawn((LastSearch::empty(),));
-
-    EditorCtx {
-        world,
-        config_id,
-        editor_id,
-        ex_session_id,
-        status_id,
-        registers_id,
-        repbuf_id: repeat_id,
-        search_id,
-    }
+pub fn create_editor() -> EditorCtx {
+    EditorCtx::new()
 }
 
-pub fn should_quit(ctx: &EditorCtx) -> Result<bool> {
-    let editor = ctx.world.get::<&EditorState>(ctx.editor_id)?;
-    Ok(editor.quit)
+pub fn should_quit(ctx: &EditorCtx) -> bool {
+    ctx.editor.quit
 }
 
 // Hard quit, no questions asked
-pub fn quit_editor(ctx: &EditorCtx) -> Result<()> {
-    let mut editor_state = ctx.world.get::<&mut EditorState>(ctx.editor_id)?;
-    editor_state.quit = true;
-    Ok(())
+pub fn quit_editor(ctx: &mut EditorCtx) {
+    ctx.editor.quit = true;
 }
 
-pub fn load_session(ctx: &mut EditorCtx, filename: &str) -> Result<()> {
+pub fn load_session(ctx: &mut EditorCtx, filename: &str) -> Result<(), std::io::Error> {
     let file_path = norm_filename(filename);
     let buf_name = BufferName::new(filename, file_path.clone());
 
     let buf_id = create_buffer(ctx, &buf_name)?;
     let buf_view = BufferView::empty();
     let session = Session::new(buf_name, buf_id);
-    let session_id = ctx.world.spawn((session, buf_view));
-    set_active_session(ctx, session_id)
+    let session_id = ctx.spawn_session(session, buf_view);
+    set_active_session(ctx, session_id);
+    Ok(())
 }
 
-pub fn create_empty_session(ctx: &mut EditorCtx) -> Result<()> {
+pub fn create_empty_session(ctx: &mut EditorCtx) {
     let buffer = Buffer::empty();
-    let buf_id = ctx.world.spawn((buffer,));
+    let buf_id = ctx.spawn_buffer(buffer);
     let buf_view = BufferView::empty();
     let session = Session::empty(buf_id);
-    let session_id = ctx.world.spawn((session, buf_view));
-    set_active_session(ctx, session_id)
+    let session_id = ctx.spawn_session(session, buf_view);
+    set_active_session(ctx, session_id);
 }
 
-fn create_buffer(ctx: &mut EditorCtx, buf_name: &BufferName) -> Result<Entity> {
+fn create_buffer(ctx: &mut EditorCtx, buf_name: &BufferName) -> Result<BufferId, std::io::Error> {
     let file_path = &buf_name.file_path;
-    let buf_id = match find_buffer(ctx.world, file_path) {
+    let buf_id = match find_buffer(ctx, file_path) {
         Some(buf_id) => buf_id,
         None => {
             let buffer = if file_path.exists() {
@@ -82,16 +57,16 @@ fn create_buffer(ctx: &mut EditorCtx, buf_name: &BufferName) -> Result<Entity> {
                 Buffer::empty()
             };
 
-            event::on_buffer_loaded(ctx, buf_name, &buffer.rope)?;
-            ctx.world.spawn((buffer,))
+            event::on_buffer_loaded(&mut ctx.status, buf_name, &buffer.rope);
+            ctx.spawn_buffer(buffer)
         }
     };
 
     Ok(buf_id)
 }
 
-fn find_buffer(world: &World, file_path: &PathBuf) -> Option<Entity> {
-    for session in world.query::<&Session>().iter() {
+fn find_buffer(ctx: &EditorCtx, file_path: &PathBuf) -> Option<BufferId> {
+    for (session, _) in ctx.sessions.values() {
         if session
             .buf_name
             .as_ref()
@@ -103,8 +78,6 @@ fn find_buffer(world: &World, file_path: &PathBuf) -> Option<Entity> {
     None
 }
 
-fn set_active_session(ctx: &EditorCtx, session_id: Entity) -> Result<()> {
-    let mut editor_state = ctx.world.get::<&mut EditorState>(ctx.editor_id)?;
-    editor_state.session_id = session_id;
-    Ok(())
+fn set_active_session(ctx: &mut EditorCtx, session_id: SessionId) {
+    ctx.editor.session_id = session_id;
 }

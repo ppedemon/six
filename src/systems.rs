@@ -9,7 +9,6 @@ mod lifecycle;
 mod nav;
 mod pre_render;
 mod render;
-mod status;
 mod sys;
 
 pub use ex::handle_ex_state;

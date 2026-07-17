@@ -1,21 +1,14 @@
-use anyhow::Result;
-use hecs::Entity;
 use ropey::Rope;
 
 use super::{
     buffer,
     rules::{InsertNav, NavRules, NormalNav},
 };
+use crate::components::{BufferView, Config, EditorCtx, Focus, LastSearch, Mode, Viewport};
 use crate::{
     cmd::{Cmd, Motion},
     rope,
     systems::commons::{char_idx_to_coords, cursor_to_char_idx, snap_coords},
-};
-use crate::{
-    components::{
-        Buffer, BufferView, Config, EditorCtx, EditorState, Focus, LastSearch, Mode, Viewport,
-    },
-    systems::commons::{mut_active_session_query, mut_ex_session_query},
 };
 
 pub struct NavArgs {
@@ -29,51 +22,42 @@ impl NavArgs {
     }
 }
 
-pub fn handle_nav(ctx: &EditorCtx, nav_args: NavArgs) -> Result<()> {
-    let editor = ctx.world.get::<&EditorState>(ctx.editor_id)?;
-    match editor.focus {
+pub fn handle_nav(ctx: &mut EditorCtx, nav_args: NavArgs) {
+    match ctx.editor.focus {
         Focus::Ex => handle_ex_nav(ctx, nav_args),
-        Focus::Session => handle_session_nav(ctx, editor.session_id, nav_args),
+        Focus::Session => handle_session_nav(ctx, nav_args),
     }
 }
 
-fn handle_ex_nav(ctx: &EditorCtx, args: NavArgs) -> Result<()> {
-    let config = ctx.world.get::<&Config>(ctx.config_id)?;
-    let mut q_ex = mut_ex_session_query(ctx)?;
-    let (ex_session, buf_view) = q_ex.get()?;
-
+fn handle_ex_nav(ctx: &mut EditorCtx, args: NavArgs) {
     let reps = args.cmd.reps.unwrap_or(1);
+    let buf_view = &mut ctx.ex_buffer_view;
 
     match args.motion {
         Motion::Left => {
             if buf_view.cursor.col > 1 {
-                buffer::move_left::<InsertNav>(&config, &ex_session.rope, buf_view, reps);
+                buffer::move_left::<InsertNav>(&ctx.config, &ctx.ex_session.rope, buf_view, reps);
             }
         }
         Motion::Right => {
-            buffer::move_right::<InsertNav>(&config, &ex_session.rope, buf_view, reps);
+            buffer::move_right::<InsertNav>(&ctx.config, &ctx.ex_session.rope, buf_view, reps);
         }
         _ => {}
     }
-
-    Ok(())
 }
 
-fn handle_session_nav(ctx: &EditorCtx, session_id: Entity, args: NavArgs) -> Result<()> {
-    let config = ctx.world.get::<&Config>(ctx.config_id)?;
-    let mut last_search = ctx.world.get::<&mut LastSearch>(ctx.search_id)?;
-
-    let mut q_session = mut_active_session_query(ctx)?;
-    let (session, buf_view) = q_session.get()?;
-    let buffer = ctx.world.get::<&Buffer>(session.buf_id)?;
+fn handle_session_nav(ctx: &mut EditorCtx, args: NavArgs) {
+    let config = &ctx.config;
+    let (session, buf_view) = ctx.sessions.get_mut(&ctx.editor.session_id).unwrap();
+    let buffer = ctx.buffers.get(&session.buf_id).unwrap();
 
     match session.mode {
         Mode::Insert => {
             session.insert_log.reset();
             session_nav::<InsertNav>(
-                &config,
+                config,
                 &buffer.rope,
-                &mut last_search,
+                &mut ctx.search,
                 &mut session.viewport,
                 buf_view,
                 args,
@@ -81,17 +65,15 @@ fn handle_session_nav(ctx: &EditorCtx, session_id: Entity, args: NavArgs) -> Res
         }
         Mode::Normal => {
             session_nav::<NormalNav>(
-                &config,
+                &ctx.config,
                 &buffer.rope,
-                &mut last_search,
+                &mut ctx.search,
                 &mut session.viewport,
                 buf_view,
                 args,
             );
         }
     }
-
-    Ok(())
 }
 
 const PAGE_SCROLL_MARGIN: u16 = 3;
@@ -160,15 +142,10 @@ fn session_nav<R: NavRules>(
 }
 
 // On startup, move cursor to the first non-blank character of the active session
-pub fn init_cursor_pos(ctx: &EditorCtx) -> Result<()> {
-    let config = ctx.world.get::<&Config>(ctx.config_id)?;
-    let mut q_session = mut_active_session_query(ctx)?;
-    let (session, buf_view) = q_session.get()?;
-
-    let buffer = ctx.world.get::<&Buffer>(session.buf_id)?;
-    buffer::file_first_non_blank::<NormalNav>(&config, &buffer.rope, buf_view);
-
-    Ok(())
+pub fn init_cursor_pos(ctx: &mut EditorCtx) {
+    let (session, buf_view) = ctx.sessions.get_mut(&ctx.editor.session_id).unwrap();
+    let buffer = ctx.buffers.get(&session.buf_id).unwrap();
+    buffer::file_first_non_blank::<NormalNav>(&ctx.config, &buffer.rope, buf_view);
 }
 
 pub fn goto_line<R: NavRules>(

@@ -1,9 +1,8 @@
-use anyhow::Result;
 use crossterm::event::Event;
 
 use crate::{
     cmd::{Cmd, InsertOp, Operator},
-    components::{EditorCtx, EditorState, Focus, Mode, Session},
+    components::{EditorCtx, Focus, Mode},
     systems::{
         immediate::{ImmediateArgs, handle_immediate},
         input::{insert::InsertInputHandler, normal::NormalInputHandler},
@@ -27,16 +26,12 @@ impl InputHandler {
         }
     }
 
-    pub fn handle_event(&mut self, ctx: &EditorCtx, event: Event) -> Result<()> {
-        let (focus, session_id) = {
-            let editor = ctx.world.get::<&EditorState>(ctx.editor_id)?;
-            (editor.focus, editor.session_id)
-        };
-        match focus {
+    pub fn handle_event(&mut self, ctx: &mut EditorCtx, event: Event) {
+        match ctx.editor.focus {
             Focus::Ex => self.insert.handle_event(ctx, event),
             Focus::Session => {
                 let mode = {
-                    let session = ctx.world.get::<&Session>(session_id)?;
+                    let (session, _) = ctx.active_session();
                     session.mode
                 };
                 match mode {
@@ -48,10 +43,10 @@ impl InputHandler {
     }
 }
 
-pub fn dispatch_cmd(ctx: &EditorCtx, cmd: Cmd) -> Result<()> {
+pub fn dispatch_cmd(ctx: &mut EditorCtx, cmd: Cmd) {
     let reps = cmd.reps;
     match cmd.op {
-        Operator::Nop => Ok(()),
+        Operator::Nop => {}
         Operator::Sys(op) => {
             let args = SysArgs::new(op, cmd);
             handle_sys(ctx, args)
@@ -71,7 +66,7 @@ pub fn dispatch_cmd(ctx: &EditorCtx, cmd: Cmd) -> Result<()> {
     }
 }
 
-pub fn dispatch_insert(ctx: &EditorCtx, op: InsertOp) -> Result<()> {
+pub fn dispatch_insert(ctx: &mut EditorCtx, op: InsertOp) {
     match op {
         InsertOp::Esc => enter_normal(ctx),
         InsertOp::Edit(edit_op) => handle_edit(ctx, edit_op),
