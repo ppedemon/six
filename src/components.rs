@@ -14,7 +14,7 @@ pub use buffer::Buffer;
 pub use config::Config;
 pub use display::{DisplayBuffer, DisplayLine, DisplayLineRef};
 pub use insert_log::InsertLog;
-pub use registers::{Register, Registers, YankFlavor};
+pub use registers::{Register, Registers};
 pub use repeat::{RepeatBuffer, RepeatBufferItem};
 pub use search::LastSearch;
 pub use session::{BufferName, BufferView, Coords, ExSession, ExState, Mode, Session, Viewport};
