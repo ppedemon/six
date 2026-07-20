@@ -3,7 +3,7 @@ use crossterm::event::{Event, KeyCode, KeyEvent};
 use crate::{
     cmd::{Arg, Cmd, Operator, TextObject, TextObjectScope},
     components::EditorCtx,
-    systems::input::{handler::dispatch_cmd, parsers::*},
+    systems::input::{evt::Pretty, handler::dispatch_cmd, parsers::*, trie::FindResult},
 };
 
 enum State {
@@ -27,7 +27,7 @@ pub struct NormalInputHandler {
     op: Operator,
     arg_reps: Option<usize>,
     to_scope: Option<TextObjectScope>,
-    input: String,
+    input: Vec<KeyEvent>,
     cmd_buffer: String,
 }
 
@@ -40,7 +40,7 @@ impl NormalInputHandler {
             op: Operator::Nop,
             arg_reps: None,
             to_scope: None,
-            input: String::with_capacity(256),
+            input: Vec::with_capacity(256),
             cmd_buffer: String::with_capacity(256),
         }
     }
@@ -73,7 +73,7 @@ impl NormalInputHandler {
             self.reset(ctx);
         }
 
-        self.cmd_buffer.extend(evt.code.to_string().chars());
+        self.cmd_buffer.push_str(&evt.pretty().to_string());
         ctx.status.set_cmd(&self.cmd_buffer);
 
         match self.state {
@@ -95,22 +95,25 @@ impl NormalInputHandler {
         let (starts_reg, digit, op) = (
             starts_reg(evt),
             parse_non_zero_digit(evt),
-            parse_op(None, &mut self.input, evt),
+            parse_op(self.reps, &[evt]),
         );
 
         match (starts_reg, digit, op) {
-            (true, None, ParseResult::Error) => self.state = State::Reg1,
+            (true, None, FindResult::Miss) => self.state = State::Reg1,
             (false, Some(d), _) => {
                 self.reps = Some(d as usize);
                 self.state = State::Reps;
             }
-            (false, None, ParseResult::Cont) => self.state = State::Op,
-            (false, None, ParseResult::Done { result, needs_args }) => {
-                if needs_args {
+            (false, None, FindResult::Partial) => {
+                self.input.push(evt);
+                self.state = State::Op;
+            }
+            (false, None, FindResult::Hit(OpResult { op, needs_arg })) => {
+                if needs_arg {
                     self.input.clear();
                     self.state = State::ArgInit;
                 } else {
-                    let cmd = Cmd::new(result);
+                    let cmd = Cmd::new(op);
                     self.done(ctx, cmd);
                 }
             }
@@ -129,23 +132,23 @@ impl NormalInputHandler {
     }
 
     fn handle_reg2(&mut self, ctx: &mut EditorCtx, evt: KeyEvent) {
-        let (digit, op) = (
-            parse_non_zero_digit(evt),
-            parse_op(self.reps, &mut self.input, evt),
-        );
+        let (digit, op) = (parse_non_zero_digit(evt), parse_op(self.reps, &[evt]));
 
         match (digit, op) {
             (Some(d), _) => {
                 self.reps = Some(d as usize);
                 self.state = State::RegReps;
             }
-            (None, ParseResult::Cont) => self.state = State::Op,
-            (None, ParseResult::Done { result, needs_args }) => {
-                if needs_args {
+            (None, FindResult::Partial) => {
+                self.input.push(evt);
+                self.state = State::Op;
+            }
+            (None, FindResult::Hit(OpResult { op, needs_arg })) => {
+                if needs_arg {
                     self.input.clear();
                     self.state = State::ArgInit;
                 } else {
-                    let cmd = Cmd::new(result).reg(self.reg);
+                    let cmd = Cmd::new(op).reg(self.reg);
                     self.done(ctx, cmd);
                 }
             }
@@ -154,10 +157,7 @@ impl NormalInputHandler {
     }
 
     fn handle_reg_reps(&mut self, ctx: &mut EditorCtx, evt: KeyEvent) {
-        let (digit, op) = (
-            parse_non_zero_digit(evt),
-            parse_op(self.reps, &mut self.input, evt),
-        );
+        let (digit, op) = (parse_non_zero_digit(evt), parse_op(self.reps, &[evt]));
 
         match (digit, op) {
             (Some(d), _) => {
@@ -165,13 +165,16 @@ impl NormalInputHandler {
                     .reps
                     .map(|reps| reps.saturating_mul(10).saturating_add(d as usize));
             }
-            (None, ParseResult::Cont) => self.state = State::Op,
-            (None, ParseResult::Done { result, needs_args }) => {
-                if needs_args {
+            (None, FindResult::Partial) => {
+                self.input.push(evt);
+                self.state = State::Op;
+            }
+            (None, FindResult::Hit(OpResult { op, needs_arg })) => {
+                if needs_arg {
                     self.input.clear();
                     self.state = State::ArgInit;
                 } else {
-                    let cmd = Cmd::new(result).reg(self.reg).reps(self.reps);
+                    let cmd = Cmd::new(op).reg(self.reg).reps(self.reps);
                     self.done(ctx, cmd);
                 }
             }
@@ -183,23 +186,26 @@ impl NormalInputHandler {
         let (starts_reg, digit, op) = (
             starts_reg(evt),
             parse_digit(evt),
-            parse_op(None, &mut self.input, evt),
+            parse_op(self.reps, &[evt]),
         );
 
         match (starts_reg, digit, op) {
-            (true, None, ParseResult::Error) => self.state = State::RepsReg1,
+            (true, None, FindResult::Miss) => self.state = State::RepsReg1,
             (false, Some(d), _) => {
                 self.reps = self
                     .reps
                     .map(|reps| reps.saturating_mul(10).saturating_add(d as usize))
             }
-            (false, None, ParseResult::Cont) => self.state = State::Op,
-            (false, None, ParseResult::Done { result, needs_args }) => {
-                if needs_args {
+            (false, None, FindResult::Partial) => {
+                self.input.push(evt);
+                self.state = State::Op;
+            }
+            (false, None, FindResult::Hit(OpResult { op, needs_arg })) => {
+                if needs_arg {
                     self.input.clear();
                     self.state = State::ArgInit;
                 } else {
-                    let cmd = Cmd::new(result).reps(self.reps);
+                    let cmd = Cmd::new(op).reps(self.reps);
                     self.done(ctx, cmd);
                 }
             }
@@ -219,25 +225,27 @@ impl NormalInputHandler {
     }
 
     fn handle_op(&mut self, ctx: &mut EditorCtx, evt: KeyEvent) {
-        match parse_op(self.reps, &mut self.input, evt) {
-            ParseResult::Cont => {}
-            ParseResult::Done { result, needs_args } => {
-                if needs_args {
+        self.input.push(evt);
+
+        match parse_op(self.reps, &self.input) {
+            FindResult::Miss => self.reset(ctx),
+            FindResult::Partial => {}
+            FindResult::Hit(OpResult { op, needs_arg }) => {
+                if needs_arg {
                     self.input.clear();
                     self.state = State::ArgInit;
                 } else {
-                    let cmd = Cmd::new(result).reg(self.reg).reps(self.reps);
+                    let cmd = Cmd::new(op).reg(self.reg).reps(self.reps);
                     self.done(ctx, cmd);
                 }
             }
-            ParseResult::Error => self.reset(ctx),
         }
     }
 
     fn handle_arg_init(&mut self, ctx: &mut EditorCtx, evt: KeyEvent) {
         let (digit, motion, to_scope) = (
             parse_non_zero_digit(evt),
-            parse_motion_arg(self.op, self.arg_reps, &mut self.input, evt),
+            parse_motion_arg(self.op, self.arg_reps, &[evt]),
             parse_textobject_scope(evt),
         );
 
@@ -246,13 +254,16 @@ impl NormalInputHandler {
                 self.arg_reps = Some(d as usize);
                 self.state = State::ArgReps;
             }
-            (None, ParseResult::Cont, None) => self.state = State::ArgMotion,
-            (None, ParseResult::Done { result, needs_args }, None) => {
-                let arg = Arg::motion(self.arg_reps, result);
-                let cmd = Cmd::new(self.op).reg(self.reg).arg(arg);
+            (None, FindResult::Partial, None) => {
+                self.input.push(evt);
+                self.state = State::ArgMotion;
+            }
+            (None, FindResult::Hit(motion), None) => {
+                let arg = Arg::motion(self.arg_reps, motion);
+                let cmd = Cmd::new(self.op).reg(self.reg).reps(self.reps).arg(arg);
                 self.done(ctx, cmd);
             }
-            (None, ParseResult::Error, Some(scope)) => {
+            (None, FindResult::Miss, Some(scope)) => {
                 self.to_scope = Some(scope);
                 self.state = State::ToKind;
             }
@@ -263,7 +274,7 @@ impl NormalInputHandler {
     fn handle_arg_reps(&mut self, ctx: &mut EditorCtx, evt: KeyEvent) {
         let (digit, motion, to_scope) = (
             parse_digit(evt),
-            parse_motion_arg(self.op, self.arg_reps, &mut self.input, evt),
+            parse_motion_arg(self.op, self.arg_reps, &[evt]),
             parse_textobject_scope(evt),
         );
 
@@ -273,13 +284,16 @@ impl NormalInputHandler {
                     .arg_reps
                     .map(|reps| reps.saturating_mul(10).saturating_add(d as usize));
             }
-            (None, ParseResult::Cont, None) => self.state = State::ArgMotion,
-            (None, ParseResult::Done { result, .. }, None) => {
-                let arg = Arg::motion(self.arg_reps, result);
+            (None, FindResult::Partial, None) => {
+                self.input.push(evt);
+                self.state = State::ArgMotion;
+            }
+            (None, FindResult::Hit(motion), None) => {
+                let arg = Arg::motion(self.arg_reps, motion);
                 let cmd = Cmd::new(self.op).reg(self.reg).reps(self.reps).arg(arg);
                 self.done(ctx, cmd);
             }
-            (None, ParseResult::Error, Some(scope)) => {
+            (None, FindResult::Miss, Some(scope)) => {
                 self.to_scope = Some(scope);
                 self.state = State::ToKind;
             }
@@ -288,14 +302,16 @@ impl NormalInputHandler {
     }
 
     fn handle_arg_motion(&mut self, ctx: &mut EditorCtx, evt: KeyEvent) {
-        match parse_motion_arg(self.op, self.arg_reps, &mut self.input, evt) {
-            ParseResult::Cont => {}
-            ParseResult::Done { result, .. } => {
-                let arg = Arg::motion(self.arg_reps, result);
+        self.input.push(evt);
+
+        match parse_motion_arg(self.op, self.arg_reps, &self.input) {
+            FindResult::Partial => {}
+            FindResult::Hit(motion) => {
+                let arg = Arg::motion(self.arg_reps, motion);
                 let cmd = Cmd::new(self.op).reg(self.reg).reps(self.reps).arg(arg);
                 self.done(ctx, cmd);
             }
-            ParseResult::Error => self.reset(ctx),
+            FindResult::Miss => self.reset(ctx),
         }
     }
 
