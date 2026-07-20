@@ -52,15 +52,19 @@ fn main() -> Result<()> {
     run(ctx)
 }
 
-fn run(ctx: EditorCtx) -> Result<()> {
+fn run(mut ctx: EditorCtx) -> Result<()> {
     let mut terminal = setup_terminal()?;
-    editor_loop(ctx, &mut terminal)?;
+    editor_loop(&mut ctx, &mut terminal)?;
     restore_terminal(&mut terminal)?;
+
+    // TODO Remove, for debugging only
+    println!("Registers: {:?}", ctx.registers);
+
     Ok(())
 }
 
 fn editor_loop(
-    mut ctx: EditorCtx,
+    ctx: &mut EditorCtx,
     terminal: &mut Terminal<CrosstermBackend<Stdout>>,
 ) -> Result<()> {
     let mut input_handler = systems::InputHandler::new();
@@ -69,15 +73,15 @@ fn editor_loop(
     // the active sesssion, which might be anywere and hence force scrolling.
     // Since scrolling requires viewport size, we do a pre-render pass first.
     terminal.draw(|frame| {
-        systems::pre_render(&mut ctx, frame.area());
-        init_cursor_pos(&mut ctx);
+        systems::pre_render(ctx, frame.area());
+        init_cursor_pos(ctx);
     })?;
 
-    while !systems::should_quit(&mut ctx) {
+    while !systems::should_quit(ctx) {
         terminal.draw(|frame| {
             let area = frame.area();
-            systems::pre_render(&mut ctx, area);
-            systems::render(&mut ctx, area, frame.buffer_mut());
+            systems::pre_render(ctx, area);
+            systems::render(ctx, area, frame.buffer_mut());
 
             let cursor_pos = systems::cursor_pos(&ctx);
             frame.set_cursor_position(cursor_pos);
@@ -85,10 +89,10 @@ fn editor_loop(
 
         if event::poll(Duration::from_millis(250))? {
             let event = event::read()?;
-            input_handler.handle_event(&mut ctx, event);
+            input_handler.handle_event(ctx, event);
         }
 
-        systems::handle_ex_state(&mut ctx);
+        systems::handle_ex_state(ctx);
     }
 
     Ok(())

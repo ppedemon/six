@@ -1,6 +1,6 @@
 use crate::{
     cmd::{Cmd, ImmediateOp},
-    components::EditorCtx,
+    components::{EditorCtx, Register},
     systems::{
         commons::{coords_to_char_idx, curr_line},
         insert::{Damage, DamageEvent, broadcast_damage},
@@ -20,9 +20,13 @@ impl ImmediateArgs {
 }
 
 pub fn handle_immediate(ctx: &mut EditorCtx, args: ImmediateArgs) {
+    if readonly_reg(args.cmd.reg) {
+        return;
+    }
+
     let damage = match args.op {
         ImmediateOp::DeleteChar => {
-            let damage = delete_char(ctx, args.cmd.reps.unwrap_or(1));
+            let damage = delete_char(ctx, args.cmd.reg, args.cmd.reps.unwrap_or(1));
             ensure_cursor_inside_line(ctx);
             damage
         }
@@ -33,8 +37,7 @@ pub fn handle_immediate(ctx: &mut EditorCtx, args: ImmediateArgs) {
     broadcast_damage(ctx, damage_evt);
 }
 
-// TODO Register bookkeeping
-fn delete_char(ctx: &mut EditorCtx, reps: usize) -> Damage {
+fn delete_char(ctx: &mut EditorCtx, reg: Option<char>, reps: usize) -> Damage {
     let (session, buf_view) = ctx.sessions.get_mut(&ctx.editor.session_id).unwrap();
     let buffer = ctx.buffers.get_mut(&session.buf_id).unwrap();
 
@@ -57,6 +60,12 @@ fn delete_char(ctx: &mut EditorCtx, reps: usize) -> Damage {
 
     let start_idx = coords_to_char_idx(&ctx.config, &buffer.rope, buf_view, start_coords);
     let end_idx = coords_to_char_idx(&ctx.config, &buffer.rope, buf_view, end_coords);
+
+    {
+        let deleted = buffer.rope.slice(start_idx..end_idx);
+        ctx.registers.handle_small_delete(reg, deleted);
+    }
+
     buffer.rope.remove(start_idx..end_idx);
     buffer.dirty = true;
 
@@ -67,4 +76,8 @@ fn delete_char(ctx: &mut EditorCtx, reps: usize) -> Damage {
     );
 
     Damage::Line(buf_view.cursor.row)
+}
+
+fn readonly_reg(reg: Option<char>) -> bool {
+    reg.map(Register::from).is_some_and(|r| r.is_readonly())
 }
