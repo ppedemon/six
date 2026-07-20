@@ -18,7 +18,7 @@ pub use registers::Registers;
 pub use repeat::{RepeatBuffer, RepeatBufferItem};
 pub use search::LastSearch;
 pub use session::{BufferName, BufferView, Coords, ExSession, ExState, Mode, Session, Viewport};
-pub use state::{EditorState, Focus, Level, Status};
+pub use state::{EditorState, Focus, Level, Status, TextStyle};
 
 pub type SessionId = usize;
 pub type BufferId = usize;

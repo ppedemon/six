@@ -7,9 +7,18 @@ pub enum Level {
     Error,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TextStyle {
+    None,
+    Italic,
+    Bold,
+    ItalicBold,
+}
+
 pub struct Status {
     pub msg: String,
     pub level: Level,
+    pub text_style: TextStyle,
     pub cmd: String,
     pub ruler: String,
 }
@@ -22,12 +31,14 @@ impl Status {
         Self {
             msg: "".to_string(),
             level: Level::Info,
+            text_style: TextStyle::None,
             cmd: "".to_string(),
             ruler: "".to_string(),
         }
     }
 
     pub fn clear_msg(&mut self) {
+        self.text_style = TextStyle::None;
         self.msg.clear();
     }
 
@@ -40,7 +51,12 @@ impl Status {
     }
 
     pub fn set_msg(&mut self, level: Level, msg: &str) {
+        self.set_styled_msg(level, TextStyle::None, msg);
+    }
+
+    pub fn set_styled_msg(&mut self, level: Level, text_style: TextStyle, msg: &str) {
         self.level = level;
+        self.text_style = text_style;
         self.msg.clear();
         self.msg.push_str(msg);
     }

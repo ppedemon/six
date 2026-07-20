@@ -1,16 +1,11 @@
 use ratatui::{
-    buffer::Buffer,
-    layout::{Constraint, Direction, Layout, Position, Rect, Size},
-    style::{Style, Styled},
-    text::Line,
-    widgets::{Block, Padding, Paragraph, Widget},
+    buffer::Buffer, layout::{Constraint, Direction, Layout, Position, Rect, Size}, style::{Style, Styled, Stylize}, text::Line, widgets::{Block, Padding, Paragraph, Widget},
 };
 use ropey::Rope;
 use unicode_width::UnicodeWidthStr;
 
 use crate::components::{
-    self, BufferView, Config, DisplayBuffer, EditorCtx, ExSession, Focus, Level, Session, Status,
-    Viewport,
+    self, BufferView, Config, DisplayBuffer, EditorCtx, ExSession, Focus, Level, Session, Status, TextStyle, Viewport,
 };
 
 const MIN_SIZE: Size = Size::new(6, 2);
@@ -119,12 +114,21 @@ fn render_status(status: &Status, area: Rect, frame_buf: &mut Buffer) {
         .split(area);
 
     let status_text = Line::from(status.msg.as_str());
-    let status_style = match status.level {
-        Level::Info => Style::default().white(),
-        Level::Warn => Style::default().yellow(),
-        Level::Error => Style::default().on_red(),
+    
+    let status_text = match status.text_style {
+        TextStyle::None => status_text,
+        TextStyle::Bold => status_text.bold(),
+        TextStyle::Italic => status_text.italic(),
+        TextStyle::ItalicBold => status_text.italic().bold(),
     };
-    Paragraph::new(status_text.set_style(status_style)).render(chunks[0], frame_buf);
+
+    let status_text = match status.level {
+        Level::Info => status_text.white(),
+        Level::Warn => status_text.yellow(),
+        Level::Error => status_text.on_red(),
+    };
+
+    Paragraph::new(status_text).render(chunks[0], frame_buf);
 
     let cmd_text = Line::from(status.cmd.as_str());
     Paragraph::new(cmd_text).render(chunks[1], frame_buf);
