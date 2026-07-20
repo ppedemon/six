@@ -24,6 +24,8 @@ pub fn handle_immediate(ctx: &mut EditorCtx, args: ImmediateArgs) {
         return;
     }
 
+    ctx.repbuf.record_immediate(args.cmd);
+
     let damage = match args.op {
         ImmediateOp::DeleteChar => {
             let damage = delete_char(ctx, args.cmd.reg, args.cmd.reps.unwrap_or(1));

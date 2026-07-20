@@ -19,6 +19,10 @@ impl RepeatBuffer {
         }
     }
 
+    pub fn record_immediate(&mut self, cmd: Cmd) {
+        self.item = RepeatBufferItem::Immediate(cmd);
+    }
+
     pub fn start_interaction(&mut self, cmd: Cmd) {
         assert!(
             !matches!(self.item, RepeatBufferItem::Partial(_)),
