@@ -1,9 +1,10 @@
-use crossterm::style::Stylize;
-use ratatui::style::{Style, Styled};
 use ropey::Rope;
 
 use crate::{
-    cmd::{Cmd, ExMode, InsertPoint, SysOp}, components::{BufferView, Config, EditorCtx, Focus, Level, Mode, TextStyle}, ex::ExRange, systems::{
+    cmd::{Cmd, ExMode, InsertPoint, SysOp},
+    components::{BufferView, Config, EditorCtx, Focus, Level, Mode, TextStyle},
+    ex::ExRange,
+    systems::{
         commons, ex,
         insert::{clear_ex, insert_char, post_insert},
         nav::{NormalNav, move_left},
@@ -39,7 +40,8 @@ pub fn enter_insert(ctx: &mut EditorCtx, insert_point: InsertPoint, cmd: Cmd) {
     clear_ex(ctx);
 
     ctx.status.clear_cmd();
-    ctx.status.set_styled_msg(Level::Info, TextStyle::Bold, "-- INSERT --");
+    ctx.status
+        .set_styled_msg(Level::Info, TextStyle::Bold, "-- INSERT --");
 
     ctx.repbuf.start_interaction(cmd);
 

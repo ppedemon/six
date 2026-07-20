@@ -1,11 +1,16 @@
 use ratatui::{
-    buffer::Buffer, layout::{Constraint, Direction, Layout, Position, Rect, Size}, style::{Style, Styled, Stylize}, text::Line, widgets::{Block, Padding, Paragraph, Widget},
+    buffer::Buffer,
+    layout::{Constraint, Direction, Layout, Position, Rect, Size},
+    style::{Style, Stylize},
+    text::Line,
+    widgets::{Block, Padding, Paragraph, Widget},
 };
 use ropey::Rope;
 use unicode_width::UnicodeWidthStr;
 
 use crate::components::{
-    self, BufferView, Config, DisplayBuffer, EditorCtx, ExSession, Focus, Level, Session, Status, TextStyle, Viewport,
+    self, BufferView, Config, DisplayBuffer, EditorCtx, ExSession, Focus, Level, Session, Status,
+    TextStyle, Viewport,
 };
 
 const MIN_SIZE: Size = Size::new(6, 2);
@@ -114,7 +119,7 @@ fn render_status(status: &Status, area: Rect, frame_buf: &mut Buffer) {
         .split(area);
 
     let status_text = Line::from(status.msg.as_str());
-    
+
     let status_text = match status.text_style {
         TextStyle::None => status_text,
         TextStyle::Bold => status_text.bold(),
