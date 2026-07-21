@@ -136,7 +136,7 @@ impl Registers {
         &self.last_insert
     }
 
-    pub fn handle_small_delete(&mut self, reg: Option<char>, deleted: RopeSlice) {
+    pub fn small_delete(&mut self, reg: Option<char>, deleted: RopeSlice) {
         let r = reg.map_or(Register::SMALL_DELETE, Register::from);
 
         if r.is_blackhole() || r.is_readonly() {

@@ -130,7 +130,7 @@ impl DisplayLine {
         }
     }
 
-    pub fn col_to_rope_idx(&self, col: usize) -> usize {
+    pub fn col_to_char_idx(&self, col: usize) -> usize {
         let idx = match self.display_cols.binary_search(&col) {
             Ok(idx) => idx,
             Err(idx) => idx.saturating_sub(1),
@@ -156,12 +156,12 @@ impl DisplayLine {
             None
         } else {
             let mut start = pos;
-            while start >= 1 && self.rope_indices[start - 1] == self.rope_indices[pos] {
+            while start > 0 && self.rope_indices[start - 1] == self.rope_indices[pos] {
                 start -= 1;
             }
 
             let mut end = pos;
-            while end + 1 < self.rope_indices.len().saturating_sub(1)
+            while end + 1 < self.rope_indices.len()
                 && self.rope_indices[end + 1] == self.rope_indices[pos]
             {
                 end += 1;
@@ -180,6 +180,7 @@ impl DisplayLine {
         self.graphemes_between(0, self.display_width)
     }
 
+    // Iterate graphemes forward, in the interval [start_col, end_col)
     pub fn graphemes_between(&self, start_col: usize, end_col: usize) -> GraphemeIterator<'_> {
         GraphemeIterator {
             line: self,
@@ -192,11 +193,20 @@ impl DisplayLine {
         self.rev_graphemes_between(self.display_width, 0)
     }
 
+    // Iterate graphemes backwards, in the interval (start_col, end_col]
     pub fn rev_graphemes_between(
         &self,
         start_col: usize,
         end_col: usize,
     ) -> RevGraphemeIterator<'_> {
+        // NOTE! Since the start is open, we must ignore the grapheme (if any) at start_col.
+        // Therefore, if we are insinde the line, we get the span for such grapheme and set
+        // start_col to its first column. The iterator will start from the column before,
+        // that is, the last column of the prev span.
+        let start_col = self
+            .grapheme_at(start_col)
+            .map_or(self.display_width, |(_, span)| span.start);
+
         RevGraphemeIterator {
             line: self,
             start_col,
@@ -281,9 +291,9 @@ impl DisplayLine {
     // Next and previous column calculation works differently if we are in insert mode:
     //
     //  1. For tabs, in insert mode we shall move to the beginning of the tab filler, not to the end as in normal mode
-    //  2. If we are in the last column, in insert mode we can move on position to the left to append text to the line
+    //  2. If we are in the last column, in insert mode we can move one position to the left to append text to the line
     //  3. For tabs, snapping should go to the beginning of the tab filler, not to the end as in normal mode
-    //  4. Last non-black insert column must be one past the last non-blank column in insert mode
+    //  4. Last non-blank insert column must be one past the last non-blank column in insert mode
 
     pub fn prev_insert_col(&self, col: usize) -> usize {
         let prev = match self.grapheme_at(col) {

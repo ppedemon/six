@@ -47,7 +47,9 @@ static OP_TRIE: LazyLock<Trie<KeyEvent, OpResult>> = LazyLock::new(|| {
     t.insert(&[char('O')], op(InteractiveOp::OpenAbove));
     t.insert(&[char('o')], op(InteractiveOp::OpenBelow));
 
-    t.insert(&[char('x')], op(ImmediateOp::DeleteChar));
+    t.insert(&[char('x')], op(ImmediateOp::Delete));
+    t.insert(&[delete()], op(ImmediateOp::Delete));
+    t.insert(&[char('X')], op(ImmediateOp::Backspace));
     t
 });
 

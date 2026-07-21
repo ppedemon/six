@@ -268,3 +268,13 @@ pub fn goto_line<R: NavRules>(
     buf_view.cursor.col = R::first_non_blank(&line);
     buf_view.target_col = buf_view.cursor.col;
 }
+
+pub fn goto_col<R: NavRules>(config: &Config, rope: &Rope, buf_view: &mut BufferView, col: usize) {
+    let line = buf_view
+        .display_buf
+        .ensure_line(config, rope, buf_view.cursor.row);
+
+    let norm_col = col.min(line.display_width.saturating_sub(1));
+    buf_view.cursor.col = R::snap_col(&line, col);
+    buf_view.target_col = buf_view.cursor.col;
+}

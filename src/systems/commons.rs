@@ -28,7 +28,7 @@ pub fn coords_to_char_idx(
 
     let line_idx = rope.line_to_char(coords.row);
     let display_line = curr_line(config, rope, buf_view);
-    let col_idx = display_line.col_to_rope_idx(coords.col);
+    let col_idx = display_line.col_to_char_idx(coords.col);
     line_idx + col_idx
 }
 

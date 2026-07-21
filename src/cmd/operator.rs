@@ -40,7 +40,8 @@ pub enum InteractiveOp {
 // Example: x, d, y, p
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ImmediateOp {
-    DeleteChar,
+    Delete,
+    Backspace
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -77,7 +78,7 @@ impl From<ImmediateOp> for Operator {
 }
 
 impl Operator {
-    // Return Some(ch) iif the opertor supports "doubling" to operate on lines
+    // Return Some(c) iif the operator supports "doubling" to act on lines
     pub fn line_arg_char(&self) -> Option<char> {
         // TODO c, d, and y should return Some('c'), Some('d') and Some('y'), respectively.
         None
