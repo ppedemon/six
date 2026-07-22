@@ -1,7 +1,10 @@
 use crossterm::event::Event;
 
 use crate::{
-    active_session, cmd::{Cmd, InsertOp, Operator}, components::{EditorCtx, Focus, Mode}, systems::{
+    active_session,
+    cmd::{Cmd, InsertOp, Operator},
+    components::{EditorCtx, Focus, Mode},
+    systems::{
         immediate::{ImmediateArgs, handle_immediate},
         input::{insert::InsertInputHandler, normal::NormalInputHandler},
         insert::handle_edit,

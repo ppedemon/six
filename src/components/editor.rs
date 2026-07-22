@@ -78,14 +78,14 @@ pub enum Focus {
     Session,
 }
 
-pub struct EditorState {
+pub struct Editor {
     pub focus: Focus,
     pub quit: bool,
     pub session_id: SessionId,
     pub char_at_cursor: Option<char>,
 }
 
-impl EditorState {
+impl Editor {
     pub fn new() -> Self {
         Self {
             focus: Focus::Session,

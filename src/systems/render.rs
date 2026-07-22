@@ -8,10 +8,13 @@ use ratatui::{
 use ropey::Rope;
 use unicode_width::UnicodeWidthStr;
 
-use crate::{active_session, components::{
-    self, BufferView, Config, DisplayBuffer, EditorCtx, ExSession, Focus, Level, Session, Status,
-    TextStyle, Viewport,
-}};
+use crate::{
+    active_session,
+    components::{
+        self, BufferView, Config, DisplayBuffer, EditorCtx, ExSession, Focus, Level, Session,
+        Status, TextStyle, Viewport,
+    },
+};
 
 const MIN_SIZE: Size = Size::new(6, 2);
 

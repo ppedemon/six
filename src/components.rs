@@ -1,31 +1,31 @@
 mod buffer;
 mod config;
 mod display;
+mod editor;
 mod insert_log;
 mod registers;
 mod repeat;
 mod search;
 mod session;
-mod state;
 
 use std::collections::HashMap;
 
 pub use buffer::Buffer;
 pub use config::Config;
 pub use display::{DisplayBuffer, DisplayLine, DisplayLineRef};
+pub use editor::{Editor, Focus, Level, Status, TextStyle};
 pub use insert_log::InsertLog;
 pub use registers::{Register, Registers};
 pub use repeat::{RepeatBuffer, RepeatBufferItem};
 pub use search::LastSearch;
 pub use session::{BufferName, BufferView, Coords, ExSession, ExState, Mode, Session, Viewport};
-pub use state::{EditorState, Focus, Level, Status, TextStyle};
 
 pub type SessionId = usize;
 pub type BufferId = usize;
 
 pub struct EditorCtx {
     pub config: Config,
-    pub editor: EditorState,
+    pub editor: Editor,
 
     pub next_session_id: usize,
     pub next_buf_id: usize,
@@ -46,7 +46,7 @@ impl EditorCtx {
     pub fn new() -> Self {
         Self {
             config: Config::default(),
-            editor: EditorState::new(),
+            editor: Editor::new(),
 
             next_session_id: 0,
             next_buf_id: 0,
