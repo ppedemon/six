@@ -22,8 +22,13 @@ pub fn info_slice(rope: RopeSlice<'_>) -> RopeInfo {
             num_bytes: 0,
         }
     } else {
+        // Do norm here without mutating the rope
+        let mut num_lines = rope.len_lines();
+        if rope.char(rope.len_chars() - 1) == '\n' {
+            num_lines -= 1;
+        }
         RopeInfo {
-            num_lines: rope.len_lines(),
+            num_lines,
             num_bytes: rope.len_bytes(),
         }
     }
