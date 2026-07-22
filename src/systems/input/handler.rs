@@ -1,9 +1,7 @@
 use crossterm::event::Event;
 
 use crate::{
-    cmd::{Cmd, InsertOp, Operator},
-    components::{EditorCtx, Focus, Mode},
-    systems::{
+    active_session, cmd::{Cmd, InsertOp, Operator}, components::{EditorCtx, Focus, Mode}, systems::{
         immediate::{ImmediateArgs, handle_immediate},
         input::{insert::InsertInputHandler, normal::NormalInputHandler},
         insert::handle_edit,
@@ -31,7 +29,7 @@ impl InputHandler {
             Focus::Ex => self.insert.handle_event(ctx, event),
             Focus::Session => {
                 let mode = {
-                    let (session, _) = ctx.active_session();
+                    let (session, _) = active_session!(ctx);
                     session.mode
                 };
                 match mode {

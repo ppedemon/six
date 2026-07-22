@@ -77,14 +77,32 @@ impl EditorCtx {
         self.buffers.insert(buf_id, buffer);
         buf_id
     }
+}
 
-    pub fn active_session(&self) -> (&Session, &BufferView) {
-        let tuple = self.sessions.get(&self.editor.session_id).unwrap();
-        (&tuple.0, &tuple.1)
-    }
+#[macro_export]
+macro_rules! active_session {
+    (mut $ctx:expr) => {{
+        let (session, buf_view) = $ctx.sessions.get_mut(&$ctx.editor.session_id).unwrap();
+        (session, buf_view)
+    }};
 
-    pub fn active_session_mut(&mut self) -> (&mut Session, &mut BufferView) {
-        let tuple = self.sessions.get_mut(&self.editor.session_id).unwrap();
-        (&mut tuple.0, &mut tuple.1)
-    }
+    ($ctx:expr) => {{
+        let (session, buf_view) = $ctx.sessions.get(&$ctx.editor.session_id).unwrap();
+        (session, buf_view)
+    }};
+}
+
+#[macro_export]
+macro_rules! active_session_and_buffer {
+    (mut $ctx:expr) => {{
+        let (session, buf_view) = $ctx.sessions.get_mut(&$ctx.editor.session_id).unwrap();
+        let buffer = $ctx.buffers.get_mut(&session.buf_id).unwrap();
+        (session, buf_view, buffer)
+    }};
+
+    ($ctx:expr) => {{
+        let (session, buf_view) = $ctx.sessions.get(&$ctx.editor.session_id).unwrap();
+        let buffer = $ctx.buffers.get(&session.buf_id).unwrap();
+        (session, buf_view, buffer)
+    }};
 }

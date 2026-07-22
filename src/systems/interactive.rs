@@ -1,4 +1,5 @@
 use crate::{
+    active_session,
     cmd::{Cmd, InsertPoint, InteractiveOp},
     components::EditorCtx,
     systems::{
@@ -26,9 +27,7 @@ pub fn handle_interactive(ctx: &mut EditorCtx, args: InteractiveArgs) {
 }
 
 fn open_above(ctx: &mut EditorCtx, cmd: Cmd) {
-    let (session, buf_view) = ctx.sessions.get_mut(&ctx.editor.session_id).unwrap();
-    let buffer = ctx.buffers.get_mut(&session.buf_id).unwrap();
-
+    let (_, buf_view) = active_session!(mut ctx);
     buf_view.cursor.col = 0;
     enter_insert(ctx, InsertPoint::Curr, cmd);
     insert::utils::open_line(ctx);

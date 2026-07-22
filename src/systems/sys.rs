@@ -1,6 +1,7 @@
 use ropey::Rope;
 
 use crate::{
+    active_session, active_session_and_buffer,
     cmd::{Cmd, ExMode, InsertPoint, SysOp},
     components::{BufferView, Config, EditorCtx, Focus, Level, Mode, TextStyle},
     ex::ExRange,
@@ -45,8 +46,7 @@ pub fn enter_insert(ctx: &mut EditorCtx, insert_point: InsertPoint, cmd: Cmd) {
 
     ctx.repbuf.start_interaction(cmd);
 
-    let (session, buf_view) = ctx.sessions.get_mut(&ctx.editor.session_id).unwrap();
-    let buffer = ctx.buffers.get_mut(&session.buf_id).unwrap();
+    let (session, buf_view, buffer) = active_session_and_buffer!(mut ctx);
 
     ctx.editor.focus = Focus::Session;
     ctx.editor.char_at_cursor = None;
@@ -68,7 +68,7 @@ pub fn enter_normal(ctx: &mut EditorCtx) {
     ctx.status.clear_msg();
     ctx.status.clear_cmd();
 
-    let (session, _) = ctx.active_session_mut();
+    let (session, _) = active_session!(mut ctx);
     let old_mode = session.mode;
     session.mode = Mode::Normal;
 
@@ -98,9 +98,7 @@ fn enter_ex(ctx: &mut EditorCtx, ex_mode: ExMode) {
 }
 
 fn restore_cursor(ctx: &mut EditorCtx) {
-    let (session, buf_view) = ctx.sessions.get_mut(&ctx.editor.session_id).unwrap();
-    let buffer = ctx.buffers.get_mut(&session.buf_id).unwrap();
-
+    let (session, buf_view, buffer) = active_session_and_buffer!(mut ctx);
     let cursor = buf_view.cursor;
     let line = commons::curr_line(&ctx.config, &buffer.rope, buf_view);
     buf_view.cursor.col = line.snap_col(cursor.col);

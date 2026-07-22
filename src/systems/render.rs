@@ -8,10 +8,10 @@ use ratatui::{
 use ropey::Rope;
 use unicode_width::UnicodeWidthStr;
 
-use crate::components::{
+use crate::{active_session, components::{
     self, BufferView, Config, DisplayBuffer, EditorCtx, ExSession, Focus, Level, Session, Status,
     TextStyle, Viewport,
-};
+}};
 
 const MIN_SIZE: Size = Size::new(6, 2);
 
@@ -54,7 +54,7 @@ pub fn cursor_pos(ctx: &EditorCtx) -> Position {
             ctx.ex_session.viewport.cursor_pos(ex_cursor)
         }
         Focus::Session => {
-            let (session, buf_view) = ctx.active_session();
+            let (session, buf_view) = active_session!(ctx);
             session.viewport.cursor_pos(buf_view.cursor)
         }
     }

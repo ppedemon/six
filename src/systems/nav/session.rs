@@ -4,7 +4,10 @@ use super::{
     buffer,
     rules::{InsertNav, NavRules, NormalNav},
 };
-use crate::components::{BufferView, Config, EditorCtx, Focus, LastSearch, Mode, Viewport};
+use crate::{
+    active_session_and_buffer,
+    components::{BufferView, Config, EditorCtx, Focus, LastSearch, Mode, Viewport},
+};
 use crate::{
     cmd::{Cmd, Motion},
     rope,
@@ -48,8 +51,7 @@ fn handle_ex_nav(ctx: &mut EditorCtx, args: NavArgs) {
 
 fn handle_session_nav(ctx: &mut EditorCtx, args: NavArgs) {
     let config = &ctx.config;
-    let (session, buf_view) = ctx.sessions.get_mut(&ctx.editor.session_id).unwrap();
-    let buffer = ctx.buffers.get(&session.buf_id).unwrap();
+    let (session, buf_view, buffer) = active_session_and_buffer!(mut ctx);
 
     match session.mode {
         Mode::Insert => {

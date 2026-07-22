@@ -1,4 +1,5 @@
 use crate::{
+    active_session_and_buffer,
     components::EditorCtx,
     systems::{
         commons::{curr_line, snap_coords},
@@ -7,13 +8,12 @@ use crate::{
 };
 
 pub fn cursor_up<R: NavRules>(ctx: &mut EditorCtx) {
-    let (session, buf_view) = ctx.sessions.get_mut(&ctx.editor.session_id).unwrap();
-    let buffer = ctx.buffers.get(&session.buf_id).unwrap();
+    let (session, buf_view, buffer) = active_session_and_buffer!(mut ctx);
     move_up::<R>(&ctx.config, &buffer.rope, buf_view, 1);
 }
 
 pub fn ensure_cursor_inside_line(ctx: &mut EditorCtx) {
-    let (session, buf_view) = ctx.sessions.get_mut(&ctx.editor.session_id).unwrap();
+    let (session, buf_view, buffer) = active_session_and_buffer!(mut ctx);
     let buffer = ctx.buffers.get(&session.buf_id).unwrap();
 
     let col = buf_view.cursor.col;

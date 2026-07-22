@@ -1,4 +1,5 @@
 use crate::{
+    active_session_and_buffer,
     cmd::EditOp,
     components::EditorCtx,
     systems::insert::{
@@ -8,9 +9,7 @@ use crate::{
 };
 
 pub fn open_line(ctx: &mut EditorCtx) {
-    let (session, buf_view) = ctx.sessions.get_mut(&ctx.editor.session_id).unwrap();
-    let buffer = ctx.buffers.get_mut(&session.buf_id).unwrap();
-
+    let (session, buf_view, buffer) = active_session_and_buffer!(mut ctx);
     session.insert_log.append(EditOp::Enter);
     buffer.dirty = true;
 

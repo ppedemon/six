@@ -3,6 +3,7 @@ use std::ops::Range;
 use ropey::Rope;
 
 use crate::{
+    active_session, active_session_and_buffer,
     cmd::{Cmd, ImmediateOp},
     components::{Coords, EditorCtx, Register, Registers},
     systems::{
@@ -39,7 +40,7 @@ pub fn handle_immediate(ctx: &mut EditorCtx, args: ImmediateArgs) {
         ImmediateOp::Backspace => backspace(ctx, args.cmd.reg, args.cmd.reps.unwrap_or(1)),
     };
 
-    let (session, _) = ctx.active_session();
+    let (session, _) = active_session!(ctx);
     let damage_evt = DamageEvent::new(session.buf_id, damage);
     broadcast_damage(ctx, damage_evt);
 }
@@ -60,8 +61,7 @@ pub fn handle_immediate(ctx: &mut EditorCtx, args: ImmediateArgs) {
 // Delete chars at the current cursor position on the given line
 //
 fn delete(ctx: &mut EditorCtx, reg: Option<char>, reps: usize) -> Damage {
-    let (session, buf_view) = ctx.sessions.get_mut(&ctx.editor.session_id).unwrap();
-    let buffer = ctx.buffers.get_mut(&session.buf_id).unwrap();
+    let (session, buf_view, buffer) = active_session_and_buffer!(mut ctx);
 
     let row = buf_view.cursor.row;
     let start_col = buf_view.cursor.col;
@@ -104,8 +104,7 @@ fn delete(ctx: &mut EditorCtx, reg: Option<char>, reps: usize) -> Damage {
 // Delete chars at the position behond the cursor on the given line
 //
 fn backspace(ctx: &mut EditorCtx, reg: Option<char>, reps: usize) -> Damage {
-    let (session, buf_view) = ctx.sessions.get_mut(&ctx.editor.session_id).unwrap();
-    let buffer = ctx.buffers.get_mut(&session.buf_id).unwrap();
+    let (session, buf_view, buffer) = active_session_and_buffer!(mut ctx);
 
     let row = buf_view.cursor.row;
     let end_col = buf_view.cursor.col;
@@ -140,6 +139,13 @@ fn backspace(ctx: &mut EditorCtx, reg: Option<char>, reps: usize) -> Damage {
     goto_col::<NormalNav>(&ctx.config, &buffer.rope, buf_view, cursor.col);
 
     Damage::Line(buf_view.cursor.row)
+}
+
+fn join(ctx: &EditorCtx, reps: usize) -> Damage {
+    // let (session, buf_view) = ctx.sessions.get_mut(&ctx.editor.session_id).unwrap();
+    // let buffer = ctx.buffers.get_mut(&session.buf_id).unwrap();
+
+    Damage::Intact
 }
 
 fn is_readonly(reg: Option<char>) -> bool {

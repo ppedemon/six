@@ -1,7 +1,6 @@
 use super::log;
 use crate::{
-    cmd::{Cmd, EditOp, InteractiveOp, Operator, SysOp},
-    components::{EditorCtx, RepeatBufferItem},
+    active_session, cmd::{Cmd, EditOp, InteractiveOp, Operator, SysOp}, components::{EditorCtx, RepeatBufferItem},
 };
 
 pub fn post_insert(ctx: &mut EditorCtx) {
@@ -12,7 +11,7 @@ pub fn post_insert(ctx: &mut EditorCtx) {
 }
 
 fn get_insert_log(ctx: &mut EditorCtx) -> Vec<EditOp> {
-    let session = ctx.active_session_mut().0;
+    let (session, _) = active_session!(mut ctx);
     std::mem::take(&mut session.insert_log.log)
 }
 
