@@ -9,7 +9,7 @@ pub enum RepeatBufferItem {
 }
 
 pub struct RepeatBuffer {
-    pub item: RepeatBufferItem,
+    item: RepeatBufferItem,
 }
 
 impl RepeatBuffer {
@@ -17,6 +17,10 @@ impl RepeatBuffer {
         Self {
             item: RepeatBufferItem::None,
         }
+    }
+
+    pub fn item(&self) -> &RepeatBufferItem {
+        &self.item
     }
 
     pub fn record_immediate(&mut self, cmd: Cmd) {

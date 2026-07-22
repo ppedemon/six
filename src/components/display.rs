@@ -20,10 +20,10 @@ impl Default for Span {
 }
 
 pub struct DisplayLine {
-    pub text: String,
-    pub byte_offsets: Vec<usize>,
-    pub rope_indices: Vec<usize>,
-    pub display_cols: Vec<usize>,
+    text: String,
+    byte_offsets: Vec<usize>,
+    rope_indices: Vec<usize>,
+    display_cols: Vec<usize>,
     pub display_width: usize,
 }
 

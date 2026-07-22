@@ -248,7 +248,7 @@ fn repeat_forward(
     buf_view: &mut BufferView,
     reps: usize,
 ) {
-    if let Some(&m) = last_search.get_char_search().as_ref() {
+    if let Some(&m) = last_search.char_search().as_ref() {
         match m {
             Motion::FindNextChar(c) => find_char_forward(config, rope, buf_view, c, reps),
             Motion::FindPrevChar(c) => find_char_backward(config, rope, buf_view, c, reps),
@@ -266,7 +266,7 @@ fn repeat_backward(
     buf_view: &mut BufferView,
     reps: usize,
 ) {
-    if let Some(&m) = last_search.get_char_search().as_ref() {
+    if let Some(&m) = last_search.char_search().as_ref() {
         match m {
             Motion::FindNextChar(c) => find_char_backward(config, rope, buf_view, c, reps),
             Motion::FindPrevChar(c) => find_char_forward(config, rope, buf_view, c, reps),

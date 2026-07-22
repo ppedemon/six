@@ -1,6 +1,8 @@
 use super::log;
 use crate::{
-    active_session, cmd::{Cmd, EditOp, InteractiveOp, Operator, SysOp}, components::{EditorCtx, RepeatBufferItem},
+    active_session,
+    cmd::{Cmd, EditOp, InteractiveOp, Operator, SysOp},
+    components::{EditorCtx, RepeatBufferItem},
 };
 
 pub fn post_insert(ctx: &mut EditorCtx) {
@@ -12,7 +14,7 @@ pub fn post_insert(ctx: &mut EditorCtx) {
 
 fn get_insert_log(ctx: &mut EditorCtx) -> Vec<EditOp> {
     let (session, _) = active_session!(mut ctx);
-    std::mem::take(&mut session.insert_log.log)
+    session.insert_log.take_log()
 }
 
 fn commit_to_regs(ctx: &mut EditorCtx, insert_log: Vec<EditOp>) {
@@ -24,7 +26,7 @@ fn commit_to_repbuf(ctx: &mut EditorCtx, insert_log: Vec<EditOp>) {
 }
 
 fn post_insert_repeat(ctx: &mut EditorCtx) {
-    let (cmd, ops) = match &ctx.repbuf.item {
+    let (cmd, ops) = match ctx.repbuf.item() {
         RepeatBufferItem::Interactive(cmd, ops) => (*cmd, ops.clone()),
         _ => return,
     };

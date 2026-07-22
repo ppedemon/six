@@ -1,7 +1,7 @@
 use crate::cmd::Motion;
 
 pub struct LastSearch {
-    pub char_search: Option<Motion>,
+    char_search: Option<Motion>,
 }
 
 impl LastSearch {
@@ -20,7 +20,7 @@ impl LastSearch {
         self.char_search = Some(m);
     }
 
-    pub fn get_char_search(&self) -> Option<Motion> {
+    pub fn char_search(&self) -> Option<Motion> {
         self.char_search
     }
 }

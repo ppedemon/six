@@ -1,8 +1,8 @@
 use crate::cmd::EditOp;
 
 pub struct InsertLog {
-    pub reps: usize,
-    pub log: Vec<EditOp>,
+    reps: usize,
+    log: Vec<EditOp>,
 }
 
 impl InsertLog {
@@ -29,5 +29,9 @@ impl InsertLog {
         if self.reps > 0 {
             self.log.push(op);
         }
+    }
+
+    pub fn take_log(&mut self) -> Vec<EditOp> {
+        std::mem::take(&mut self.log)
     }
 }
