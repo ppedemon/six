@@ -41,7 +41,8 @@ pub enum InteractiveOp {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ImmediateOp {
     Delete,
-    Backspace
+    Backspace,
+    Join,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

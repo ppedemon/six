@@ -25,7 +25,7 @@ impl ImmediateArgs {
 }
 
 pub fn handle_immediate(ctx: &mut EditorCtx, args: ImmediateArgs) {
-    if is_readonly(args.cmd.reg) {
+    if args.op != ImmediateOp::Join && is_readonly(args.cmd.reg) {
         return;
     }
 
@@ -38,6 +38,7 @@ pub fn handle_immediate(ctx: &mut EditorCtx, args: ImmediateArgs) {
             damage
         }
         ImmediateOp::Backspace => backspace(ctx, args.cmd.reg, args.cmd.reps.unwrap_or(1)),
+        ImmediateOp::Join => join(ctx, args.cmd.reps.unwrap_or(1)),
     };
 
     let (session, _) = active_session!(ctx);
@@ -51,16 +52,48 @@ pub fn handle_immediate(ctx: &mut EditorCtx, args: ImmediateArgs) {
 //
 //  1. Update registers
 //  2. Mutate the buffer's rope
-//  3. Mark the buffer as dirty
+//  3. Mark buffer as dirty
 //  4. Patch the active session's buffer view
 //  5. Update cursor position
 //  6. Compute and return the damage
 // -----------------------------------------------------------------------
 
-//
-// Delete chars at the current cursor position on the given line
-//
+// -----------------------------------------------------------------------
+// Small deletes
+// -----------------------------------------------------------------------
+
+// Delete chars at the current cursor position (x command)
 fn delete(ctx: &mut EditorCtx, reg: Option<char>, reps: usize) -> Damage {
+    let rng = calc_delete_range(ctx, reps);
+    small_delete(ctx, reg, reps, rng)
+}
+
+// Delete chars behind the current cursor position (X command)
+fn backspace(ctx: &mut EditorCtx, reg: Option<char>, reps: usize) -> Damage {
+    let rng = calc_backspace_range(ctx, reps);
+    small_delete(ctx, reg, reps, rng)
+}
+
+fn small_delete(ctx: &mut EditorCtx, reg: Option<char>, reps: usize, rng: Range<usize>) -> Damage {
+    let (session, buf_view, buffer) = active_session_and_buffer!(mut ctx);
+
+    report_small_delete(&mut ctx.registers, reg, &buffer.rope, rng.clone());
+
+    buffer.rope.remove(rng.clone());
+    buffer.dirty = true;
+
+    let row = buf_view.cursor.row;
+    buf_view
+        .display_buf
+        .patch_range(&ctx.config, &buffer.rope, row..row + 1);
+
+    let cursor = char_idx_to_coords(&ctx.config, &buffer.rope, buf_view, rng.start);
+    goto_col::<NormalNav>(&ctx.config, &buffer.rope, buf_view, cursor.col);
+
+    Damage::Line(buf_view.cursor.row)
+}
+
+fn calc_delete_range(ctx: &mut EditorCtx, reps: usize) -> Range<usize> {
     let (session, buf_view, buffer) = active_session_and_buffer!(mut ctx);
 
     let row = buf_view.cursor.row;
@@ -85,25 +118,10 @@ fn delete(ctx: &mut EditorCtx, reg: Option<char>, reps: usize) -> Damage {
     let start_idx = coords_to_char_idx(&ctx.config, &buffer.rope, buf_view, start_coords);
     let end_idx = coords_to_char_idx(&ctx.config, &buffer.rope, buf_view, end_coords);
 
-    report_small_delete(&mut ctx.registers, reg, &buffer.rope, start_idx..end_idx);
-
-    buffer.rope.remove(start_idx..end_idx);
-    buffer.dirty = true;
-
-    buf_view
-        .display_buf
-        .patch_range(&ctx.config, &buffer.rope, row..row + 1);
-
-    let cursor = char_idx_to_coords(&ctx.config, &buffer.rope, buf_view, start_idx);
-    goto_col::<NormalNav>(&ctx.config, &buffer.rope, buf_view, cursor.col);
-
-    Damage::Line(buf_view.cursor.row)
+    start_idx..end_idx
 }
 
-//
-// Delete chars at the position behond the cursor on the given line
-//
-fn backspace(ctx: &mut EditorCtx, reg: Option<char>, reps: usize) -> Damage {
+fn calc_backspace_range(ctx: &mut EditorCtx, reps: usize) -> Range<usize> {
     let (session, buf_view, buffer) = active_session_and_buffer!(mut ctx);
 
     let row = buf_view.cursor.row;
@@ -126,27 +144,77 @@ fn backspace(ctx: &mut EditorCtx, reg: Option<char>, reps: usize) -> Damage {
     let start_idx = coords_to_char_idx(&ctx.config, &buffer.rope, buf_view, start_coords);
     let end_idx = coords_to_char_idx(&ctx.config, &buffer.rope, buf_view, end_coords);
 
-    report_small_delete(&mut ctx.registers, reg, &buffer.rope, start_idx..end_idx);
+    start_idx..end_idx
+}
 
-    buffer.rope.remove(start_idx..end_idx);
+// -----------------------------------------------------------------------
+// Join N lines (J command)
+// -----------------------------------------------------------------------
+
+fn join(ctx: &mut EditorCtx, reps: usize) -> Damage {
+    let (session, buf_view, buffer) = active_session_and_buffer!(mut ctx);
+    let rope = &mut buffer.rope;
+
+    let row = buf_view.cursor.row;
+    if row + 1 == rope.len_lines() {
+        return Damage::Intact;
+    }
+
+    let mut reps = reps.saturating_sub(1);
+    let mut cursor_idx;
+
+    loop {
+        cursor_idx = join_single(rope, row);
+
+        reps = reps.saturating_sub(1);
+        if reps == 0 || row + 1 == rope.len_lines() {
+            break;
+        }
+    }
+
     buffer.dirty = true;
+    buf_view.display_buf.destroy_from(row);
+    buf_view.cursor = char_idx_to_coords(&ctx.config, rope, buf_view, cursor_idx);
 
-    buf_view
-        .display_buf
-        .patch_range(&ctx.config, &buffer.rope, row..row + 1);
-
-    let cursor = char_idx_to_coords(&ctx.config, &buffer.rope, buf_view, start_idx);
-    goto_col::<NormalNav>(&ctx.config, &buffer.rope, buf_view, cursor.col);
-
-    Damage::Line(buf_view.cursor.row)
+    Damage::From(row)
 }
 
-fn join(ctx: &EditorCtx, reps: usize) -> Damage {
-    // let (session, buf_view) = ctx.sessions.get_mut(&ctx.editor.session_id).unwrap();
-    // let buffer = ctx.buffers.get_mut(&session.buf_id).unwrap();
+fn join_single(rope: &mut Rope, row: usize) -> usize {
+    let boundary = rope.line_to_char(row + 1);
 
-    Damage::Intact
+    let mut start_idx = boundary - 1;
+    if start_idx > 0 && rope.char(start_idx) == '\n' && rope.char(start_idx - 1) == '\r' {
+        start_idx -= 1;
+    }
+
+    let end_idx = rope
+        .chars_at(boundary)
+        .position(|c| !c.is_whitespace() || c == '\n' || c == '\r')
+        .map(|pos| boundary + pos)
+        .unwrap_or(rope.len_chars());
+
+    rope.remove(start_idx..end_idx);
+
+    if start_idx > 0 && rope.char(start_idx) != '\r' && rope.char(start_idx) != '\n' {
+        match rope.char(start_idx - 1) {
+            c if c.is_whitespace() => {}
+            c if c == '.' || c == '?' || c == '!' => rope.insert(start_idx, "  "),
+            _ => rope.insert_char(start_idx, ' '),
+        }
+    }
+
+    let cursor_idx = if rope.char(start_idx) == '\r' || rope.char(start_idx) == '\n' {
+        start_idx.saturating_sub(1)
+    } else {
+        start_idx
+    };
+
+    cursor_idx
 }
+
+// -----------------------------------------------------------------------
+// Auxiliary stuff from now on
+// -----------------------------------------------------------------------
 
 fn is_readonly(reg: Option<char>) -> bool {
     reg.map(Register::from).is_some_and(|r| r.is_readonly())
