@@ -1,4 +1,4 @@
-use crossterm::event::KeyEvent;
+use crossterm::event::{KeyCode, KeyEvent};
 use std::sync::LazyLock;
 
 use crate::{
@@ -128,11 +128,11 @@ fn parse_motion(reps: Option<usize>, input: &[KeyEvent]) -> FindResult<Motion> {
         let (s, args) = input.split_at(input.len() - 1);
         let arg = args[0];
         match MOTION_TRIE.find(s) {
-            FindResult::Hit(MotionResult::WantsCharArg(f)) => {
-                if let Some(c) = arg.code.as_char() {
-                    return FindResult::Hit(f(c));
-                }
-            }
+            FindResult::Hit(MotionResult::WantsCharArg(f)) => match arg.code {
+                KeyCode::Char(c) => return FindResult::Hit(f(c)),
+                KeyCode::Tab => return FindResult::Hit(f('\t')),
+                _ => {}
+            },
             _ => {}
         }
     }
