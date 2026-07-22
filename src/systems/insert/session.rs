@@ -96,7 +96,7 @@ pub fn broadcast_damage(ctx: &mut EditorCtx, damage_evt: DamageEvent) {
                 Damage::From(row) => buf_view.display_buf.destroy_from(row),
             }
 
-            // Cursor might end up outside bocument boundaries in case of deletions, update if necessary
+            // Cursor might end up outside document boundaries in case of deletions, update if necessary
             let mut cursor_idx = cursor_to_char_idx(&ctx.config, buf_view, &buffer.rope);
             if cursor_idx >= buffer.rope.len_chars() {
                 cursor_idx = buffer.rope.len_chars().saturating_sub(1);
