@@ -1,6 +1,7 @@
 use ropey::RopeSlice;
 
 use crate::{
+    active_session_and_buffer,
     components::{Buffer, BufferName, BufferView, EditorCtx, Level, Session, Status},
     ex::{ExError, ExRange, solve_exrange},
     misc, rope,
@@ -15,8 +16,7 @@ pub fn save_active(
     range: ExRange,
 ) -> Result<(), ExError> {
     let status = &mut ctx.status;
-    let (session, buf_view) = ctx.sessions.get_mut(&ctx.editor.session_id).unwrap();
-    let buffer = ctx.buffers.get_mut(&session.buf_id).unwrap();
+    let (session, buf_view, buffer) = active_session_and_buffer!(mut ctx);
 
     save(
         (session, buf_view, buffer),
@@ -38,8 +38,7 @@ pub fn hard_save_active(
     range: ExRange,
 ) -> Result<(), ExError> {
     let status = &mut ctx.status;
-    let (session, buf_view) = ctx.sessions.get_mut(&ctx.editor.session_id).unwrap();
-    let buffer = ctx.buffers.get_mut(&session.buf_id).unwrap();
+    let (session, buf_view, buffer) = active_session_and_buffer!(mut ctx);
 
     hard_save(
         (session, buf_view, buffer),

@@ -5,7 +5,7 @@ use crate::{
 };
 
 pub fn handle_ex_state(ctx: &mut EditorCtx) {
-    let ex_state = { std::mem::replace(&mut ctx.ex_session.state, ExState::Idle) };
+    let ex_state = std::mem::replace(&mut ctx.ex_session.state, ExState::Idle);
 
     match ex_state {
         ExState::Idle => {}
