@@ -2,7 +2,10 @@ use crate::{
     active_session_and_buffer,
     cmd::EditOp,
     components::{BufferId, Coords, EditorCtx, ExState, Focus},
-    systems::insert::buffer::{Damage, backspace, delete, enter, insert_char},
+    systems::{
+        commons::{char_idx_to_coords, cursor_to_char_idx},
+        insert::buffer::{Damage, backspace, delete, enter, insert_char},
+    },
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -81,15 +84,24 @@ pub fn broadcast_damage(ctx: &mut EditorCtx, damage_evt: DamageEvent) {
 
     for (session_id, (session, buf_view)) in ctx.sessions.iter_mut() {
         if *session_id != ctx.editor.session_id && session.buf_id == damage_evt.buf_id {
+            let buffer = ctx.buffers.get_mut(&session.buf_id).unwrap();
+
             match damage_evt.damage {
                 Damage::Intact => {}
                 Damage::Line(row) => {
-                    let buffer = ctx.buffers.get_mut(&session.buf_id).unwrap();
                     buf_view
                         .display_buf
                         .patch_range(&ctx.config, &buffer.rope, row..row + 1);
                 }
                 Damage::From(row) => buf_view.display_buf.destroy_from(row),
+            }
+
+            // Cursor might end up outside bocument boundaries in case of deletions, update if necessary
+            let mut cursor_idx = cursor_to_char_idx(&ctx.config, buf_view, &buffer.rope);
+            if cursor_idx >= buffer.rope.len_chars() {
+                cursor_idx = buffer.rope.len_chars().saturating_sub(1);
+                buf_view.cursor =
+                    char_idx_to_coords(&ctx.config, &buffer.rope, buf_view, cursor_idx);
             }
         }
     }
