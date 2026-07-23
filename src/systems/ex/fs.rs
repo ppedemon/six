@@ -99,13 +99,13 @@ fn save(
     let (session, buf_view, buffer) = session_args;
     let curr_line = buf_view.cursor.row;
 
-    if only_if_dirty && !buffer.dirty {
+    if only_if_dirty && !buffer.is_dirty() {
         return Ok(());
     }
 
     let range = range.coerce_implicit_to(ExRange::All);
     let rope_slice = rope_slice(&buffer, curr_line, range)?;
-    let writes_all = rope_slice.len_lines() == buffer.rope.len_lines();
+    let writes_all = rope_slice.len_lines() == buffer.rope().len_lines();
 
     match (name.as_ref(), session.buf_name.as_ref()) {
         (None, None) => Err(ExError::NoFileName),
@@ -119,14 +119,14 @@ fn save(
                 return Err(ExError::PartialWrite);
             }
             save_buffer(status, orig_name, append, rope_slice)?;
-            buffer.dirty = false;
+            buffer.saved();
             Ok(())
         }
         (Some(given_name), None) => {
             save_buffer(status, given_name, append, rope_slice)?;
             if !append && writes_all {
                 session.buf_name = name;
-                buffer.dirty = false;
+                buffer.saved();
             }
             Ok(())
         }
@@ -143,7 +143,7 @@ fn save(
             }
             save_buffer(status, given_name, append, rope_slice)?;
             if given_name.file_path.as_path() == orig_name.file_path.as_path() {
-                buffer.dirty = false;
+                buffer.saved();
             }
             Ok(())
         }
@@ -161,20 +161,20 @@ fn hard_save(
     let (session, buf_view, buffer) = session_args;
     let curr_line = buf_view.cursor.row;
 
-    if only_if_dirty && !buffer.dirty {
+    if only_if_dirty && !buffer.is_dirty() {
         return Ok(());
     }
 
     let range = range.coerce_implicit_to(ExRange::All);
     let rope_slice = rope_slice(&buffer, curr_line, range)?;
-    let writes_all = rope_slice.len_lines() == buffer.rope.len_lines();
+    let writes_all = rope_slice.len_lines() == buffer.rope().len_lines();
 
     match (name.as_ref(), session.buf_name.as_ref()) {
         (None, None) => Err(ExError::NoFileName),
         (None, Some(orig_name)) => {
             hard_save_buffer(status, orig_name, append, rope_slice)?;
             if writes_all {
-                buffer.dirty = false;
+                buffer.saved();
             }
             Ok(())
         }
@@ -184,7 +184,7 @@ fn hard_save(
                 session.buf_name = name;
             }
             if writes_all {
-                buffer.dirty = false;
+                buffer.saved();
             }
             Ok(())
         }
@@ -192,8 +192,8 @@ fn hard_save(
 }
 
 fn rope_slice(buffer: &Buffer, curr_line: usize, range: ExRange) -> Result<RopeSlice<'_>, ExError> {
-    let range = solve_exrange(range, &buffer.rope, curr_line)?;
-    Ok(rope::slice_as_view(&buffer.rope, range))
+    let range = solve_exrange(range, &buffer.rope(), curr_line)?;
+    Ok(rope::slice_as_view(buffer.rope(), range))
 }
 
 fn save_buffer(

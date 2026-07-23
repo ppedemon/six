@@ -42,7 +42,7 @@ fn get_areas(ctx: &EditorCtx, area: Rect) -> (Rect, Rect) {
 
     let ex_height = ctx
         .ex_session
-        .rope
+        .rope()
         .len_lines()
         .clamp(1, total_height.saturating_sub(1));
 
@@ -62,7 +62,7 @@ fn get_areas(ctx: &EditorCtx, area: Rect) -> (Rect, Rect) {
 fn sync_sessions(ctx: &mut EditorCtx) {
     for (session, buf_view) in ctx.sessions.values_mut() {
         let buffer = ctx.buffers.get(&session.buf_id).unwrap();
-        let len_lines = buffer.rope.len_lines();
+        let len_lines = buffer.rope().len_lines();
 
         let height = session.viewport.area.height as usize;
         let scroll_row = session.viewport.scroll.row;
@@ -71,19 +71,19 @@ fn sync_sessions(ctx: &mut EditorCtx) {
 
         buf_view
             .display_buf
-            .ensure_range(&ctx.config, &buffer.rope, start..end);
+            .ensure_range(&ctx.config, buffer.rope(), start..end);
     }
 }
 
 fn sync_ex(ctx: &mut EditorCtx) {
-    let len_lines = ctx.ex_session.rope.len_lines();
+    let len_lines = ctx.ex_session.rope().len_lines();
     let height = ctx.ex_session.viewport.area.height as usize;
     let start = ctx.ex_session.viewport.scroll.row.saturating_sub(height);
     let end = (ctx.ex_session.viewport.scroll.row + height * 2).min(len_lines);
 
     ctx.ex_buffer_view
         .display_buf
-        .ensure_range(&ctx.config, &ctx.ex_session.rope, start..end);
+        .ensure_range(&ctx.config, &ctx.ex_session.rope(), start..end);
 }
 
 fn scroll(cursor: Coords, viewport: &mut Viewport) {

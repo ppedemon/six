@@ -74,7 +74,7 @@ fn render_session(
 
     render_lines(
         config,
-        &buffer.rope,
+        buffer.rope(),
         viewport,
         &mut buf_view.display_buf,
         frame_buf,
@@ -86,7 +86,7 @@ fn render_session(
     let visible_lines = viewport.area.height as usize;
     let end_line = start_line
         .saturating_add(visible_lines)
-        .min(buffer.rope.len_lines());
+        .min(buffer.rope().len_lines());
 
     let num_lines = end_line - start_line;
     for y in num_lines..visible_lines {
@@ -104,7 +104,7 @@ fn render_ex(
 ) {
     render_lines(
         config,
-        &ex_session.rope,
+        ex_session.rope(),
         &ex_session.viewport,
         &mut buf_view.display_buf,
         frame_buf,
