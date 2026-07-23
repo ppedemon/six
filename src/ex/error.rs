@@ -32,9 +32,6 @@ pub enum ExError {
     #[error("Unsupported shell command: {cmd}")]
     UnsuportedShellCommand { cmd: String },
 
-    #[error("Mark not found: {mark}")]
-    MarkNotFound { mark: char },
-
     #[error("{msg}")]
     InvalidArgs { msg: String },
 

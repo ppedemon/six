@@ -1,4 +1,4 @@
-use std::{collections::HashMap, path::PathBuf};
+use std::path::PathBuf;
 
 use ratatui::layout::{Position, Rect};
 use ropey::Rope;
@@ -111,7 +111,6 @@ pub struct Session {
     pub buf_id: BufferId,
     pub viewport: Viewport,
     pub insert_log: InsertLog,
-    pub marks: HashMap<char, usize>,
 }
 
 impl Session {
@@ -122,7 +121,6 @@ impl Session {
             buf_id,
             viewport: Viewport::default(),
             insert_log: InsertLog::new(),
-            marks: HashMap::new(),
         }
     }
 
@@ -133,7 +131,6 @@ impl Session {
             buf_id,
             viewport: Viewport::default(),
             insert_log: InsertLog::new(),
-            marks: HashMap::new(),
         }
     }
 }
