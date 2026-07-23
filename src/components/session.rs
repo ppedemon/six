@@ -1,10 +1,10 @@
-use std::path::PathBuf;
+use std::{ops::RangeBounds, path::PathBuf};
 
 use ratatui::layout::{Position, Rect};
 use ropey::Rope;
 
 use crate::{
-    components::{BufferId, DisplayBuffer, InsertLog},
+    components::{BufferId, DisplayBuffer, InsertLog, MutBuffer},
     misc,
 };
 
@@ -144,7 +144,7 @@ pub enum ExState {
 
 pub struct ExSession {
     pub viewport: Viewport,
-    pub rope: Rope,
+    rope: Rope,
     pub state: ExState,
 }
 
@@ -155,5 +155,38 @@ impl ExSession {
             rope: Rope::new(),
             state: ExState::Idle,
         }
+    }
+
+    pub fn rope(&self) -> &Rope {
+        &self.rope
+    }
+
+    pub fn edit(&mut self) -> impl MutBuffer {
+        ExMutableBuffer {
+            rope: &mut self.rope,
+        }
+    }
+}
+
+// ExBuffer mutation: trivially delegate to the underlying rope
+struct ExMutableBuffer<'a> {
+    rope: &'a mut Rope,
+}
+
+impl MutBuffer for ExMutableBuffer<'_> {
+    fn rope(&self) -> &Rope {
+        &self.rope
+    }
+
+    fn insert_char(&mut self, char_idx: usize, ch: char) {
+        self.rope.insert_char(char_idx, ch);
+    }
+
+    fn insert(&mut self, char_idx: usize, text: &str) {
+        self.rope.insert(char_idx, text);
+    }
+
+    fn remove<R: RangeBounds<usize>>(&mut self, char_range: R) {
+        self.rope.remove(char_range);
     }
 }

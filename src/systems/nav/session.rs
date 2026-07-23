@@ -6,10 +6,8 @@ use super::{
 };
 use crate::{
     active_session_and_buffer,
-    components::{BufferView, Config, EditorCtx, Focus, LastSearch, Mode, Viewport},
-};
-use crate::{
     cmd::{Cmd, Motion},
+    components::{BufferView, Config, EditorCtx, Focus, LastSearch, Mode, Viewport},
     rope,
     systems::commons::{char_idx_to_coords, cursor_to_char_idx, snap_coords},
 };
@@ -39,11 +37,11 @@ fn handle_ex_nav(ctx: &mut EditorCtx, args: NavArgs) {
     match args.motion {
         Motion::Left => {
             if buf_view.cursor.col > 1 {
-                buffer::move_left::<InsertNav>(&ctx.config, &ctx.ex_session.rope, buf_view, reps);
+                buffer::move_left::<InsertNav>(&ctx.config, ctx.ex_session.rope(), buf_view, reps);
             }
         }
         Motion::Right => {
-            buffer::move_right::<InsertNav>(&ctx.config, &ctx.ex_session.rope, buf_view, reps);
+            buffer::move_right::<InsertNav>(&ctx.config, &ctx.ex_session.rope(), buf_view, reps);
         }
         _ => {}
     }
@@ -58,7 +56,7 @@ fn handle_session_nav(ctx: &mut EditorCtx, args: NavArgs) {
             session.insert_log.reset();
             session_nav::<InsertNav>(
                 config,
-                &buffer.rope,
+                buffer.rope(),
                 &mut ctx.search,
                 &mut session.viewport,
                 buf_view,
@@ -68,7 +66,7 @@ fn handle_session_nav(ctx: &mut EditorCtx, args: NavArgs) {
         Mode::Normal => {
             session_nav::<NormalNav>(
                 &ctx.config,
-                &buffer.rope,
+                buffer.rope(),
                 &mut ctx.search,
                 &mut session.viewport,
                 buf_view,
@@ -147,7 +145,7 @@ fn session_nav<R: NavRules>(
 pub fn init_cursor_pos(ctx: &mut EditorCtx) {
     let (session, buf_view) = ctx.sessions.get_mut(&ctx.editor.session_id).unwrap();
     let buffer = ctx.buffers.get(&session.buf_id).unwrap();
-    buffer::file_first_non_blank::<NormalNav>(&ctx.config, &buffer.rope, buf_view);
+    buffer::file_first_non_blank::<NormalNav>(&ctx.config, buffer.rope(), buf_view);
 }
 
 pub fn goto_line<R: NavRules>(

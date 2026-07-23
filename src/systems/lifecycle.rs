@@ -57,7 +57,7 @@ fn create_buffer(ctx: &mut EditorCtx, buf_name: &BufferName) -> Result<BufferId,
                 Buffer::empty()
             };
 
-            event::on_buffer_loaded(&mut ctx.status, buf_name, &buffer.rope);
+            event::on_buffer_loaded(&mut ctx.status, buf_name, &buffer.rope());
             ctx.spawn_buffer(buffer)
         }
     };

@@ -56,7 +56,7 @@ pub fn enter_insert(ctx: &mut EditorCtx, insert_point: InsertPoint, cmd: Cmd) {
         .insert_log
         .init(cmd.reps.unwrap_or(1).saturating_sub(1));
 
-    apply_insert_point(&ctx.config, &buffer.rope, buf_view, insert_point);
+    apply_insert_point(&ctx.config, buffer.rope(), buf_view, insert_point);
 }
 
 pub fn enter_normal(ctx: &mut EditorCtx) {
@@ -89,20 +89,20 @@ fn enter_ex(ctx: &mut EditorCtx, ex_mode: ExMode) {
     let buf_view = &mut ctx.ex_buffer_view;
 
     let _ = match ex_mode {
-        ExMode::Colon => insert_char(&ctx.config, buf_view, &mut ex_session.rope, ':'),
-        ExMode::SearchForward => insert_char(&ctx.config, buf_view, &mut ex_session.rope, '/'),
-        ExMode::SearchBackward => insert_char(&ctx.config, buf_view, &mut ex_session.rope, '?'),
+        ExMode::Colon => insert_char(&ctx.config, buf_view, &mut ex_session.edit(), ':'),
+        ExMode::SearchForward => insert_char(&ctx.config, buf_view, &mut ex_session.edit(), '/'),
+        ExMode::SearchBackward => insert_char(&ctx.config, buf_view, &mut ex_session.edit(), '?'),
     };
 
-    apply_insert_point(&ctx.config, &ex_session.rope, buf_view, InsertPoint::Last);
+    apply_insert_point(&ctx.config, &ex_session.rope(), buf_view, InsertPoint::Last);
 }
 
 fn restore_cursor(ctx: &mut EditorCtx) {
     let (session, buf_view, buffer) = active_session_and_buffer!(mut ctx);
     let cursor = buf_view.cursor;
-    let line = commons::curr_line(&ctx.config, &buffer.rope, buf_view);
+    let line = commons::curr_line(&ctx.config, buffer.rope(), buf_view);
     buf_view.cursor.col = line.snap_col(cursor.col);
-    move_left::<NormalNav>(&ctx.config, &buffer.rope, buf_view, 1);
+    move_left::<NormalNav>(&ctx.config, buffer.rope(), buf_view, 1);
 }
 
 fn apply_insert_point(

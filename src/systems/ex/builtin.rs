@@ -1,6 +1,6 @@
 use crate::{
     cmd::{Cmd, Motion},
-    components::{EditorCtx, Level},
+    components::{Buffer, EditorCtx, Level},
     ex::{BuiltIn, ExError, ExRange},
     systems::{
         ex::{
@@ -72,5 +72,5 @@ pub fn exec_builtin(
 }
 
 fn is_editor_dirty(ctx: &EditorCtx) -> bool {
-    ctx.buffers.values().any(|buffer| buffer.dirty)
+    ctx.buffers.values().any(Buffer::is_dirty)
 }

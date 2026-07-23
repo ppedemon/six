@@ -1,9 +1,7 @@
-use ropey::Rope;
-
 use crate::{
     active_session_and_buffer,
     cmd::EditOp,
-    components::{BufferView, Config, EditorCtx},
+    components::{BufferView, Config, EditorCtx, MutBuffer},
     systems::{
         commons::{char_idx_to_coords, cursor_to_char_idx},
         insert::{
@@ -20,17 +18,18 @@ pub fn apply_insert_log(ctx: &mut EditorCtx, ops: &Vec<EditOp>, reps: usize) {
 
 pub fn intepret_insert_log(ctx: &mut EditorCtx, ops: &Vec<EditOp>, reps: usize) -> DamageEvent {
     let (session, buf_view, buffer) = active_session_and_buffer!(mut ctx);
-    let mut interpreter = InsertLogInterpreter::new(&ctx.config, buf_view, &mut buffer.rope);
+
+    let buffer = &mut buffer.edit();
+    let mut interpreter = InsertLogInterpreter::new(&ctx.config, buf_view, buffer);
 
     let damage = interpreter.interpret(ops, reps);
-    buffer.dirty = true;
     DamageEvent::new(session.buf_id, damage)
 }
 
-struct InsertLogInterpreter<'a> {
+struct InsertLogInterpreter<'a, T: MutBuffer> {
     config: &'a Config,
     buf_view: &'a mut BufferView,
-    rope: &'a mut Rope,
+    buffer: &'a mut T,
     row: usize,
     char_idx: usize,
     destroy_from: Option<usize>,
@@ -47,15 +46,15 @@ struct InsertLogInterpreter<'a> {
 // expensive.
 //
 // Never forget: multichar graphemes are hell.
-impl<'a> InsertLogInterpreter<'a> {
-    fn new(config: &'a Config, buf_view: &'a mut BufferView, rope: &'a mut Rope) -> Self {
+impl<'a, T: MutBuffer> InsertLogInterpreter<'a, T> {
+    fn new(config: &'a Config, buf_view: &'a mut BufferView, buffer: &'a mut T) -> Self {
         let row = buf_view.cursor.row;
-        let char_idx = cursor_to_char_idx(config, buf_view, rope);
+        let char_idx = cursor_to_char_idx(config, buf_view, buffer.rope());
 
         Self {
             config,
             buf_view,
-            rope,
+            buffer,
             row,
             char_idx,
             destroy_from: None,
@@ -84,13 +83,20 @@ impl<'a> InsertLogInterpreter<'a> {
             self.buf_view.display_buf.destroy_from(row);
             damage = Damage::From(row);
         } else {
-            self.buf_view
-                .display_buf
-                .patch_range(self.config, self.rope, self.row..self.row + 1);
+            self.buf_view.display_buf.patch_range(
+                self.config,
+                self.buffer.rope(),
+                self.row..self.row + 1,
+            );
             damage = Damage::Line(self.row);
         }
 
-        let coords = char_idx_to_coords(self.config, self.rope, self.buf_view, self.char_idx);
+        let coords = char_idx_to_coords(
+            self.config,
+            self.buffer.rope(),
+            self.buf_view,
+            self.char_idx,
+        );
         self.buf_view.cursor = coords;
         damage
     }
@@ -99,13 +105,13 @@ impl<'a> InsertLogInterpreter<'a> {
         if c == '\n' || c == '\r' {
             self.enter()
         } else {
-            self.rope.insert_char(self.char_idx, c);
+            self.buffer.insert_char(self.char_idx, c);
             self.char_idx += 1;
         }
     }
 
     fn enter(&mut self) {
-        self.rope.insert_char(self.char_idx, '\n');
+        self.buffer.insert_char(self.char_idx, '\n');
         self.set_rebuild_from(self.row);
         self.row += 1;
         self.char_idx += 1;
@@ -114,32 +120,35 @@ impl<'a> InsertLogInterpreter<'a> {
     fn backspace(&mut self) {
         if self.char_idx > 0 {
             let mut prev_idx = self.char_idx - 1;
-            let c = self.rope.char(prev_idx);
+            let c = self.buffer.rope().char(prev_idx);
             if c == '\n' {
                 self.row -= 1;
                 self.set_rebuild_from(self.row);
-                if prev_idx > 0 && self.rope.char(prev_idx - 1) == '\r' {
+                if prev_idx > 0 && self.buffer.rope().char(prev_idx - 1) == '\r' {
                     prev_idx -= 1;
                 }
             }
-            self.rope.remove(prev_idx..self.char_idx);
+            self.buffer.remove(prev_idx..self.char_idx);
             self.char_idx = prev_idx;
         }
     }
 
     fn delete(&mut self) {
-        let max_doc_idx = self.rope.len_chars().saturating_sub(1);
+        let max_doc_idx = self.buffer.rope().len_chars().saturating_sub(1);
 
         if self.char_idx < max_doc_idx {
             let mut next_idx = self.char_idx + 1;
-            let c = self.rope.char(next_idx);
+            let c = self.buffer.rope().char(next_idx);
             if c == '\n' || c == '\r' {
                 self.set_rebuild_from(self.row);
-                if c == '\r' && next_idx < max_doc_idx && self.rope.char(next_idx + 1) == '\n' {
+                if c == '\r'
+                    && next_idx < max_doc_idx
+                    && self.buffer.rope().char(next_idx + 1) == '\n'
+                {
                     next_idx += 1;
                 }
             }
-            self.rope.remove(self.char_idx..next_idx);
+            self.buffer.remove(self.char_idx..next_idx);
         }
     }
 

@@ -1,11 +1,10 @@
-use std::ops::Range;
-
 use ropey::Rope;
+use std::ops::Range;
 
 use crate::{
     active_session, active_session_and_buffer,
     cmd::{Cmd, ImmediateOp},
-    components::{Coords, EditorCtx, Register, Registers},
+    components::{Buffer, Coords, EditorCtx, MutBuffer, Register, Registers},
     systems::{
         commons::{char_idx_to_coords, coords_to_char_idx, curr_line},
         insert::{Damage, DamageEvent, broadcast_damage},
@@ -52,10 +51,9 @@ pub fn handle_immediate(ctx: &mut EditorCtx, args: ImmediateArgs) {
 //
 //  1. Update registers
 //  2. Mutate the buffer's rope
-//  3. Mark buffer as dirty
-//  4. Patch the active session's buffer view
-//  5. Update cursor position
-//  6. Compute and return the damage
+//  3. Patch the active session's buffer view
+//  4. Update cursor position
+//  5. Compute and return the damage
 // -----------------------------------------------------------------------
 
 // -----------------------------------------------------------------------
@@ -77,18 +75,17 @@ fn backspace(ctx: &mut EditorCtx, reg: Option<char>, reps: usize) -> Damage {
 fn small_delete(ctx: &mut EditorCtx, reg: Option<char>, reps: usize, rng: Range<usize>) -> Damage {
     let (session, buf_view, buffer) = active_session_and_buffer!(mut ctx);
 
-    report_small_delete(&mut ctx.registers, reg, &buffer.rope, rng.clone());
+    report_small_delete(&mut ctx.registers, reg, buffer.rope(), rng.clone());
 
-    buffer.rope.remove(rng.clone());
-    buffer.dirty = true;
+    buffer.edit().remove(rng.clone());
 
     let row = buf_view.cursor.row;
     buf_view
         .display_buf
-        .patch_range(&ctx.config, &buffer.rope, row..row + 1);
+        .patch_range(&ctx.config, buffer.rope(), row..row + 1);
 
-    let cursor = char_idx_to_coords(&ctx.config, &buffer.rope, buf_view, rng.start);
-    goto_col::<NormalNav>(&ctx.config, &buffer.rope, buf_view, cursor.col);
+    let cursor = char_idx_to_coords(&ctx.config, buffer.rope(), buf_view, rng.start);
+    goto_col::<NormalNav>(&ctx.config, buffer.rope(), buf_view, cursor.col);
 
     Damage::Line(buf_view.cursor.row)
 }
@@ -100,7 +97,7 @@ fn calc_delete_range(ctx: &mut EditorCtx, reps: usize) -> Range<usize> {
     let start_col = buf_view.cursor.col;
     let mut end_col = start_col;
 
-    let line = curr_line(&ctx.config, &buffer.rope, buf_view);
+    let line = curr_line(&ctx.config, buffer.rope(), buf_view);
     let mut it = line
         .graphemes_between(start_col, line.display_width)
         .enumerate();
@@ -115,8 +112,8 @@ fn calc_delete_range(ctx: &mut EditorCtx, reps: usize) -> Range<usize> {
     let start_coords = Coords::new(row, start_col);
     let end_coords = Coords::new(row, end_col);
 
-    let start_idx = coords_to_char_idx(&ctx.config, &buffer.rope, buf_view, start_coords);
-    let end_idx = coords_to_char_idx(&ctx.config, &buffer.rope, buf_view, end_coords);
+    let start_idx = coords_to_char_idx(&ctx.config, buffer.rope(), buf_view, start_coords);
+    let end_idx = coords_to_char_idx(&ctx.config, buffer.rope(), buf_view, end_coords);
 
     start_idx..end_idx
 }
@@ -128,7 +125,7 @@ fn calc_backspace_range(ctx: &mut EditorCtx, reps: usize) -> Range<usize> {
     let end_col = buf_view.cursor.col;
     let mut start_col = end_col;
 
-    let line = curr_line(&ctx.config, &buffer.rope, buf_view);
+    let line = curr_line(&ctx.config, buffer.rope(), buf_view);
     let mut it = line.rev_graphemes_between(start_col, 0).enumerate();
 
     while let Some((i, (g, span))) = it.next() {
@@ -141,8 +138,8 @@ fn calc_backspace_range(ctx: &mut EditorCtx, reps: usize) -> Range<usize> {
     let start_coords = Coords::new(row, start_col);
     let end_coords = Coords::new(row, end_col);
 
-    let start_idx = coords_to_char_idx(&ctx.config, &buffer.rope, buf_view, start_coords);
-    let end_idx = coords_to_char_idx(&ctx.config, &buffer.rope, buf_view, end_coords);
+    let start_idx = coords_to_char_idx(&ctx.config, buffer.rope(), buf_view, start_coords);
+    let end_idx = coords_to_char_idx(&ctx.config, buffer.rope(), buf_view, end_coords);
 
     start_idx..end_idx
 }
@@ -153,10 +150,9 @@ fn calc_backspace_range(ctx: &mut EditorCtx, reps: usize) -> Range<usize> {
 
 fn join(ctx: &mut EditorCtx, reps: usize) -> Damage {
     let (session, buf_view, buffer) = active_session_and_buffer!(mut ctx);
-    let rope = &mut buffer.rope;
 
     let row = buf_view.cursor.row;
-    if row + 1 == rope.len_lines() {
+    if row + 1 == buffer.rope().len_lines() {
         return Damage::Intact;
     }
 
@@ -164,50 +160,57 @@ fn join(ctx: &mut EditorCtx, reps: usize) -> Damage {
     let mut cursor_idx;
 
     loop {
-        cursor_idx = join_single(rope, row);
+        cursor_idx = join_single(buffer, row);
 
         reps = reps.saturating_sub(1);
-        if reps == 0 || row + 1 == rope.len_lines() {
+        if reps == 0 || row + 1 == buffer.rope().len_lines() {
             break;
         }
     }
 
-    buffer.dirty = true;
     buf_view.display_buf.destroy_from(row);
-    buf_view.cursor = char_idx_to_coords(&ctx.config, rope, buf_view, cursor_idx);
+    buf_view.cursor = char_idx_to_coords(&ctx.config, buffer.rope(), buf_view, cursor_idx);
 
     Damage::From(row)
 }
 
-fn join_single(rope: &mut Rope, row: usize) -> usize {
-    let boundary = rope.line_to_char(row + 1);
+fn join_single(buffer: &mut Buffer, row: usize) -> usize {
+    let boundary = buffer.rope().line_to_char(row + 1);
 
     let mut start_idx = boundary - 1;
-    if start_idx > 0 && rope.char(start_idx) == '\n' && rope.char(start_idx - 1) == '\r' {
+    if start_idx > 0
+        && buffer.rope().char(start_idx) == '\n'
+        && buffer.rope().char(start_idx - 1) == '\r'
+    {
         start_idx -= 1;
     }
 
-    let end_idx = rope
+    let end_idx = buffer
+        .rope()
         .chars_at(boundary)
         .position(|c| !c.is_whitespace() || c == '\n' || c == '\r')
         .map(|pos| boundary + pos)
-        .unwrap_or(rope.len_chars());
+        .unwrap_or(buffer.rope().len_chars());
 
-    rope.remove(start_idx..end_idx);
+    buffer.edit().remove(start_idx..end_idx);
 
-    if start_idx > 0 && rope.char(start_idx) != '\r' && rope.char(start_idx) != '\n' {
-        match rope.char(start_idx - 1) {
+    if start_idx > 0
+        && buffer.rope().char(start_idx) != '\r'
+        && buffer.rope().char(start_idx) != '\n'
+    {
+        match buffer.rope().char(start_idx - 1) {
             c if c.is_whitespace() => {}
-            c if c == '.' || c == '?' || c == '!' => rope.insert(start_idx, "  "),
-            _ => rope.insert_char(start_idx, ' '),
+            c if c == '.' || c == '?' || c == '!' => buffer.edit().insert(start_idx, "  "),
+            _ => buffer.edit().insert_char(start_idx, ' '),
         }
     }
 
-    let cursor_idx = if rope.char(start_idx) == '\r' || rope.char(start_idx) == '\n' {
-        start_idx.saturating_sub(1)
-    } else {
-        start_idx
-    };
+    let cursor_idx =
+        if buffer.rope().char(start_idx) == '\r' || buffer.rope().char(start_idx) == '\n' {
+            start_idx.saturating_sub(1)
+        } else {
+            start_idx
+        };
 
     cursor_idx
 }

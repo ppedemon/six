@@ -10,7 +10,7 @@ mod session;
 
 use std::collections::HashMap;
 
-pub use buffer::Buffer;
+pub use buffer::{Buffer, MutBuffer};
 pub use config::Config;
 pub use display::{DisplayBuffer, DisplayLine, DisplayLineRef};
 pub use editor::{Editor, Focus, Level, Status, TextStyle};
