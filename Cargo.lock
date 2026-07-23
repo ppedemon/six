@@ -941,6 +941,7 @@ dependencies = [
  "anyhow",
  "color-eyre",
  "crossterm",
+ "dirs",
  "nom",
  "ratatui",
  "regex",

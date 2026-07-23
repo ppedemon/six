@@ -69,10 +69,10 @@ mod tests {
         assert_eq!(norm_filename(input1).to_str(), Some("new file.txt"));
 
         let input2 = "~/documents/secret\u{0007}file*.txt";
-        assert_eq!(
-            norm_filename(input2).to_str(),
-            Some("/Users/pablo.pedemonte/documents/secretfile.txt")
-        );
+        let expected = dirs::home_dir()
+            .map(|home| home.join("documents/secretfile.txt"))
+            .unwrap();
+        assert_eq!(norm_filename(input2).to_str(), expected.to_str(),);
     }
 
     #[test]
