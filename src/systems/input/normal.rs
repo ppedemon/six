@@ -1,5 +1,3 @@
-use core::panic;
-
 use crossterm::event::{Event, KeyCode, KeyEvent};
 
 use crate::{

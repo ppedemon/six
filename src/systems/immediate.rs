@@ -1,5 +1,5 @@
 use ropey::Rope;
-use std::{ops::Range, panic, unimplemented};
+use std::{ops::Range, panic};
 
 use crate::{
     active_session, active_session_and_buffer,

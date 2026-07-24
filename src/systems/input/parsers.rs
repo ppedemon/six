@@ -1,5 +1,5 @@
 use crossterm::event::{KeyCode, KeyEvent};
-use std::{panic, sync::LazyLock};
+use std::sync::LazyLock;
 
 use crate::{
     cmd::{
