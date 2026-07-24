@@ -1,5 +1,5 @@
 use crossterm::event::{KeyCode, KeyEvent};
-use std::sync::LazyLock;
+use std::{panic, sync::LazyLock};
 
 use crate::{
     cmd::{
@@ -54,9 +54,9 @@ fn op<T: Into<Operator>>(t: T) -> OpSpec {
     }
 }
 
-fn needy_op(op: Operator) -> OpSpec {
+fn needy_op<T: Into<Operator>>(t: T) -> OpSpec {
     OpSpec {
-        op,
+        op: t.into(),
         needs_arg: true,
     }
 }
@@ -65,8 +65,8 @@ fn ok_op<T: Into<Operator>>(t: T) -> ParseResult<OpSpec> {
     ok(op(t))
 }
 
-fn ok_needy_op(op: Operator) -> ParseResult<OpSpec> {
-    ok(needy_op(op))
+fn ok_needy_op<T: Into<Operator>>(t: T) -> ParseResult<OpSpec> {
+    ok(needy_op(t))
 }
 
 static OP_TRIE: LazyLock<Trie<KeyEvent, ParseResult<OpSpec>>> = LazyLock::new(|| {
@@ -93,6 +93,7 @@ static OP_TRIE: LazyLock<Trie<KeyEvent, ParseResult<OpSpec>>> = LazyLock::new(||
     t.insert(&[char('X')], ok_op(ImmediateOp::Backspace));
     t.insert(&[backspace()], ok_op(ImmediateOp::Backspace));
     t.insert(&[char('J')], ok_op(ImmediateOp::Join));
+    t.insert(&[char('y')], ok_needy_op(ImmediateOp::Yank));
     t
 });
 

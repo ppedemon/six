@@ -1,3 +1,5 @@
+use core::panic;
+
 use crossterm::event::{Event, KeyCode, KeyEvent};
 
 use crate::{
@@ -110,6 +112,7 @@ impl NormalInputHandler {
             }
             (false, None, FindResult::Hit(OpSpec { op, needs_arg })) => {
                 if needs_arg {
+                    self.op = op;
                     self.input.clear();
                     self.state = State::ArgInit;
                 } else {
@@ -145,6 +148,7 @@ impl NormalInputHandler {
             }
             (None, FindResult::Hit(OpSpec { op, needs_arg })) => {
                 if needs_arg {
+                    self.op = op;
                     self.input.clear();
                     self.state = State::ArgInit;
                 } else {
@@ -171,6 +175,7 @@ impl NormalInputHandler {
             }
             (None, FindResult::Hit(OpSpec { op, needs_arg })) => {
                 if needs_arg {
+                    self.op = op;
                     self.input.clear();
                     self.state = State::ArgInit;
                 } else {
@@ -202,6 +207,7 @@ impl NormalInputHandler {
             }
             (false, None, FindResult::Hit(OpSpec { op, needs_arg })) => {
                 if needs_arg {
+                    self.op = op;
                     self.input.clear();
                     self.state = State::ArgInit;
                 } else {
@@ -232,6 +238,7 @@ impl NormalInputHandler {
             FindResult::Partial => {}
             FindResult::Hit(OpSpec { op, needs_arg }) => {
                 if needs_arg {
+                    self.op = op;
                     self.input.clear();
                     self.state = State::ArgInit;
                 } else {

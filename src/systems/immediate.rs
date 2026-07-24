@@ -1,5 +1,5 @@
 use ropey::Rope;
-use std::ops::Range;
+use std::{ops::Range, panic, unimplemented};
 
 use crate::{
     active_session, active_session_and_buffer,
@@ -38,6 +38,7 @@ pub fn handle_immediate(ctx: &mut EditorCtx, args: ImmediateArgs) {
         }
         ImmediateOp::Backspace => backspace(ctx, args.cmd.reg, args.cmd.reps.unwrap_or(1)),
         ImmediateOp::Join => join(ctx, args.cmd.reps.unwrap_or(1)),
+        ImmediateOp::Yank => panic!("Command = {:?}", args.cmd),
     };
 
     let (session, _) = active_session!(ctx);
