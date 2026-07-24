@@ -108,7 +108,7 @@ impl NormalInputHandler {
                 self.input.push(evt);
                 self.state = State::Op;
             }
-            (false, None, FindResult::Hit(OpResult { op, needs_arg })) => {
+            (false, None, FindResult::Hit(OpSpec { op, needs_arg })) => {
                 if needs_arg {
                     self.input.clear();
                     self.state = State::ArgInit;
@@ -143,7 +143,7 @@ impl NormalInputHandler {
                 self.input.push(evt);
                 self.state = State::Op;
             }
-            (None, FindResult::Hit(OpResult { op, needs_arg })) => {
+            (None, FindResult::Hit(OpSpec { op, needs_arg })) => {
                 if needs_arg {
                     self.input.clear();
                     self.state = State::ArgInit;
@@ -169,7 +169,7 @@ impl NormalInputHandler {
                 self.input.push(evt);
                 self.state = State::Op;
             }
-            (None, FindResult::Hit(OpResult { op, needs_arg })) => {
+            (None, FindResult::Hit(OpSpec { op, needs_arg })) => {
                 if needs_arg {
                     self.input.clear();
                     self.state = State::ArgInit;
@@ -200,7 +200,7 @@ impl NormalInputHandler {
                 self.input.push(evt);
                 self.state = State::Op;
             }
-            (false, None, FindResult::Hit(OpResult { op, needs_arg })) => {
+            (false, None, FindResult::Hit(OpSpec { op, needs_arg })) => {
                 if needs_arg {
                     self.input.clear();
                     self.state = State::ArgInit;
@@ -230,7 +230,7 @@ impl NormalInputHandler {
         match parse_op(self.reps, &self.input) {
             FindResult::Miss => self.reset(ctx),
             FindResult::Partial => {}
-            FindResult::Hit(OpResult { op, needs_arg }) => {
+            FindResult::Hit(OpSpec { op, needs_arg }) => {
                 if needs_arg {
                     self.input.clear();
                     self.state = State::ArgInit;

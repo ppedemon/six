@@ -6,7 +6,8 @@ use crate::{
     components::{BufferView, Config, EditorCtx, Focus, Level, Mode, TextStyle},
     ex::ExRange,
     systems::{
-        commons, ex,
+        commons::{self, cursor_to_char_idx},
+        ex,
         insert::{clear_ex, insert_char, post_insert},
         nav::{NormalNav, move_left},
         quit_editor,
@@ -34,6 +35,7 @@ pub fn handle_sys(ctx: &mut EditorCtx, args: SysArgs) {
             ex::save_active(ctx, None, false, true, ExRange::All).unwrap();
             quit_editor(ctx)
         }
+        SysOp::AddLocalMark(c) => add_local_mark(ctx, c),
     }
 }
 
@@ -119,4 +121,10 @@ fn apply_insert_point(
         InsertPoint::First => line.first_insert_non_blank(),
         InsertPoint::Last => line.display_width,
     };
+}
+
+fn add_local_mark(ctx: &mut EditorCtx, c: char) {
+    let (_, buf_view, buffer) = active_session_and_buffer!(mut ctx);
+    let char_idx = cursor_to_char_idx(&ctx.config, buf_view, buffer.rope());
+    buffer.marks_mut().write(c, char_idx);
 }

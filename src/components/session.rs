@@ -1,4 +1,4 @@
-use std::{ops::RangeBounds, path::PathBuf};
+use std::{ops::Range, path::PathBuf};
 
 use ratatui::layout::{Position, Rect};
 use ropey::Rope;
@@ -186,7 +186,7 @@ impl MutBuffer for ExMutableBuffer<'_> {
         self.rope.insert(char_idx, text);
     }
 
-    fn remove<R: RangeBounds<usize>>(&mut self, char_range: R) {
+    fn remove(&mut self, char_range: Range<usize>) {
         self.rope.remove(char_range);
     }
 }

@@ -12,103 +12,138 @@ use crate::{
     },
 };
 
+// Generic parse result.
+// This type is what we are going to retrieve from the motion and op tries,
+// telling us what to do once we hit something in the trie. Once of:
+//
+//    - Ok(T): congrats, you just found an motion or an operator, nothing to do
+//    - WantsReps(f): this is an op or motion that needs the number of reps as an arg (like G or gg)
+//    - WantArgs: this is an op or motion taking an arg (think of f{char} or m{char})
+#[derive(Debug, Clone, Copy)]
+enum ParseResult<T> {
+    Ok(T),
+    WantsReps(fn(Option<usize>) -> T),
+    WantsArg(fn(KeyEvent) -> Option<T>),
+}
+
+fn ok<T>(t: T) -> ParseResult<T> {
+    ParseResult::Ok(t)
+}
+
+fn wants_reps<T>(f: fn(Option<usize>) -> T) -> ParseResult<T> {
+    ParseResult::WantsReps(f)
+}
+
+fn wants_arg<T>(f: fn(KeyEvent) -> Option<T>) -> ParseResult<T> {
+    ParseResult::WantsArg(f)
+}
+
+// When parsing operators, the T in ParseResult<T> will be an OpSpec.
+// This types tells the state machine whether the returned operator
+// wants an argument (a motion or a text object).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct OpResult {
+pub struct OpSpec {
     pub op: Operator,
     pub needs_arg: bool,
 }
 
-fn op<T: Into<Operator>>(t: T) -> OpResult {
-    OpResult {
+fn op<T: Into<Operator>>(t: T) -> OpSpec {
+    OpSpec {
         op: t.into(),
         needs_arg: false,
     }
 }
 
-fn needy_op(op: Operator) -> OpResult {
-    OpResult {
+fn needy_op(op: Operator) -> OpSpec {
+    OpSpec {
         op,
         needs_arg: true,
     }
 }
 
-static OP_TRIE: LazyLock<Trie<KeyEvent, OpResult>> = LazyLock::new(|| {
+fn ok_op<T: Into<Operator>>(t: T) -> ParseResult<OpSpec> {
+    ok(op(t))
+}
+
+fn ok_needy_op(op: Operator) -> ParseResult<OpSpec> {
+    ok(needy_op(op))
+}
+
+static OP_TRIE: LazyLock<Trie<KeyEvent, ParseResult<OpSpec>>> = LazyLock::new(|| {
     let mut t = Trie::new();
-    t.insert(&[char('i')], op(SysOp::EnterInsert(InsertPoint::Curr)));
-    t.insert(&[char('I')], op(SysOp::EnterInsert(InsertPoint::First)));
-    t.insert(&[char('a')], op(SysOp::EnterInsert(InsertPoint::Next)));
-    t.insert(&[char('A')], op(SysOp::EnterInsert(InsertPoint::Last)));
-    t.insert(&[char(':')], op(SysOp::EnterEx(ExMode::Colon)));
-    t.insert(&[char('/')], op(SysOp::EnterEx(ExMode::SearchForward)));
-    t.insert(&[char('/')], op(SysOp::EnterEx(ExMode::SearchForward)));
-    t.insert(&[char('Z'), char('Z')], op(SysOp::CondWriteAndQuit));
-    t.insert(&[char('Z'), char('Q')], op(SysOp::HardQuit));
+    t.insert(&[char('i')], ok_op(SysOp::EnterInsert(InsertPoint::Curr)));
+    t.insert(&[char('I')], ok_op(SysOp::EnterInsert(InsertPoint::First)));
+    t.insert(&[char('a')], ok_op(SysOp::EnterInsert(InsertPoint::Next)));
+    t.insert(&[char('A')], ok_op(SysOp::EnterInsert(InsertPoint::Last)));
+    t.insert(&[char(':')], ok_op(SysOp::EnterEx(ExMode::Colon)));
+    t.insert(&[char('/')], ok_op(SysOp::EnterEx(ExMode::SearchForward)));
+    t.insert(&[char('/')], ok_op(SysOp::EnterEx(ExMode::SearchForward)));
+    t.insert(&[char('Z'), char('Z')], ok_op(SysOp::CondWriteAndQuit));
+    t.insert(&[char('Z'), char('Q')], ok_op(SysOp::HardQuit));
+    t.insert(
+        &[char('m')],
+        wants_arg(|evt| parse_mark(evt).map(|c| op(SysOp::AddLocalMark(c)))),
+    );
 
-    t.insert(&[char('O')], op(InteractiveOp::OpenAbove));
-    t.insert(&[char('o')], op(InteractiveOp::OpenBelow));
+    t.insert(&[char('O')], ok_op(InteractiveOp::OpenAbove));
+    t.insert(&[char('o')], ok_op(InteractiveOp::OpenBelow));
 
-    t.insert(&[char('x')], op(ImmediateOp::Delete));
-    t.insert(&[delete()], op(ImmediateOp::Delete));
-    t.insert(&[char('X')], op(ImmediateOp::Backspace));
-    t.insert(&[backspace()], op(ImmediateOp::Backspace));
-    t.insert(&[char('J')], op(ImmediateOp::Join));
+    t.insert(&[char('x')], ok_op(ImmediateOp::Delete));
+    t.insert(&[delete()], ok_op(ImmediateOp::Delete));
+    t.insert(&[char('X')], ok_op(ImmediateOp::Backspace));
+    t.insert(&[backspace()], ok_op(ImmediateOp::Backspace));
+    t.insert(&[char('J')], ok_op(ImmediateOp::Join));
     t
 });
 
-enum MotionResult {
-    Motion(Motion),
-    WantsReps(fn(Option<usize>) -> Motion),
-    WantsCharArg(fn(char) -> Motion),
-}
-
-fn motion(motion: Motion) -> MotionResult {
-    MotionResult::Motion(motion)
-}
-
-fn wants_reps(f: fn(Option<usize>) -> Motion) -> MotionResult {
-    MotionResult::WantsReps(f)
-}
-
-fn wants_char_arg(f: fn(char) -> Motion) -> MotionResult {
-    MotionResult::WantsCharArg(f)
-}
-
-static MOTION_TRIE: LazyLock<Trie<KeyEvent, MotionResult>> = LazyLock::new(|| {
+static MOTION_TRIE: LazyLock<Trie<KeyEvent, ParseResult<Motion>>> = LazyLock::new(|| {
     let mut t = Trie::new();
-    t.insert(&[char('j')], motion(Motion::Down));
-    t.insert(&[down()], motion(Motion::Down));
-    t.insert(&[char('k')], motion(Motion::Up));
-    t.insert(&[up()], motion(Motion::Up));
-    t.insert(&[char('h')], motion(Motion::Left));
-    t.insert(&[left()], motion(Motion::Left));
-    t.insert(&[char('l')], motion(Motion::Right));
-    t.insert(&[right()], motion(Motion::Right));
-    t.insert(&[char('d').ctrl()], motion(Motion::PageDown));
-    t.insert(&[pg_down()], motion(Motion::PageDown));
-    t.insert(&[char('u').ctrl()], motion(Motion::PageUp));
-    t.insert(&[pg_up()], motion(Motion::PageUp));
+    t.insert(&[char('j')], ok(Motion::Down));
+    t.insert(&[down()], ok(Motion::Down));
+    t.insert(&[char('k')], ok(Motion::Up));
+    t.insert(&[up()], ok(Motion::Up));
+    t.insert(&[char('h')], ok(Motion::Left));
+    t.insert(&[left()], ok(Motion::Left));
+    t.insert(&[char('l')], ok(Motion::Right));
+    t.insert(&[right()], ok(Motion::Right));
+    t.insert(&[char('d').ctrl()], ok(Motion::PageDown));
+    t.insert(&[pg_down()], ok(Motion::PageDown));
+    t.insert(&[char('u').ctrl()], ok(Motion::PageUp));
+    t.insert(&[pg_up()], ok(Motion::PageUp));
 
-    t.insert(&[char('W')], motion(Motion::NextBigWord));
-    t.insert(&[char('w')], motion(Motion::NextSubWord));
-    t.insert(&[char('B')], motion(Motion::PrevBigWord));
-    t.insert(&[char('b')], motion(Motion::PrevSubWord));
-    t.insert(&[char('E')], motion(Motion::EndBigWord));
-    t.insert(&[char('e')], motion(Motion::EndSubWord));
+    t.insert(&[char('W')], ok(Motion::NextBigWord));
+    t.insert(&[char('w')], ok(Motion::NextSubWord));
+    t.insert(&[char('B')], ok(Motion::PrevBigWord));
+    t.insert(&[char('b')], ok(Motion::PrevSubWord));
+    t.insert(&[char('E')], ok(Motion::EndBigWord));
+    t.insert(&[char('e')], ok(Motion::EndSubWord));
 
-    t.insert(&[char('f')], wants_char_arg(Motion::FindNextChar));
-    t.insert(&[char('F')], wants_char_arg(Motion::FindPrevChar));
-    t.insert(&[char('t')], wants_char_arg(Motion::TillNextChar));
-    t.insert(&[char('T')], wants_char_arg(Motion::FindPrevChar));
-    t.insert(&[char(';')], motion(Motion::RepeatForward));
-    t.insert(&[char(',')], motion(Motion::RepeatBackward));
+    t.insert(
+        &[char('f')],
+        wants_arg(|evt| char_or_tab(evt).map(Motion::FindNextChar)),
+    );
+    t.insert(
+        &[char('F')],
+        wants_arg(|evt| char_or_tab(evt).map(Motion::FindPrevChar)),
+    );
+    t.insert(
+        &[char('t')],
+        wants_arg(|evt| char_or_tab(evt).map(Motion::TillNextChar)),
+    );
+    t.insert(
+        &[char('T')],
+        wants_arg(|evt| char_or_tab(evt).map(Motion::TillPrevChar)),
+    );
+    t.insert(&[char(';')], ok(Motion::RepeatForward));
+    t.insert(&[char(',')], ok(Motion::RepeatBackward));
 
-    t.insert(&[char('0')], motion(Motion::StartOfLine));
-    t.insert(&[char('^')], motion(Motion::FirstNonBlankInLine));
-    t.insert(&[char('$')], motion(Motion::EndOfLine));
-    t.insert(&[home().ctrl()], motion(Motion::FirstNonBlankInFile));
-    t.insert(&[home()], motion(Motion::StartOfLine));
-    t.insert(&[end().ctrl()], motion(Motion::EndOfFile));
-    t.insert(&[end()], motion(Motion::EndOfLine));
+    t.insert(&[char('0')], ok(Motion::StartOfLine));
+    t.insert(&[char('^')], ok(Motion::FirstNonBlankInLine));
+    t.insert(&[char('$')], ok(Motion::EndOfLine));
+    t.insert(&[home().ctrl()], ok(Motion::FirstNonBlankInFile));
+    t.insert(&[home()], ok(Motion::StartOfLine));
+    t.insert(&[end().ctrl()], ok(Motion::EndOfFile));
+    t.insert(&[end()], ok(Motion::EndOfLine));
 
     t.insert(
         &[char('G')],
@@ -119,19 +154,28 @@ static MOTION_TRIE: LazyLock<Trie<KeyEvent, MotionResult>> = LazyLock::new(|| {
         wants_reps(|opt_line| Motion::GotoLine(opt_line.unwrap_or(1))),
     );
 
+    t.insert(
+        &[char('\'')],
+        wants_arg(|evt| parse_mark(evt).map(Motion::GotoMark)),
+    );
+    t.insert(
+        &[char('`')],
+        wants_arg(|evt| parse_mark(evt).map(Motion::ExactGotoMark)),
+    );
+
     t
 });
 
+// Parse a top level motion.
+// Used when parsing ops, since a top level motion is an op.
 fn parse_motion(reps: Option<usize>, input: &[KeyEvent]) -> FindResult<Motion> {
     // First, let's see if we have a motion expecting an arg
     if input.len() > 1 {
         let (s, args) = input.split_at(input.len() - 1);
-        let arg = args[0];
         match MOTION_TRIE.find(s) {
-            FindResult::Hit(MotionResult::WantsCharArg(f)) => match arg.code {
-                KeyCode::Char(c) => return FindResult::Hit(f(c)),
-                KeyCode::Tab => return FindResult::Hit(f('\t')),
-                _ => {}
+            FindResult::Hit(ParseResult::WantsArg(f)) => match f(args[0]) {
+                Some(m) => return FindResult::Hit(m),
+                None => {}
             },
             _ => {}
         }
@@ -141,12 +185,20 @@ fn parse_motion(reps: Option<usize>, input: &[KeyEvent]) -> FindResult<Motion> {
     match MOTION_TRIE.find(input) {
         FindResult::Miss => FindResult::Miss,
         FindResult::Partial => FindResult::Partial,
-        FindResult::Hit(MotionResult::Motion(m)) => FindResult::Hit(*m),
-        FindResult::Hit(MotionResult::WantsReps(f)) => FindResult::Hit(f(reps)),
-        FindResult::Hit(MotionResult::WantsCharArg(_)) => FindResult::Partial,
+        FindResult::Hit(ParseResult::Ok(m)) => FindResult::Hit(*m),
+        FindResult::Hit(ParseResult::WantsReps(f)) => FindResult::Hit(f(reps)),
+        FindResult::Hit(ParseResult::WantsArg(_)) => FindResult::Partial,
     }
 }
 
+// Parse a motion following an operator (that is, a motion arg).
+// The state machine will call this function when the parsed operator is needy.
+// That means we need to parse an arg, either a motion or a text object.
+//
+// Note: this function deals with line scopes (dd, yy, pp, cc) as a special case.
+// The Operator type provides a `line_arg_char` function, returning Some(ch)
+// if an operator acts admits a double `ch` to act on lines. For example,
+// line_arg_char(Operator::Delete) = Some('d').
 pub fn parse_motion_arg(
     op: Operator,
     reps: Option<usize>,
@@ -161,7 +213,19 @@ pub fn parse_motion_arg(
     parse_motion(reps, input)
 }
 
-pub fn parse_op(reps: Option<usize>, input: &[KeyEvent]) -> FindResult<OpResult> {
+pub fn parse_op(reps: Option<usize>, input: &[KeyEvent]) -> FindResult<OpSpec> {
+    // First, let's see if we have an op expecting an arg
+    if input.len() > 1 {
+        let (s, args) = input.split_at(input.len() - 1);
+        match OP_TRIE.find(s) {
+            FindResult::Hit(ParseResult::WantsArg(f)) => match f(args[0]) {
+                Some(op) => return FindResult::Hit(op),
+                None => {}
+            },
+            _ => {}
+        }
+    }
+
     match OP_TRIE.find(input) {
         FindResult::Miss => match parse_motion(reps, input) {
             FindResult::Miss => FindResult::Miss,
@@ -169,9 +233,15 @@ pub fn parse_op(reps: Option<usize>, input: &[KeyEvent]) -> FindResult<OpResult>
             FindResult::Hit(m) => FindResult::Hit(op(m)),
         },
         FindResult::Partial => FindResult::Partial,
-        FindResult::Hit(&op_result) => FindResult::Hit(op_result),
+        FindResult::Hit(ParseResult::Ok(op)) => FindResult::Hit(*op),
+        FindResult::Hit(ParseResult::WantsReps(f)) => FindResult::Hit(f(reps)),
+        FindResult::Hit(ParseResult::WantsArg(_)) => FindResult::Partial,
     }
 }
+
+// -----------------------------------------------------------------------
+// Trivial parsers and convenience functions from now on
+// -----------------------------------------------------------------------
 
 pub fn parse_digit(evt: KeyEvent) -> Option<u32> {
     if evt.modifiers.is_empty() {
@@ -217,4 +287,16 @@ pub fn parse_textobject_kind(evt: KeyEvent) -> Option<TextObjectKind> {
         's' => Some(TextObjectKind::Sentence),
         _ => None,
     })
+}
+
+fn parse_mark(evt: KeyEvent) -> Option<char> {
+    evt.code.as_char().filter(char::is_ascii_lowercase)
+}
+
+fn char_or_tab(evt: KeyEvent) -> Option<char> {
+    match evt.code {
+        KeyCode::Char(c) => Some(c),
+        KeyCode::Tab => Some('\t'),
+        _ => None,
+    }
 }

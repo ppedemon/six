@@ -35,4 +35,8 @@ pub enum Motion {
     // File-based
     StartOfFile,
     EndOfFile,
+
+    // Mark-based
+    GotoMark(char),
+    ExactGotoMark(char),
 }

@@ -25,6 +25,7 @@ pub enum SysOp {
     EnterInsert(InsertPoint),
     HardQuit,
     CondWriteAndQuit,
+    AddLocalMark(char),
 }
 
 // Interactive commands:
