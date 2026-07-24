@@ -136,7 +136,7 @@ fn session_nav<R: NavRules>(
         Motion::StartOfFile => buffer::start_of_file::<R>(config, rope, buf_view),
         Motion::EndOfFile => buffer::end_of_file::<R>(config, rope, buf_view),
 
-        Motion::GotoLine(line) => buffer::goto_line::<R>(config, rope, buf_view, line),
+        Motion::GotoLine(line) => goto_line::<R>(config, rope, viewport, buf_view, line),
         Motion::GotoMark(c) => goto_mark::<R>(config, buffer, viewport, buf_view, c),
         Motion::ExactGotoMark(c) => exact_goto_mark::<R>(config, buffer, viewport, buf_view, c),
 

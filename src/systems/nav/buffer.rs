@@ -1,7 +1,7 @@
 use ropey::Rope;
 
 use super::rules::NavRules;
-use crate::components::{Buffer, BufferView, Config};
+use crate::components::{BufferView, Config};
 use crate::rope;
 use crate::systems::commons::{char_idx_to_coords, curr_line, cursor_to_char_idx, snap_coords};
 
