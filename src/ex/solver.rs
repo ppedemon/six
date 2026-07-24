@@ -3,12 +3,26 @@ use std::ops::Range;
 use ropey::Rope;
 
 use crate::{
+    components::Marks,
     ex::{
         ExError, ExRange,
         range::{Address, BaseAddress, Delimiter, Modifier, SearchPattern},
     },
     rope,
 };
+
+#[derive(Clone, Copy)]
+pub struct ExRangeSolverArgs<'a> {
+    rope: &'a Rope,
+    marks: &'a Marks,
+    // TODO global marks (GlobalMarks + BufferName)
+}
+
+impl<'a> ExRangeSolverArgs<'a> {
+    pub fn new(rope: &'a Rope, marks: &'a Marks) -> Self {
+        Self { rope, marks }
+    }
+}
 
 fn solve_pattern(pattern: SearchPattern, rope: &Rope, curr_line: usize) -> Result<usize, ExError> {
     let search_result = match pattern {
@@ -33,9 +47,11 @@ fn solve_pattern(pattern: SearchPattern, rope: &Rope, curr_line: usize) -> Resul
 //  - The returned solved line number is 1-based
 fn solve_base_address(
     base_address: BaseAddress,
-    rope: &Rope,
+    args: ExRangeSolverArgs,
     relative_to: usize,
 ) -> Result<usize, ExError> {
+    let ExRangeSolverArgs { rope, marks } = args;
+
     match base_address {
         BaseAddress::Zero => Ok(0),
 
@@ -61,9 +77,10 @@ fn solve_base_address(
             Ok(line_idx + 1)
         }
 
-        BaseAddress::Mark(m) => Err(ExError::UnsupportedAddress {
-            address: format!("'{m}"),
-        }),
+        BaseAddress::Mark(m) => match marks.read(m) {
+            None => Err(ExError::NoSuchMark { mark: m }),
+            Some(char_idx) => Ok(rope.char_to_line(char_idx) + 1),
+        },
     }
 }
 
@@ -71,8 +88,12 @@ fn solve_base_address(
 //  - relative_to is a 1-based line number
 // Postconditions:
 //  - The returned solved line number is 1-based
-fn solve_address(address: Address, rope: &Rope, relative_to: usize) -> Result<usize, ExError> {
-    let mut base_address = solve_base_address(address.base, rope, relative_to)?;
+fn solve_address(
+    address: Address,
+    args: ExRangeSolverArgs,
+    relative_to: usize,
+) -> Result<usize, ExError> {
+    let mut base_address = solve_base_address(address.base, args, relative_to)?;
     for modifier in address.modifiers {
         match modifier {
             Modifier::Minus(amount) => {
@@ -83,7 +104,7 @@ fn solve_address(address: Address, rope: &Rope, relative_to: usize) -> Result<us
             }
             Modifier::Plus(amount) => {
                 base_address = base_address.saturating_add(amount);
-                if base_address > rope.len_lines() {
+                if base_address > args.rope.len_lines() {
                     return Err(ExError::InvalidRange);
                 }
             }
@@ -98,14 +119,14 @@ fn solve_address(address: Address, rope: &Rope, relative_to: usize) -> Result<us
 //  - The returned range is a normal 0-based [inclusive, exclusive) range
 pub fn solve_exrange(
     range: ExRange,
-    rope: &Rope,
+    args: ExRangeSolverArgs,
     curr_line: usize,
 ) -> Result<Range<usize>, ExError> {
     match range {
-        ExRange::All => Ok(0..rope.len_lines()),
+        ExRange::All => Ok(0..args.rope.len_lines()),
         ExRange::Implicit => Ok(curr_line..curr_line + 1),
         ExRange::Single { address } => {
-            let base_1_line = solve_address(address, rope, curr_line + 1)?;
+            let base_1_line = solve_address(address, args, curr_line + 1)?;
             Ok(base_1_line.saturating_sub(1)..base_1_line)
         }
         ExRange::Explicit {
@@ -113,12 +134,12 @@ pub fn solve_exrange(
             end,
             delimiter,
         } => {
-            let base_1_start = solve_address(start, rope, curr_line + 1)?;
+            let base_1_start = solve_address(start, args, curr_line + 1)?;
             let relative_to = match delimiter {
                 Delimiter::Comma => curr_line + 1,
                 Delimiter::Semi => base_1_start,
             };
-            let base_1_end = solve_address(end, rope, relative_to)?;
+            let base_1_end = solve_address(end, args, relative_to)?;
             Ok(base_1_start.saturating_sub(1)..base_1_end)
         }
     }
@@ -141,6 +162,12 @@ mod test {
         Address { base, modifiers }
     }
 
+    const EMPTY_MARKS: Marks = Marks::new();
+
+    fn mkargs(rope: &Rope) -> ExRangeSolverArgs<'_> {
+        ExRangeSolverArgs::new(rope, &EMPTY_MARKS)
+    }
+
     #[test]
     fn test_solve_base_address_basic() {
         let rope = Rope::from("line1\nline2\nline3");
@@ -148,32 +175,46 @@ mod test {
 
         // BaseAddress::Zero -> returns 1-based 0
         assert_eq!(
-            solve_base_address(BaseAddress::Zero, &rope, relative_to).unwrap(),
+            solve_base_address(BaseAddress::Zero, mkargs(&rope), relative_to).unwrap(),
             0
         );
 
         // BaseAddress::Current -> returns relative_to
         assert_eq!(
-            solve_base_address(BaseAddress::Current, &rope, relative_to).unwrap(),
+            solve_base_address(BaseAddress::Current, mkargs(&rope), relative_to).unwrap(),
             2,
         );
 
         // BaseAddress::Last -> returns total lines (1-based)
         assert_eq!(
-            solve_base_address(BaseAddress::Last, &rope, relative_to).unwrap(),
+            solve_base_address(BaseAddress::Last, mkargs(&rope), relative_to).unwrap(),
             3,
         );
 
         // BaseAddress::Line(n) -> returns n directly
         assert!(matches!(
-            solve_base_address(BaseAddress::Line(5), &rope, relative_to),
+            solve_base_address(BaseAddress::Line(5), mkargs(&rope), relative_to),
             Err(ExError::InvalidRange),
         ));
 
-        // BaseAddress::Mark -> Unsupported
+        // BaseAddress::Mark
+        let mut marks = Marks::new();
+        marks.write('a', 8);
         assert!(matches!(
-            solve_base_address(BaseAddress::Mark('a'), &rope, relative_to),
-            Err(ExError::UnsupportedAddress { .. }),
+            solve_base_address(
+                BaseAddress::Mark('a'),
+                ExRangeSolverArgs::new(&rope, &marks),
+                relative_to
+            ),
+            Ok(2),
+        ));
+        assert!(matches!(
+            solve_base_address(
+                BaseAddress::Mark('b'),
+                ExRangeSolverArgs::new(&rope, &marks),
+                relative_to
+            ),
+            Err(ExError::NoSuchMark { mark: 'b' }),
         ));
     }
 
@@ -183,17 +224,17 @@ mod test {
 
         // Forward search from line 1 (idx 0) looking for "cherry"
         let p_forward = BaseAddress::Pattern(SearchPattern::Forward(Regex::new("cherry").unwrap()));
-        assert_eq!(solve_base_address(p_forward, &rope, 1).unwrap(), 3); // Line 3
+        assert_eq!(solve_base_address(p_forward, mkargs(&rope), 1).unwrap(), 3); // Line 3
 
         // Backward search from line 4 (idx 3) looking for "banana"
         let p_backward =
             BaseAddress::Pattern(SearchPattern::Backward(Regex::new("banana").unwrap()));
-        assert_eq!(solve_base_address(p_backward, &rope, 4).unwrap(), 2); // Line 1
+        assert_eq!(solve_base_address(p_backward, mkargs(&rope), 4).unwrap(), 2); // Line 1
 
         // Forward pattern not found error propagation (we don't check in the current line)
         let p_missing = BaseAddress::Pattern(SearchPattern::Forward(Regex::new("cherry").unwrap()));
         assert!(matches!(
-            solve_base_address(p_missing, &rope, 3),
+            solve_base_address(p_missing, mkargs(&rope), 3),
             Err(ExError::PatternNotFound),
         ));
 
@@ -201,7 +242,7 @@ mod test {
         let p_missing =
             BaseAddress::Pattern(SearchPattern::Backward(Regex::new("cherry").unwrap()));
         assert!(matches!(
-            solve_base_address(p_missing, &rope, 3),
+            solve_base_address(p_missing, mkargs(&rope), 3),
             Err(ExError::PatternNotFound),
         ));
     }
@@ -215,19 +256,19 @@ mod test {
             BaseAddress::Current,
             vec![Modifier::Plus(2), Modifier::Minus(1)],
         );
-        assert_eq!(solve_address(addr, &rope, 2).unwrap(), 3);
+        assert_eq!(solve_address(addr, mkargs(&rope), 2).unwrap(), 3);
 
         // Underflow test: saturating_sub protection via 0 address
         let addr_underflow = address_mod(BaseAddress::Zero, vec![Modifier::Minus(5)]);
         assert!(matches!(
-            solve_address(addr_underflow, &rope, 2),
+            solve_address(addr_underflow, mkargs(&rope), 2),
             Err(ExError::InvalidRange)
         ));
 
         // Overflow test: yields InvalidRange
         let addr_overflow = address_mod(BaseAddress::Line(usize::MAX), vec![Modifier::Plus(10)]);
         assert!(matches!(
-            solve_address(addr_overflow, &rope, 2),
+            solve_address(addr_overflow, mkargs(&rope), 2),
             Err(ExError::InvalidRange)
         ));
     }
@@ -237,10 +278,13 @@ mod test {
         let rope = Rope::from("l1\nl2\nl3");
 
         // Scope::All -> 0..len_lines (0..3)
-        assert_eq!(solve_exrange(ExRange::All, &rope, 1).unwrap(), 0..3);
+        assert_eq!(solve_exrange(ExRange::All, mkargs(&rope), 1).unwrap(), 0..3);
 
         // Scope::Implicit -> curr_line..curr_line + 1 (1..2)
-        assert_eq!(solve_exrange(ExRange::Implicit, &rope, 1).unwrap(), 1..2);
+        assert_eq!(
+            solve_exrange(ExRange::Implicit, mkargs(&rope), 1).unwrap(),
+            1..2
+        );
     }
 
     #[test]
@@ -251,13 +295,13 @@ mod test {
         let scope = ExRange::Single {
             address: address(BaseAddress::Line(2)),
         };
-        assert_eq!(solve_exrange(scope, &rope, 0).unwrap(), 1..2);
+        assert_eq!(solve_exrange(scope, mkargs(&rope), 0).unwrap(), 1..2);
 
         // Target single address line 0 (saturating_sub converts 1-based 0 to 0..0)
         let scope_zero = ExRange::Single {
             address: address(BaseAddress::Zero),
         };
-        assert_eq!(solve_exrange(scope_zero, &rope, 0).unwrap(), 0..0);
+        assert_eq!(solve_exrange(scope_zero, mkargs(&rope), 0).unwrap(), 0..0);
     }
 
     #[test]
@@ -275,7 +319,7 @@ mod test {
         // base_1_start = 2 (idx 1).
         // base_1_end = relative_to(2) + 1 = 3 (idx 3).
         // Expected 0-based range: 1..3
-        assert_eq!(solve_exrange(scope, &rope, 1).unwrap(), 1..3);
+        assert_eq!(solve_exrange(scope, mkargs(&rope), 1).unwrap(), 1..3);
     }
 
     #[test]
@@ -296,7 +340,7 @@ mod test {
         // Semicolon sets relative_to = 3.
         // end calculates relative to 3: 3 + 2 = 5 (idx 5).
         // Expected 0-based range: 2..5
-        assert_eq!(solve_exrange(scope, &rope, 0).unwrap(), 2..5);
+        assert_eq!(solve_exrange(scope, mkargs(&rope), 0).unwrap(), 2..5);
     }
 
     #[test]
@@ -315,6 +359,6 @@ mod test {
         // Semicolon sets relative_to = 0.
         // end evaluates Current(0) + 1 = 1.
         // Expected 0-based range: 0..1
-        assert_eq!(solve_exrange(scope, &rope, 2).unwrap(), 0..1);
+        assert_eq!(solve_exrange(scope, mkargs(&rope), 2).unwrap(), 0..1);
     }
 }

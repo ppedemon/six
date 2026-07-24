@@ -3,7 +3,7 @@ use ropey::RopeSlice;
 use crate::{
     active_session_and_buffer,
     components::{Buffer, BufferName, BufferView, EditorCtx, Level, Session, Status},
-    ex::{ExError, ExRange, solve_exrange},
+    ex::{ExError, ExRange, ExRangeSolverArgs, solve_exrange},
     misc, rope,
     systems::event::on_buffer_saved,
 };
@@ -192,7 +192,8 @@ fn hard_save(
 }
 
 fn rope_slice(buffer: &Buffer, curr_line: usize, range: ExRange) -> Result<RopeSlice<'_>, ExError> {
-    let range = solve_exrange(range, &buffer.rope(), curr_line)?;
+    let args = ExRangeSolverArgs::new(buffer.rope(), buffer.marks());
+    let range = solve_exrange(range, args, curr_line)?;
     Ok(rope::slice_as_view(buffer.rope(), range))
 }
 

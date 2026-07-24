@@ -23,8 +23,8 @@ pub enum ExError {
     #[error("Invalid range")]
     InvalidRange,
 
-    #[error("Unsupported Address: {address}")]
-    UnsupportedAddress { address: String },
+    #[error("No such mark: {mark}")]
+    NoSuchMark { mark: char },
 
     #[error("Command does not take arguments")]
     UnsupportedArgs,

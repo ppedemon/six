@@ -20,7 +20,7 @@ pub struct Marks {
 }
 
 impl Marks {
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self { named: [None; 52] }
     }
 
