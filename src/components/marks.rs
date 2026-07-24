@@ -56,7 +56,7 @@ impl Marks {
                     }
                     Change::Delete { ref range } => {
                         if range.contains(idx) {
-                            *idx = range.start;
+                            *idx = range.start.saturating_sub(1);
                         } else if *idx >= range.end {
                             *idx -= range.len();
                         }
