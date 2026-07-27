@@ -2,7 +2,7 @@ use nom::{
     Parser,
     bytes::complete::{escaped, tag},
     character::complete::{anychar, none_of, space0, space1},
-    combinator::{opt, value},
+    combinator::opt,
     multi::separated_list0,
     sequence::delimited,
 };
@@ -21,10 +21,9 @@ pub fn validate_no_args(args: &str) -> Result<(), ExError> {
 }
 
 pub fn validate_opt_filename(args: &str) -> Result<Option<BufferName>, ExError> {
-    validate_args(args, |args| {
-        if args.len() > 1 {
-            Err(ExError::invalid_args("Only one filename allowed"))
-        } else {
+    validate_args(args, |args| match args.len() {
+        0 => Ok(None),
+        1 => {
             let file_path = norm_filename(args[0]);
             let path_str = file_path.to_str();
             if path_str.is_none() || path_str.is_some_and(&str::is_empty) {
@@ -32,6 +31,7 @@ pub fn validate_opt_filename(args: &str) -> Result<Option<BufferName>, ExError> 
             }
             Ok(Some(BufferName::new(args[0], file_path)))
         }
+        _ => Err(ExError::invalid_args("Only one filename allowed")),
     })
 }
 

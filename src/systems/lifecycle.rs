@@ -51,7 +51,7 @@ fn create_buffer(ctx: &mut EditorCtx, buf_name: &BufferName) -> Result<BufferId,
                 let file = File::open(file_path)?;
                 let reader = BufReader::new(file);
                 let mut rope = Rope::from_reader(reader)?;
-                rope::norm(&mut rope);
+                rope::remove_trailing_newline(&mut rope);
                 Buffer::new(rope)
             } else {
                 Buffer::empty()

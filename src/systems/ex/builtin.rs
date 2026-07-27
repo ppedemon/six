@@ -4,7 +4,7 @@ use crate::{
     ex::{BuiltIn, ExError, ExRange},
     systems::{
         ex::{
-            args::{validate_no_args, validate_opt_append_filename},
+            args::{validate_no_args, validate_opt_append_filename, validate_opt_filename},
             fs,
         },
         lifecycle,
@@ -25,31 +25,27 @@ pub fn exec_builtin(
         }
         BuiltIn::Quit("q") => {
             validate_no_args(args)?;
-            if is_editor_dirty(ctx) {
-                return Err(ExError::UnsavedChanges);
-            } else {
-                lifecycle::quit_editor(ctx);
-            }
+            soft_quit(ctx)?;
         }
         BuiltIn::Quit("wq!") => {
-            validate_no_args(args)?;
-            fs::hard_save_active(ctx, None, false, false, range)?;
+            let name = validate_opt_filename(args)?;
+            fs::hard_save_active(ctx, name, false, false, range)?;
             lifecycle::quit_editor(ctx);
         }
         BuiltIn::Quit("wq") => {
-            validate_no_args(args)?;
-            fs::save_active(ctx, None, false, false, range)?;
+            let name = validate_opt_filename(args)?;
+            fs::save_active(ctx, name, false, false, range)?;
             lifecycle::quit_editor(ctx);
         }
         BuiltIn::Quit("x!") => {
-            validate_no_args(args)?;
-            fs::hard_save_active(ctx, None, false, true, range)?;
+            let name = validate_opt_filename(args)?;
+            fs::hard_save_active(ctx, name, false, true, range)?;
             lifecycle::quit_editor(ctx);
         }
         BuiltIn::Quit("x") => {
-            validate_no_args(args)?;
-            fs::save_active(ctx, None, false, true, range)?;
-            lifecycle::quit_editor(ctx);
+            let name = validate_opt_filename(args)?;
+            fs::save_active(ctx, name, false, true, range)?;
+            soft_quit(ctx)?;
         }
         BuiltIn::Write("w!") => {
             let (append, name) = validate_opt_append_filename(args)?;
@@ -71,6 +67,11 @@ pub fn exec_builtin(
     Ok(())
 }
 
-fn is_editor_dirty(ctx: &EditorCtx) -> bool {
-    ctx.buffers.values().any(Buffer::is_dirty)
+fn soft_quit(ctx: &mut EditorCtx) -> Result<(), ExError> {
+    if ctx.buffers.values().any(Buffer::is_dirty) {
+        Err(ExError::UnsavedChanges)
+    } else {
+        lifecycle::quit_editor(ctx);
+        Ok(())
+    }
 }

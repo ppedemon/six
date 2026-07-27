@@ -23,7 +23,7 @@ pub fn hard_save(path: impl AsRef<Path>, append: bool, rope_slice: RopeSlice) ->
         }
     }
 
-    let write_result = (|| save(path, append, rope_slice))();
+    let write_result = save(path, append, rope_slice);
 
     if let Some(ref perms) = original_perms {
         if perms.readonly() {
@@ -56,6 +56,9 @@ pub fn save(path: impl AsRef<Path>, append: bool, rope_slice: RopeSlice) -> io::
     for chunk in rope_slice.chunks() {
         writer.write_all(chunk.as_bytes())?;
     }
+
+    // Rope normalization: ensure last line is POSIX valid by adding a '\n'
+    writer.write(b"\n")?;
 
     writer.flush()?;
     writer.get_ref().sync_all()?;

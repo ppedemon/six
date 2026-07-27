@@ -3,7 +3,7 @@ use std::{borrow::Cow, ops::Range};
 use regex::Regex;
 use ropey::{Rope, RopeSlice};
 
-pub fn norm(rope: &mut Rope) {
+pub fn remove_trailing_newline(rope: &mut Rope) {
     let len_chars = rope.len_chars();
     if len_chars > 0 && rope.char(len_chars - 1) == '\n' {
         rope.remove(len_chars - 1..len_chars);
