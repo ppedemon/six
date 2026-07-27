@@ -92,6 +92,10 @@ impl BufferName {
             file_path,
         }
     }
+
+    pub fn exists(&self) -> Result<bool, std::io::Error> {
+        std::fs::exists(&self.file_path)
+    }
 }
 
 impl<T: Into<String>> From<T> for BufferName {

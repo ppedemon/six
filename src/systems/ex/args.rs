@@ -1,8 +1,10 @@
 use nom::{
     Parser,
-    bytes::complete::escaped,
-    character::complete::{anychar, none_of, space1},
+    bytes::complete::{escaped, tag},
+    character::complete::{anychar, none_of, space0, space1},
+    combinator::{opt, value},
     multi::separated_list0,
+    sequence::delimited,
 };
 
 use crate::misc::path::norm_filename;
@@ -34,38 +36,13 @@ pub fn validate_opt_filename(args: &str) -> Result<Option<BufferName>, ExError> 
 }
 
 pub fn validate_opt_append_filename(args: &str) -> Result<(bool, Option<BufferName>), ExError> {
-    validate_args(args, |args| {
-        if args.len() > 2 || (args.len() == 2 && args[0] != ">>") {
-            return Err(ExError::invalid_args("Only one filename allowed"));
-        }
-
-        let (append, opt_file_name) = match args.len() {
-            0 => (false, None),
-            1 => {
-                if args[0] == ">>" {
-                    (true, None)
-                } else {
-                    (false, Some(args[0]))
-                }
-            }
-            2 => (true, Some(args[1])),
-            _ => return Err(ExError::invalid_args("Only one filename allowed")),
-        };
-
-        match opt_file_name {
-            None => Ok((append, None)),
-            Some(file_name) => {
-                let file_path = norm_filename(file_name);
-                let path_str = file_path.to_str();
-                if path_str.is_none() || path_str.is_some_and(&str::is_empty) {
-                    Err(ExError::invalid_args("Invalid file name"))
-                } else {
-                    let name = BufferName::new(file_name, file_path);
-                    Ok((append, Some(name)))
-                }
-            }
-        }
-    })
+    let (args, append) = delimited(space0::<_, nom::error::Error<_>>, opt(tag(">>")), space0)
+        .map(|t| t.is_some())
+        .parse(args)
+        .map_err(|_| ExError::InvalidArgs {
+            msg: args.to_string(),
+        })?;
+    validate_opt_filename(args).map(|file_name| (append, file_name))
 }
 
 pub fn validate_args<T>(

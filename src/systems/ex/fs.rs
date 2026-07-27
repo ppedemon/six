@@ -105,7 +105,7 @@ fn save(
 
     let range = range.coerce_implicit_to(ExRange::All);
     let rope_slice = rope_slice(&buffer, curr_line, range)?;
-    let writes_all = rope_slice.len_lines() == buffer.rope().len_lines();
+    let writes_all = rope_slice.len_chars() == buffer.rope().len_chars();
 
     match (name.as_ref(), session.buf_name.as_ref()) {
         (None, None) => Err(ExError::NoFileName),
@@ -123,6 +123,9 @@ fn save(
             Ok(())
         }
         (Some(given_name), None) => {
+            if given_name.exists()? {
+                return Err(ExError::FileExists);
+            }
             save_buffer(status, given_name, append, rope_slice)?;
             if !append && writes_all {
                 session.buf_name = name;
@@ -140,6 +143,8 @@ fn save(
                 if !writes_all {
                     return Err(ExError::PartialWrite);
                 }
+            } else if given_name.exists()? {
+                return Err(ExError::FileExists);
             }
             save_buffer(status, given_name, append, rope_slice)?;
             if given_name.file_path.as_path() == orig_name.file_path.as_path() {
@@ -167,23 +172,23 @@ fn hard_save(
 
     let range = range.coerce_implicit_to(ExRange::All);
     let rope_slice = rope_slice(&buffer, curr_line, range)?;
-    let writes_all = rope_slice.len_lines() == buffer.rope().len_lines();
+    let writes_all = rope_slice.len_chars() == buffer.rope().len_chars();
 
     match (name.as_ref(), session.buf_name.as_ref()) {
         (None, None) => Err(ExError::NoFileName),
         (None, Some(orig_name)) => {
             hard_save_buffer(status, orig_name, append, rope_slice)?;
-            if writes_all {
+            if !append && writes_all {
                 buffer.saved();
             }
             Ok(())
         }
         (Some(given_name), _) => {
             hard_save_buffer(status, given_name, append, rope_slice)?;
-            if !append && session.buf_name.is_none() {
-                session.buf_name = name;
-            }
-            if writes_all {
+            if !append && writes_all {
+                if session.buf_name.is_none() {
+                    session.buf_name = name;
+                }
                 buffer.saved();
             }
             Ok(())
