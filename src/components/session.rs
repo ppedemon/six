@@ -8,7 +8,7 @@ use crate::{
     misc,
 };
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Coords {
     pub row: usize,
     pub col: usize,

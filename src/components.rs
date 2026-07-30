@@ -17,7 +17,7 @@ pub use display::{DisplayBuffer, DisplayLine, DisplayLineRef};
 pub use editor::{Editor, Focus, Level, Status, TextStyle};
 pub use insert_log::InsertLog;
 pub use marks::{Change, Marks};
-pub use registers::{Register, Registers};
+pub use registers::{Register, RegisterData, Registers};
 pub use repeat::{RepeatBuffer, RepeatBufferItem};
 pub use search::LastSearch;
 pub use session::{BufferName, BufferView, Coords, ExSession, ExState, Mode, Session, Viewport};

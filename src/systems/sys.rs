@@ -76,9 +76,8 @@ pub fn enter_normal(ctx: &mut EditorCtx) {
 
     if old_mode == Mode::Insert {
         post_insert(ctx);
+        restore_cursor(ctx);
     }
-
-    restore_cursor(ctx)
 }
 
 fn enter_ex(ctx: &mut EditorCtx, ex_mode: ExMode) {

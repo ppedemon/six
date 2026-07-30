@@ -46,7 +46,7 @@ fn handle_ex_nav(ctx: &mut EditorCtx, args: NavArgs) {
     }
 }
 
-fn handle_session_nav(ctx: &mut EditorCtx, args: NavArgs) {
+pub fn handle_session_nav(ctx: &mut EditorCtx, args: NavArgs) {
     let config = &ctx.config;
     let (session, buf_view, buffer) = active_session_and_buffer!(mut ctx);
 
@@ -140,7 +140,7 @@ fn session_nav<R: NavRules>(
         Motion::GotoMark(c) => goto_mark::<R>(config, buffer, viewport, buf_view, c),
         Motion::ExactGotoMark(c) => exact_goto_mark::<R>(config, buffer, viewport, buf_view, c),
 
-        Motion::Line => {}
+        Motion::Line => line::<R>(buffer, buf_view, reps),
     }
 }
 
@@ -193,6 +193,11 @@ fn repeat_backward(
             _ => {}
         }
     }
+}
+
+pub fn line<R: NavRules>(buffer: &Buffer, buf_view: &mut BufferView, reps: usize) {
+    let max_row = buffer.rope().len_lines().saturating_sub(1);
+    buf_view.cursor.row = (buf_view.cursor.row + reps.saturating_sub(1)).min(max_row);
 }
 
 pub fn goto_line<R: NavRules>(

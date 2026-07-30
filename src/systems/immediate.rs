@@ -1,14 +1,15 @@
 use ropey::Rope;
-use std::{ops::Range, panic};
+use std::ops::Range;
 
 use crate::{
     active_session, active_session_and_buffer,
-    cmd::{Cmd, ImmediateOp},
+    cmd::{Arg, Cmd, ImmediateOp},
     components::{Buffer, Coords, EditorCtx, MutBuffer, Register, Registers},
     systems::{
         commons::{char_idx_to_coords, coords_to_char_idx, curr_line},
+        event,
         insert::{Damage, DamageEvent, broadcast_damage},
-        nav::{NormalNav, goto_col, utils::ensure_cursor_inside_line},
+        nav::{NormalNav, emulate_motion, goto_col, utils::ensure_cursor_inside_line},
     },
 };
 
@@ -38,7 +39,10 @@ pub fn handle_immediate(ctx: &mut EditorCtx, args: ImmediateArgs) {
         }
         ImmediateOp::Backspace => backspace(ctx, args.cmd.reg, args.cmd.reps.unwrap_or(1)),
         ImmediateOp::Join => join(ctx, args.cmd.reps.unwrap_or(1)),
-        ImmediateOp::Yank => panic!("Command = {:?}", args.cmd),
+        ImmediateOp::Yank => {
+            yank(ctx, args.cmd);
+            Damage::Intact
+        }
     };
 
     let (session, _) = active_session!(ctx);
@@ -76,7 +80,7 @@ fn backspace(ctx: &mut EditorCtx, reg: Option<char>, reps: usize) -> Damage {
 fn small_delete(ctx: &mut EditorCtx, reg: Option<char>, reps: usize, rng: Range<usize>) -> Damage {
     let (session, buf_view, buffer) = active_session_and_buffer!(mut ctx);
 
-    report_small_delete(&mut ctx.registers, reg, buffer.rope(), rng.clone());
+    record_small_delete(&mut ctx.registers, reg, buffer.rope(), rng.clone());
 
     buffer.edit().remove(rng.clone());
 
@@ -145,10 +149,20 @@ fn calc_backspace_range(ctx: &mut EditorCtx, reps: usize) -> Range<usize> {
     start_idx..end_idx
 }
 
+// Store small delete in registers
+fn record_small_delete(
+    registers: &mut Registers,
+    reg: Option<char>,
+    rope: &Rope,
+    range: Range<usize>,
+) {
+    let deleted = rope.slice(range);
+    registers.record_small_delete(reg, deleted);
+}
+
 // -----------------------------------------------------------------------
 // Join N lines (J command)
 // -----------------------------------------------------------------------
-
 fn join(ctx: &mut EditorCtx, reps: usize) -> Damage {
     let (session, buf_view, buffer) = active_session_and_buffer!(mut ctx);
 
@@ -217,19 +231,29 @@ fn join_single(buffer: &mut Buffer, row: usize) -> usize {
 }
 
 // -----------------------------------------------------------------------
-// Auxiliary stuff from now on
+// Yank
 // -----------------------------------------------------------------------
-
-fn is_readonly(reg: Option<char>) -> bool {
-    reg.map(Register::from).is_some_and(|r| r.is_readonly())
+pub fn yank(ctx: &mut EditorCtx, cmd: Cmd) {
+    match cmd.arg {
+        Arg::Motion { reps, motion } => {
+            let cmd_reps = cmd.reps.unwrap_or(1);
+            let arg_reps = reps.unwrap_or(1);
+            match emulate_motion(ctx, motion, cmd_reps, arg_reps, None) {
+                Ok(reg_data) => {
+                    event::on_yank(&mut ctx.status, &reg_data);
+                    ctx.registers.record_yank(cmd.reg, reg_data);
+                }
+                Err(_) => {}
+            }
+        }
+        Arg::TextObject { .. } => {}
+        Arg::None => {}
+    };
 }
 
-fn report_small_delete(
-    registers: &mut Registers,
-    reg: Option<char>,
-    rope: &Rope,
-    range: Range<usize>,
-) {
-    let deleted = rope.slice(range);
-    registers.small_delete(reg, deleted);
+// -----------------------------------------------------------------------
+// Auxiliary stuff from now on
+// -----------------------------------------------------------------------
+fn is_readonly(reg: Option<char>) -> bool {
+    reg.map(Register::from).is_some_and(|r| r.is_readonly())
 }

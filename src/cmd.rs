@@ -9,6 +9,13 @@ pub use operator::{ExMode, ImmediateOp, InsertPoint, InteractiveOp, Operator, Sy
 pub use text_object::{TextObject, TextObjectKind, TextObjectScope};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MotionMode {
+    Charwise,
+    Linewise,
+    Blockwise,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Arg {
     None,
     Motion {
