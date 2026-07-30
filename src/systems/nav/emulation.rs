@@ -79,8 +79,12 @@ fn eval_exclusive_charwise(
     cmd_reps: usize,
     arg_reps: usize,
 ) -> bool {
+    let mut forward = false;
     let mut inclusive = false;
-    let mut last_col = None;
+    let mut last_coord = {
+        let (_, buf_view) = active_session!(ctx);
+        buf_view.cursor
+    };
 
     for _ in 0..cmd_reps {
         for _ in 0..arg_reps {
@@ -89,17 +93,16 @@ fn eval_exclusive_charwise(
             handle_session_nav(ctx, args);
 
             let (_, buf_view) = active_session!(ctx);
-            if let Some(col) = last_col
-                && buf_view.cursor.col == col
-            {
+            if buf_view.cursor == last_coord {
                 inclusive = true;
                 break;
             }
-            last_col = Some(buf_view.cursor.col);
+            forward = forward || (buf_view.cursor > last_coord);
+            last_coord = buf_view.cursor;
         }
     }
 
-    inclusive
+    inclusive && forward
 }
 
 // Eval non-charwise exclusive motions
@@ -123,29 +126,29 @@ fn eval(ctx: &mut EditorCtx, m: Motion, cmd_reps: usize, arg_reps: usize) {
 }
 
 fn adjust_charwise(ctx: &mut EditorCtx, span: (Coords, Coords), inclusive: bool) -> RegisterData {
-    let (start, mut end) = span;
+    let (mut start, mut end) = span;
     let (_, buf_view, buffer) = active_session_and_buffer!(mut ctx);
     let rope = buffer.rope();
+
+    if start > end {
+        std::mem::swap(&mut start, &mut end);
+    }
 
     if inclusive {
         let line = buf_view.display_buf.ensure_line(&ctx.config, rope, end.row);
         end.col = go_right(line, end.col);
     }
 
-    let mut start_idx = coords_to_char_idx(&ctx.config, buffer.rope(), buf_view, start);
+    let start_idx = coords_to_char_idx(&ctx.config, buffer.rope(), buf_view, start);
     let mut end_idx = coords_to_char_idx(&ctx.config, buffer.rope(), buf_view, end);
-
-    if start_idx > end_idx {
-        std::mem::swap(&mut start_idx, &mut end_idx);
-    }
 
     // Charwise ranges must not end in '\n'
     if end_idx > 0 && rope.char(end_idx - 1) == '\n' {
         end_idx -= 1;
     }
 
-    let slice = buffer.rope().slice(start_idx..end_idx);
-    RegisterData::char(slice.into())
+    let selection = safe_slice(rope, start_idx, end_idx);
+    RegisterData::char(selection)
 }
 
 fn adjust_linewise(ctx: &mut EditorCtx, span: (Coords, Coords)) -> RegisterData {
@@ -170,7 +173,7 @@ fn adjust_linewise(ctx: &mut EditorCtx, span: (Coords, Coords)) -> RegisterData 
         rope.line_to_char(end_line + 1)
     };
 
-    let mut rope = Rope::from(rope.slice(start_line_idx..end_line_idx));
+    let mut rope = safe_slice(rope, start_line_idx, end_line_idx);
 
     let len = rope.len_chars();
     if len > 0 && rope.char(len - 1) != '\n' {
@@ -194,21 +197,25 @@ fn adjust_blockwise(ctx: &mut EditorCtx, span: (Coords, Coords)) -> RegisterData
     for row in tl.row..=br.row {
         let mut curr_row = Rope::new();
         let line = buf_view.display_buf.ensure_line(&ctx.config, rope, row);
-        for (g, span) in line.graphemes_between(tl.col, br.col + 1) {
-            if span.start < tl.col && span.end > br.col {
-                curr_row.append(" ".repeat(br.col - tl.col).into());
-            } else if span.start < tl.col {
-                curr_row.append(" ".repeat(span.end - tl.col).into());
-            } else if span.end > br.col {
-                curr_row.append(" ".repeat(br.col - span.start).into());
-            } else {
-                if DisplayLine::is_tab(g) {
-                    curr_row.insert_char(curr_row.len_chars(), '\t');
+
+        if line.display_width > 0 {
+            for (g, span) in line.graphemes_between(tl.col, br.col + 1) {
+                if span.start < tl.col && span.end > br.col {
+                    curr_row.append(" ".repeat(br.col - tl.col).into());
+                } else if span.start < tl.col {
+                    curr_row.append(" ".repeat(span.end - tl.col).into());
+                } else if span.end > br.col {
+                    curr_row.append(" ".repeat(br.col - span.start).into());
                 } else {
-                    curr_row.append(g.into());
+                    if DisplayLine::is_tab(g) {
+                        curr_row.insert_char(curr_row.len_chars(), '\t');
+                    } else {
+                        curr_row.append(g.into());
+                    }
                 }
             }
         }
+
         rows.push(curr_row);
     }
 
@@ -222,6 +229,15 @@ fn go_right(line: DisplayLineRef<'_>, col: usize) -> usize {
         next_col
     } else {
         line.display_width
+    }
+}
+
+fn safe_slice(rope: &Rope, start_idx: usize, end_idx: usize) -> Rope {
+    assert!(start_idx <= end_idx);
+    if start_idx == end_idx {
+        Rope::new()
+    } else {
+        rope.slice(start_idx..end_idx).into()
     }
 }
 
@@ -269,5 +285,152 @@ fn inclusive(ctx: &EditorCtx, m: Motion) -> bool {
         Motion::RepeatForward => ctx.search.char_search().is_some_and(|m| inclusive(ctx, m)),
 
         _ => false,
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use ratatui::layout::Rect;
+    use std::assert_eq;
+
+    use super::*;
+    use crate::components::{Buffer, BufferView, Session, Viewport};
+
+    // Test setup: editor with given text and cursor at given coords
+    fn setup(text: &str, cursor: Coords) -> EditorCtx {
+        let mut ctx = EditorCtx::new();
+
+        let rope: Rope = text.into();
+        let buffer = Buffer::new(rope);
+        let buf_id = ctx.spawn_buffer(buffer);
+
+        let mut buf_view = BufferView::empty();
+        buf_view.cursor = cursor;
+
+        let mut session = Session::empty(buf_id);
+        session.viewport = Viewport {
+            scroll: Coords::default(),
+            area: Rect::new(0, 0, 80, 24),
+        };
+
+        let session_id = ctx.spawn_session(session, buf_view);
+        ctx.editor.session_id = session_id;
+        ctx
+    }
+
+    #[test]
+    fn test_reject_viewport_motions() {
+        let mut ctx = setup("", Coords::default());
+        let m = Motion::PageUp;
+        let result = emulate_motion(&mut ctx, m, 1, 1, None);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_empty_rope() {
+        let mut ctx = setup("", Coords::default());
+        let m = Motion::Right;
+        let result = emulate_motion(&mut ctx, m, 10, 10, None);
+        assert_eq!(result.unwrap(), RegisterData::char("".into()));
+    }
+
+    #[test]
+    fn test_moot_movement() {
+        let mut ctx = setup("foo bar\nbaz baz", Coords::default());
+        let m = Motion::StartOfLine;
+        let result = emulate_motion(&mut ctx, m, 1, 1, None);
+        assert_eq!(result.unwrap(), RegisterData::char("".into()));
+    }
+
+    #[test]
+    fn test_inclusive_charwise() {
+        let mut ctx = setup("foo bar\nbaz baz", Coords::default());
+        let m = Motion::EndSubWord;
+        let result = emulate_motion(&mut ctx, m, 1, 2, None);
+        assert_eq!(result.unwrap(), RegisterData::char("foo bar".into()));
+    }
+
+    #[test]
+    fn test_exclusive_charwise() {
+        let mut ctx = setup("foo bar\nbaz baz", Coords::default());
+        let m = Motion::Right;
+        let result = emulate_motion(&mut ctx, m, 6, 1, None);
+        assert_eq!(result.unwrap(), RegisterData::char("foo ba".into()));
+    }
+
+    #[test]
+    fn test_exclusive_charwise_bounce() {
+        let mut ctx = setup("foo bar\nbaz baz", Coords::default());
+        let m = Motion::Right;
+        let result = emulate_motion(&mut ctx, m, 7, 1, None);
+        assert_eq!(result.unwrap(), RegisterData::char("foo bar".into()));
+    }
+
+    #[test]
+    fn test_inclusive_charwise_wide() {
+        let mut ctx = setup("foo\t🧑‍🧑‍🧒‍🧒\nbaz baz", Coords::default());
+        let m = Motion::EndSubWord;
+        let result = emulate_motion(&mut ctx, m, 1, 2, None);
+        assert_eq!(result.unwrap(), RegisterData::char("foo\t🧑‍🧑‍🧒‍🧒".into()));
+    }
+
+    #[test]
+    fn test_exclusive_charwise_toggle() {
+        let mut ctx = setup("foo\t🧑‍🧑‍🧒‍🧒\nbaz baz", Coords::default());
+        let m = Motion::Right;
+
+        let result = emulate_motion(&mut ctx, m, 3, 1, None);
+        assert_eq!(result.unwrap(), RegisterData::char("foo".into()));
+
+        let result = emulate_motion(&mut ctx, m, 4, 1, Some(MotionMode::Charwise));
+        assert_eq!(result.unwrap(), RegisterData::char("foo\t🧑‍🧑‍🧒‍🧒".into()));
+    }
+
+    #[test]
+    fn test_charwise_backwards() {
+        let mut ctx = setup("foo\t🧑‍🧑‍🧒‍🧒\nbaz baz", Coords::new(0, 8));
+        let m = Motion::Left;
+        let result = emulate_motion(&mut ctx, m, 1, 4, None);
+        assert_eq!(result.unwrap(), RegisterData::char("foo\t".into()));
+    }
+
+    #[test]
+    fn test_charwise_backwards_bounce() {
+        let mut ctx = setup("foo\t🧑‍🧑‍🧒‍🧒\nbaz baz", Coords::new(0, 8));
+        let m = Motion::Left;
+        let result = emulate_motion(&mut ctx, m, 1, 1000, None);
+        assert_eq!(result.unwrap(), RegisterData::char("foo\t".into()));
+    }
+
+    #[test]
+    fn test_exclusive_charwise_bounce_toggle() {
+        let mut ctx = setup("foo bar\nbaz baz", Coords::default());
+        let m = Motion::Right;
+        let result = emulate_motion(&mut ctx, m, 7, 1, Some(MotionMode::Charwise));
+        assert_eq!(result.unwrap(), RegisterData::char("foo ba".into()));
+    }
+
+    #[test]
+    fn test_charwise_backwards_bounce_toggle() {
+        let mut ctx = setup("foo\t🧑‍🧑‍🧒‍🧒\nbaz baz", Coords::new(0, 8));
+        let m = Motion::Left;
+        let result = emulate_motion(&mut ctx, m, 1, 1000, Some(MotionMode::Charwise));
+        assert_eq!(result.unwrap(), RegisterData::char("foo\t🧑‍🧑‍🧒‍🧒".into()));
+    }
+
+    #[test]
+    fn test_vi_difference() {
+        let mut ctx = setup("f", Coords::new(0, 0));
+
+        // In vi a moot bounding backwards motion is exclusive, we do the same
+        let result = emulate_motion(&mut ctx, Motion::Left, 1, 1000, None);
+        assert_eq!(result.unwrap(), RegisterData::char("".into()));
+
+        // But a moot bounding forward motion is *inclusive*, vi returns 'f'.
+        // But we can't detect forward/backards motion if the cursor doesn't move - we still return an empty selection
+        // I guess vi implemements forward movements by overshooting, and marking the overshoot somewhere.
+        // I say f*ck it. This is an edge case.
+        let result = emulate_motion(&mut ctx, Motion::Right, 1, 1000, None);
+        assert_eq!(result.unwrap(), RegisterData::char("".into()));
     }
 }

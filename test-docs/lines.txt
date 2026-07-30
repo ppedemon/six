@@ -10,3 +10,6 @@ ccc
 a	a
 🚀b🍅
 ccc
+
+foo	🧑‍🧑‍🧒‍🧒	
+baz baz

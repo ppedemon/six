@@ -3,7 +3,7 @@ use std::collections::{HashMap, hash_map::Entry};
 
 use crate::cmd::EditOp;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RegisterData {
     Char { rope: Rope },
     Line { rope: Rope },
