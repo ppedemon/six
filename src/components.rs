@@ -3,10 +3,10 @@ mod config;
 mod display;
 mod editor;
 mod insert_log;
+mod last_nav;
 mod marks;
 mod registers;
 mod repeat;
-mod search;
 mod session;
 
 use std::collections::HashMap;
@@ -16,10 +16,10 @@ pub use config::Config;
 pub use display::{DisplayBuffer, DisplayLine, DisplayLineRef};
 pub use editor::{Editor, Focus, Level, Status, TextStyle};
 pub use insert_log::InsertLog;
+pub use last_nav::LastNav;
 pub use marks::{Change, Marks};
 pub use registers::{Register, RegisterData, Registers};
 pub use repeat::{RepeatBuffer, RepeatBufferItem};
-pub use search::LastSearch;
 pub use session::{BufferName, BufferView, Coords, ExSession, ExState, Mode, Session, Viewport};
 
 pub type SessionId = usize;
@@ -41,7 +41,7 @@ pub struct EditorCtx {
     pub status: Status,
     pub registers: Registers,
     pub repbuf: RepeatBuffer,
-    pub search: LastSearch,
+    pub last_nav: LastNav,
 }
 
 impl EditorCtx {
@@ -62,7 +62,7 @@ impl EditorCtx {
             status: Status::new(),
             registers: Registers::empty(),
             repbuf: RepeatBuffer::new(),
-            search: LastSearch::empty(),
+            last_nav: LastNav::empty(),
         }
     }
 

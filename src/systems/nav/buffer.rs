@@ -62,23 +62,26 @@ pub fn move_right<R: NavRules>(
     rope: &Rope,
     buf_view: &mut BufferView,
     cols: usize,
-) {
+) -> bool {
+    let orig_cols = cols;
     let cursor_col = buf_view.cursor.col;
     let line = curr_line(config, rope, buf_view);
 
     let max_col = R::max_allowed_width(&line);
     let cols = cols.min(max_col.saturating_sub(cursor_col));
 
-    if cols != 0 {
-        let mut next_col = cursor_col;
+    let mut prev_col = cursor_col;
+    let mut next_col = cursor_col;
 
-        for _ in 0..cols {
-            next_col = R::next_col(&line, next_col);
-        }
-
-        buf_view.cursor.col = next_col;
-        buf_view.target_col = next_col;
+    for _ in 0..cols {
+        prev_col = next_col;
+        next_col = R::next_col(&line, next_col);
     }
+
+    buf_view.cursor.col = next_col;
+    buf_view.target_col = next_col;
+
+    (cols < orig_cols) || (prev_col == next_col)
 }
 
 pub fn page_up<R: NavRules>(
@@ -108,26 +111,42 @@ pub fn page_down<R: NavRules>(
     line_first_non_blank::<R>(config, rope, buf_view);
 }
 
-pub fn next_big_word(config: &Config, rope: &Rope, buf_view: &mut BufferView, reps: usize) {
+pub fn next_big_word(config: &Config, rope: &Rope, buf_view: &mut BufferView, reps: usize) -> bool {
     let mut char_idx = cursor_to_char_idx(config, buf_view, rope);
+    let mut prev_idx = char_idx;
 
     for _ in 0..reps {
+        prev_idx = char_idx;
         char_idx = rope::next_big_word(rope, char_idx);
+
+        if prev_idx == char_idx {
+            break;
+        }
     }
 
     let coords = char_idx_to_coords(config, rope, buf_view, char_idx);
     snap_coords(config, rope, buf_view, coords);
+
+    prev_idx == char_idx
 }
 
-pub fn next_sub_word(config: &Config, rope: &Rope, buf_view: &mut BufferView, reps: usize) {
+pub fn next_sub_word(config: &Config, rope: &Rope, buf_view: &mut BufferView, reps: usize) -> bool {
     let mut char_idx = cursor_to_char_idx(config, buf_view, rope);
+    let mut prev_idx = char_idx;
 
     for _ in 0..reps {
+        prev_idx = char_idx;
         char_idx = rope::next_sub_word(rope, char_idx);
+
+        if prev_idx == char_idx {
+            break;
+        }
     }
 
     let coords = char_idx_to_coords(config, rope, buf_view, char_idx);
     snap_coords(config, rope, buf_view, coords);
+
+    prev_idx == char_idx
 }
 
 pub fn prev_big_word(config: &Config, rope: &Rope, buf_view: &mut BufferView, reps: usize) {
@@ -152,52 +171,75 @@ pub fn prev_sub_word(config: &Config, rope: &Rope, buf_view: &mut BufferView, re
     snap_coords(config, rope, buf_view, coords);
 }
 
-pub fn end_big_word(config: &Config, rope: &Rope, buf_view: &mut BufferView, reps: usize) {
+pub fn end_big_word(config: &Config, rope: &Rope, buf_view: &mut BufferView, reps: usize) -> bool {
     let mut char_idx = cursor_to_char_idx(config, buf_view, rope);
+    let mut prev_idx = char_idx;
 
     for _ in 0..reps {
-        let old_col = char_idx_to_coords(config, rope, buf_view, char_idx).col;
+        prev_idx = char_idx;
         char_idx = rope::end_big_word(rope, char_idx);
 
-        // Multichar graphemes are hell:
-        // If afer moving we are at the end of the initial grapheme, but no at the end of the text, we
-        // found a multichar grapheme. Snapping will leave us stuck at the the start of such grapheme.
-        // Fix: move out of the grapheme and recompute.
-        let new_col = char_idx_to_coords(config, rope, buf_view, char_idx).col;
-        let line = curr_line(config, rope, buf_view);
-        if let Some((_, span)) = line.grapheme_at(new_col) {
-            if span.start == old_col && span.end < rope.len_chars().saturating_sub(1) {
-                char_idx = rope::end_big_word(rope, char_idx + 1);
+        // Multichar graphemes are trouble:
+        //
+        // Consider the text: "a🧑‍🧑‍🧒‍🧒 b", cursor at 'a'. This function jumps to the last char
+        // of '🧑‍🧑‍🧒‍🧒', and after snapping, we end up at its *first* char. We are trapped: next
+        // call will do the same: go to the last char of the emoji, then snap to the first.
+        //
+        // Solution: after invoking [rope::end_big_word], check if we are at the end of the initial
+        // grapheme. If so, move past the multichar grapheme and call [rope::end_big_word] again.
+        let coords = char_idx_to_coords(config, rope, buf_view, char_idx);
+        let line = buf_view.display_buf.ensure_line(config, rope, coords.row);
+        match line.grapheme_at(coords.col) {
+            Some((g, _)) => {
+                if char_idx - prev_idx + 1 == g.chars().count() {
+                    prev_idx = char_idx;
+                    char_idx = rope::end_big_word(rope, char_idx + 1);
+                }
             }
+            _ => {}
+        }
+
+        if prev_idx == char_idx {
+            break;
         }
     }
 
     let coords = char_idx_to_coords(config, rope, buf_view, char_idx);
     snap_coords(config, rope, buf_view, coords);
+
+    prev_idx == char_idx
 }
 
-pub fn end_sub_word(config: &Config, rope: &Rope, buf_view: &mut BufferView, reps: usize) {
+pub fn end_sub_word(config: &Config, rope: &Rope, buf_view: &mut BufferView, reps: usize) -> bool {
     let mut char_idx = cursor_to_char_idx(config, buf_view, rope);
+    let mut prev_idx = char_idx;
 
     for _ in 0..reps {
-        let old_col = char_idx_to_coords(config, rope, buf_view, char_idx).col;
+        prev_idx = char_idx;
         char_idx = rope::end_sub_word(rope, char_idx);
 
-        // Multichar graphemes are hell:
-        // If afer moving we are at the end of the initial grapheme, but no at the end of the text, we
-        // found a multichar grapheme. Snapping will leave us stuck at the the start of such grapheme.
-        // Fix: move out of the grapheme and recompute.
-        let new_col = char_idx_to_coords(config, rope, buf_view, char_idx).col;
-        let line = curr_line(config, rope, buf_view);
-        if let Some((_, span)) = line.grapheme_at(new_col) {
-            if span.start == old_col && span.end < rope.len_chars().saturating_sub(1) {
-                char_idx = rope::end_sub_word(rope, char_idx + 1);
+        // See command about multichar graphemes in [end_big_word]
+        let coords = char_idx_to_coords(config, rope, buf_view, char_idx);
+        let line = buf_view.display_buf.ensure_line(config, rope, coords.row);
+        match line.grapheme_at(coords.col) {
+            Some((g, _)) => {
+                if char_idx - prev_idx + 1 == g.chars().count() {
+                    prev_idx = char_idx;
+                    char_idx = rope::end_sub_word(rope, char_idx + 1);
+                }
             }
+            _ => {}
+        }
+
+        if prev_idx == char_idx {
+            break;
         }
     }
 
     let coords = char_idx_to_coords(config, rope, buf_view, char_idx);
     snap_coords(config, rope, buf_view, coords);
+
+    prev_idx == char_idx
 }
 
 pub fn line_first_non_blank<R: NavRules>(config: &Config, rope: &Rope, buf_view: &mut BufferView) {

@@ -29,15 +29,10 @@ pub fn emulate_motion(
         (cursor, target_col)
     };
 
-    let mut incl = inclusive(ctx, m);
-    if charwise(m) && !incl {
-        incl = eval_exclusive_charwise(ctx, m, cmd_reps, arg_reps);
-    } else {
-        eval(ctx, m, cmd_reps, arg_reps);
-    }
+    eval(ctx, m, cmd_reps, arg_reps);
 
-    // TODO
-    // Handle exceptions in the vim reference manual (exclusive -> inclusive and exclusive -> linewise)
+    // TODO Handle exceptions in the vim reference manual:
+    // exclusive -> inclusive and exclusive -> linewise
 
     let mode = forced_mode.unwrap_or_else(|| {
         if linewise(m) {
@@ -46,12 +41,6 @@ pub fn emulate_motion(
             MotionMode::Charwise
         }
     });
-
-    if let Some(MotionMode::Charwise) = forced_mode
-        && charwise(m)
-    {
-        incl = !incl;
-    }
 
     let (session, buf_view, buffer) = active_session_and_buffer!(mut ctx);
     let end_cursor = buf_view.cursor;
@@ -62,50 +51,13 @@ pub fn emulate_motion(
     }
 
     Ok(match mode {
-        MotionMode::Charwise => adjust_charwise(ctx, (orig_cursor, end_cursor), incl),
+        MotionMode::Charwise => adjust_charwise(ctx, (orig_cursor, end_cursor), m, forced_mode),
         MotionMode::Linewise => adjust_linewise(ctx, (orig_cursor, end_cursor)),
         MotionMode::Blockwise => adjust_blockwise(ctx, (orig_cursor, end_cursor)),
     })
 }
 
-// Exclusive Charwise movements become inclusive if they "bounce"
-// (they try to go beyond the end of line). In order to detect a
-// bounce, we need a special evaluator.
-//
-// Returns true if the move must become inclusive.
-fn eval_exclusive_charwise(
-    ctx: &mut EditorCtx,
-    m: Motion,
-    cmd_reps: usize,
-    arg_reps: usize,
-) -> bool {
-    let mut forward = false;
-    let mut inclusive = false;
-    let mut last_coord = {
-        let (_, buf_view) = active_session!(ctx);
-        buf_view.cursor
-    };
-
-    for _ in 0..cmd_reps {
-        for _ in 0..arg_reps {
-            let cmd = Cmd::new(Operator::Move(m)).reps(Some(1));
-            let args = NavArgs::new(m, cmd);
-            handle_session_nav(ctx, args);
-
-            let (_, buf_view) = active_session!(ctx);
-            if buf_view.cursor == last_coord {
-                inclusive = true;
-                break;
-            }
-            forward = forward || (buf_view.cursor > last_coord);
-            last_coord = buf_view.cursor;
-        }
-    }
-
-    inclusive && forward
-}
-
-// Eval non-charwise exclusive motions
+// Eval motion
 fn eval(ctx: &mut EditorCtx, m: Motion, cmd_reps: usize, arg_reps: usize) {
     let mut cmd_reps = cmd_reps;
     let mut arg_reps = arg_reps;
@@ -125,7 +77,17 @@ fn eval(ctx: &mut EditorCtx, m: Motion, cmd_reps: usize, arg_reps: usize) {
     }
 }
 
-fn adjust_charwise(ctx: &mut EditorCtx, span: (Coords, Coords), inclusive: bool) -> RegisterData {
+fn adjust_charwise(
+    ctx: &mut EditorCtx,
+    span: (Coords, Coords),
+    m: Motion,
+    forced_mode: Option<MotionMode>,
+) -> RegisterData {
+    let mut inclusive = inclusive(ctx, m) || ctx.last_nav.last_nav_overshot();
+    if forced_mode.is_some_and(|mode| mode == MotionMode::Charwise) {
+        inclusive = !inclusive;
+    }
+
     let (mut start, mut end) = span;
     let (_, buf_view, buffer) = active_session_and_buffer!(mut ctx);
     let rope = buffer.rope();
@@ -281,23 +243,30 @@ fn inclusive(ctx: &EditorCtx, m: Motion) -> bool {
         Motion::TillNextChar(_) => true,
         Motion::EndSubWord => true,
         Motion::EndBigWord => true,
-        Motion::RepeatBackward => ctx.search.char_search().is_some_and(|m| !inclusive(ctx, m)),
-        Motion::RepeatForward => ctx.search.char_search().is_some_and(|m| inclusive(ctx, m)),
+        Motion::RepeatBackward => ctx
+            .last_nav
+            .last_char_search()
+            .is_some_and(|m| !inclusive(ctx, m)),
+        Motion::RepeatForward => ctx
+            .last_nav
+            .last_char_search()
+            .is_some_and(|m| inclusive(ctx, m)),
 
         _ => false,
     }
 }
 
+// -----------------------------------------------------------------------
+// Tests
+// -----------------------------------------------------------------------
 #[cfg(test)]
-mod test {
-    use ratatui::layout::Rect;
-    use std::assert_eq;
-
+mod test_commons {
     use super::*;
     use crate::components::{Buffer, BufferView, Session, Viewport};
+    use ratatui::layout::Rect;
 
     // Test setup: editor with given text and cursor at given coords
-    fn setup(text: &str, cursor: Coords) -> EditorCtx {
+    pub(crate) fn setup(text: &str, cursor: Coords) -> EditorCtx {
         let mut ctx = EditorCtx::new();
 
         let rope: Rope = text.into();
@@ -317,6 +286,13 @@ mod test {
         ctx.editor.session_id = session_id;
         ctx
     }
+}
+
+#[cfg(test)]
+mod test_charwise {
+    use super::test_commons::setup;
+    use super::*;
+    use std::assert_eq;
 
     #[test]
     fn test_reject_viewport_motions() {
@@ -335,7 +311,8 @@ mod test {
     }
 
     #[test]
-    fn test_moot_movement() {
+    fn test_moot_movement_bwd() {
+        // Backwards is exclusive
         let mut ctx = setup("foo bar\nbaz baz", Coords::default());
         let m = Motion::StartOfLine;
         let result = emulate_motion(&mut ctx, m, 1, 1, None);
@@ -343,7 +320,29 @@ mod test {
     }
 
     #[test]
-    fn test_inclusive_charwise() {
+    fn test_moot_movement_fwd() {
+        // Forward is inclusive
+        let mut ctx = setup("foo bar\nbaz baz", Coords::new(0, 6));
+        let m = Motion::EndOfLine;
+        let result = emulate_motion(&mut ctx, m, 1, 1, None);
+        assert_eq!(result.unwrap(), RegisterData::char("r".into()));
+    }
+
+    #[test]
+    fn test_vi_compliance() {
+        let mut ctx = setup("f", Coords::new(0, 0));
+
+        // In vi a moot bounding backwards motion is exclusive
+        let result = emulate_motion(&mut ctx, Motion::Left, 1, 1000, None);
+        assert_eq!(result.unwrap(), RegisterData::char("".into()));
+
+        // But a moot bounding forward motion is *inclusive*
+        let result = emulate_motion(&mut ctx, Motion::Right, 1, 1000, None);
+        assert_eq!(result.unwrap(), RegisterData::char("f".into()));
+    }
+
+    #[test]
+    fn test_inclusive_fwd() {
         let mut ctx = setup("foo bar\nbaz baz", Coords::default());
         let m = Motion::EndSubWord;
         let result = emulate_motion(&mut ctx, m, 1, 2, None);
@@ -351,7 +350,7 @@ mod test {
     }
 
     #[test]
-    fn test_exclusive_charwise() {
+    fn test_exclusive_fwd() {
         let mut ctx = setup("foo bar\nbaz baz", Coords::default());
         let m = Motion::Right;
         let result = emulate_motion(&mut ctx, m, 6, 1, None);
@@ -359,78 +358,160 @@ mod test {
     }
 
     #[test]
-    fn test_exclusive_charwise_bounce() {
-        let mut ctx = setup("foo bar\nbaz baz", Coords::default());
-        let m = Motion::Right;
-        let result = emulate_motion(&mut ctx, m, 7, 1, None);
-        assert_eq!(result.unwrap(), RegisterData::char("foo bar".into()));
+    fn test_bwd() {
+        // All backawrds movements are exclusive
+        let mut ctx = setup("foo bar\nbaz baz", Coords::new(0, 6));
+        let m = Motion::PrevSubWord;
+        let result = emulate_motion(&mut ctx, m, 1, 1, None);
+        assert_eq!(result.unwrap(), RegisterData::char("ba".into()));
+
+        // Backwards movements move the cursor
+        let (_, buf_view) = active_session!(ctx);
+        assert_eq!(buf_view.cursor, Coords::new(0, 4));
     }
 
     #[test]
-    fn test_inclusive_charwise_wide() {
+    fn test_funny_chars() {
+        // Forward
         let mut ctx = setup("foo\t🧑‍🧑‍🧒‍🧒\nbaz baz", Coords::default());
         let m = Motion::EndSubWord;
         let result = emulate_motion(&mut ctx, m, 1, 2, None);
         assert_eq!(result.unwrap(), RegisterData::char("foo\t🧑‍🧑‍🧒‍🧒".into()));
+
+        // Backwards
+        let mut ctx = setup("foo\t🧑‍🧑‍🧒‍🧒\nbaz baz", Coords::new(0, 8));
+        let m = Motion::PrevSubWord;
+        let result = emulate_motion(&mut ctx, m, 1, 2, None);
+        assert_eq!(result.unwrap(), RegisterData::char("foo\t".into()));
     }
 
     #[test]
-    fn test_exclusive_charwise_toggle() {
+    fn test_toggle() {
+        // Forward
         let mut ctx = setup("foo\t🧑‍🧑‍🧒‍🧒\nbaz baz", Coords::default());
         let m = Motion::Right;
-
         let result = emulate_motion(&mut ctx, m, 3, 1, None);
         assert_eq!(result.unwrap(), RegisterData::char("foo".into()));
 
+        let result = emulate_motion(&mut ctx, m, 3, 1, Some(MotionMode::Charwise));
+        assert_eq!(result.unwrap(), RegisterData::char("foo\t".into()));
+
+        // Toggle forward overshoot from inclusive (since it's an overshoot) to exclusive
+        let result = emulate_motion(&mut ctx, m, 20, 1, Some(MotionMode::Charwise));
+        assert_eq!(result.unwrap(), RegisterData::char("foo\t".into()));
+
+        // Backward
+        let mut ctx = setup("foo\t🧑‍🧑‍🧒‍🧒\nbaz baz", Coords::new(0, 8));
+        let m = Motion::Left;
+        let result = emulate_motion(&mut ctx, m, 4, 1, None);
+        assert_eq!(result.unwrap(), RegisterData::char("foo\t".into()));
+
+        let mut ctx = setup("foo\t🧑‍🧑‍🧒‍🧒\nbaz baz", Coords::new(0, 8));
+        let m = Motion::Left;
         let result = emulate_motion(&mut ctx, m, 4, 1, Some(MotionMode::Charwise));
         assert_eq!(result.unwrap(), RegisterData::char("foo\t🧑‍🧑‍🧒‍🧒".into()));
     }
 
     #[test]
-    fn test_charwise_backwards() {
-        let mut ctx = setup("foo\t🧑‍🧑‍🧒‍🧒\nbaz baz", Coords::new(0, 8));
-        let m = Motion::Left;
-        let result = emulate_motion(&mut ctx, m, 1, 4, None);
-        assert_eq!(result.unwrap(), RegisterData::char("foo\t".into()));
-    }
-
-    #[test]
-    fn test_charwise_backwards_bounce() {
-        let mut ctx = setup("foo\t🧑‍🧑‍🧒‍🧒\nbaz baz", Coords::new(0, 8));
-        let m = Motion::Left;
-        let result = emulate_motion(&mut ctx, m, 1, 1000, None);
-        assert_eq!(result.unwrap(), RegisterData::char("foo\t".into()));
-    }
-
-    #[test]
-    fn test_exclusive_charwise_bounce_toggle() {
+    fn test_multiline_fwd() {
+        // Forward exclusive
         let mut ctx = setup("foo bar\nbaz baz", Coords::default());
-        let m = Motion::Right;
-        let result = emulate_motion(&mut ctx, m, 7, 1, Some(MotionMode::Charwise));
-        assert_eq!(result.unwrap(), RegisterData::char("foo ba".into()));
+        let m = Motion::NextSubWord;
+        let result = emulate_motion(&mut ctx, m, 3, 1, None);
+        assert_eq!(result.unwrap(), RegisterData::char("foo bar\nbaz ".into()));
+
+        // Forward inclusive
+        let mut ctx = setup("foo bar\nbaz baz", Coords::default());
+        let m = Motion::NextSubWord;
+        let result = emulate_motion(&mut ctx, m, 20, 1, None);
+        assert_eq!(
+            result.unwrap(),
+            RegisterData::char("foo bar\nbaz baz".into())
+        );
     }
 
     #[test]
-    fn test_charwise_backwards_bounce_toggle() {
-        let mut ctx = setup("foo\t🧑‍🧑‍🧒‍🧒\nbaz baz", Coords::new(0, 8));
+    fn test_multiline_bwd() {
+        let mut ctx = setup("foo bar\nbaz baz", Coords::new(1, 4));
+        let m = Motion::PrevSubWord;
+        let result = emulate_motion(&mut ctx, m, 3, 1, None);
+        assert_eq!(result.unwrap(), RegisterData::char("foo bar\nbaz ".into()));
+    }
+
+    #[test]
+    fn test_multiline_toggles() {
+        // Forward exclusive
+        let mut ctx = setup("foo bar\nbaz baz", Coords::default());
+        let m = Motion::NextSubWord;
+        let result = emulate_motion(&mut ctx, m, 3, 1, Some(MotionMode::Charwise));
+        assert_eq!(result.unwrap(), RegisterData::char("foo bar\nbaz b".into()));
+
+        // Forward inclusive
+        let mut ctx = setup("foo bar\nbaz baz", Coords::default());
+        let m = Motion::NextSubWord;
+        let result = emulate_motion(&mut ctx, m, 20, 1, Some(MotionMode::Charwise));
+        assert_eq!(
+            result.unwrap(),
+            RegisterData::char("foo bar\nbaz ba".into())
+        );
+
+        // Make backwards inclusive
+        let mut ctx = setup("foo bar\nbaz baz", Coords::new(1, 4));
+        let m = Motion::PrevSubWord;
+        let result = emulate_motion(&mut ctx, m, 3, 1, Some(MotionMode::Charwise));
+        assert_eq!(result.unwrap(), RegisterData::char("foo bar\nbaz b".into()));
+    }
+
+    #[test]
+    fn test_line_coercion() {
+        // Single line
+        let mut ctx = setup("foo bar\nbaz baz", Coords::default());
         let m = Motion::Left;
-        let result = emulate_motion(&mut ctx, m, 1, 1000, Some(MotionMode::Charwise));
-        assert_eq!(result.unwrap(), RegisterData::char("foo\t🧑‍🧑‍🧒‍🧒".into()));
+        let result = emulate_motion(&mut ctx, m, 1, 1, Some(MotionMode::Linewise));
+        assert_eq!(result.unwrap(), RegisterData::line("foo bar\n".into()));
+
+        // Single line
+        let mut ctx = setup("foo bar\nbaz baz", Coords::default());
+        let m = Motion::GotoLine(2);
+        let result = emulate_motion(&mut ctx, m, 1, 1, Some(MotionMode::Linewise));
+        assert_eq!(
+            result.unwrap(),
+            RegisterData::line("foo bar\nbaz baz\n".into())
+        );
     }
 
     #[test]
-    fn test_vi_difference() {
-        let mut ctx = setup("f", Coords::new(0, 0));
+    fn test_block_coercion() {
+        // Perfect block
+        let mut ctx = setup("foo bar baz\nfoo bar baz", Coords::new(0, 4));
+        let m = Motion::EndSubWord;
+        let result = emulate_motion(&mut ctx, m, 1, 4, Some(MotionMode::Blockwise));
+        assert_eq!(
+            result.unwrap(),
+            RegisterData::block(vec!["bar\n".into(), "bar".into()])
+        );
 
-        // In vi a moot bounding backwards motion is exclusive, we do the same
-        let result = emulate_motion(&mut ctx, Motion::Left, 1, 1000, None);
-        assert_eq!(result.unwrap(), RegisterData::char("".into()));
+        // Weird block
+        let mut ctx = setup("foo\tbar\nf🏳️‍🌈 bar", Coords::new(0, 2));
+        let m = Motion::EndOfFile;
+        let result = emulate_motion(&mut ctx, m, 1, 1, Some(MotionMode::Blockwise));
+        assert_eq!(
+            result.unwrap(),
+            RegisterData::block(vec!["o    \n".into(), "  bar".into()])
+        );
 
-        // But a moot bounding forward motion is *inclusive*, vi returns 'f'.
-        // But we can't detect forward/backards motion if the cursor doesn't move - we still return an empty selection
-        // I guess vi implemements forward movements by overshooting, and marking the overshoot somewhere.
-        // I say f*ck it. This is an edge case.
-        let result = emulate_motion(&mut ctx, Motion::Right, 1, 1000, None);
-        assert_eq!(result.unwrap(), RegisterData::char("".into()));
+        // Jagged block
+        let mut ctx = setup("foo\tbar\n\naaa\nf🏳️‍🌈 bar", Coords::new(0, 2));
+        let m = Motion::EndOfFile;
+        let result = emulate_motion(&mut ctx, m, 1, 1, Some(MotionMode::Blockwise));
+        assert_eq!(
+            result.unwrap(),
+            RegisterData::block(vec![
+                "o    \n".into(),
+                "".into(),
+                "a".into(),
+                "  bar".into()
+            ])
+        );
     }
 }

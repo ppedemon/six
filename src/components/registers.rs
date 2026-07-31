@@ -79,7 +79,7 @@ fn soft_vstack(rope: &mut Rope, ropes: impl IntoIterator<Item = Rope>) {
 
 fn ensure_nl(rope: &mut Rope) {
     let len = rope.len_chars();
-    if len > 0 && rope.char(len - 1) != '\n' {
+    if len == 0 || rope.char(len - 1) != '\n' {
         rope.insert_char(len, '\n');
     }
 }
