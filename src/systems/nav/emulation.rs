@@ -19,7 +19,7 @@ pub fn emulate_motion(
     forced_mode: Option<MotionMode>,
 ) -> Result<RegisterData> {
     if uses_viewport(m) {
-        return Err(anyhow!("Invalid mnotion"));
+        return Err(anyhow!("Invalid motion"));
     }
 
     let (orig_cursor, orig_target_col) = {
