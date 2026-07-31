@@ -20,9 +20,9 @@ impl RegisterData {
     }
 
     pub fn block(ropes: Vec<Rope>) -> Self {
-        let mut rope = Rope::new();
-        soft_vstack(&mut rope, ropes);
-        Self::Block { rope }
+        Self::Block {
+            rope: vstack(ropes),
+        }
     }
 
     pub fn is_empty(&self) -> bool {
@@ -41,40 +41,41 @@ impl RegisterData {
                 rope.append(other);
                 Self::Char { rope }
             }
-            (Self::Char { mut rope }, Self::Line { rope: other })
-            | (Self::Line { mut rope }, Self::Char { rope: other })
-            | (Self::Line { mut rope }, Self::Line { rope: other }) => {
-                vstack(&mut rope, [other]);
-                Self::Line { rope }
-            }
-            (Self::Block { mut rope }, Self::Block { rope: other }) => {
-                vstack(&mut rope, [other]);
-                Self::Line { rope }
-            }
-            (Self::Block { mut rope }, Self::Line { rope: other })
-            | (Self::Block { mut rope }, Self::Char { rope: other }) => {
-                vstack(&mut rope, [other]);
-                Self::Line { rope }
-            }
-            (Self::Line { mut rope }, Self::Block { rope: other })
-            | (Self::Char { mut rope }, Self::Block { rope: other }) => {
-                vstack(&mut rope, [other]);
-                Self::Line { rope }
-            }
+            (Self::Char { rope }, Self::Line { rope: other })
+            | (Self::Line { rope }, Self::Char { rope: other })
+            | (Self::Line { rope }, Self::Line { rope: other }) => Self::Line {
+                rope: vstack_nl([rope, other]),
+            },
+            (Self::Block { rope }, Self::Block { rope: other }) => Self::Line {
+                rope: vstack_nl([rope, other]),
+            },
+            (Self::Block { rope }, Self::Line { rope: other })
+            | (Self::Block { rope }, Self::Char { rope: other }) => Self::Line {
+                rope: vstack_nl([rope, other]),
+            },
+            (Self::Line { rope }, Self::Block { rope: other })
+            | (Self::Char { rope }, Self::Block { rope: other }) => Self::Line {
+                rope: vstack_nl([rope, other]),
+            },
         };
     }
 }
 
-fn vstack(rope: &mut Rope, ropes: impl IntoIterator<Item = Rope>) {
-    soft_vstack(rope, ropes);
-    ensure_nl(rope);
-}
-
-fn soft_vstack(rope: &mut Rope, ropes: impl IntoIterator<Item = Rope>) {
-    for r in ropes {
-        ensure_nl(rope);
+fn vstack(ropes: impl IntoIterator<Item = Rope>) -> Rope {
+    let mut rope = Rope::new();
+    for (i, r) in ropes.into_iter().enumerate() {
+        if i > 0 {
+            ensure_nl(&mut rope);
+        }
         rope.append(r);
     }
+    rope
+}
+
+fn vstack_nl(ropes: impl IntoIterator<Item = Rope>) -> Rope {
+    let mut rope = vstack(ropes);
+    ensure_nl(&mut rope);
+    rope
 }
 
 fn ensure_nl(rope: &mut Rope) {

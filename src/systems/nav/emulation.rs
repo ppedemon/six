@@ -83,7 +83,7 @@ fn adjust_charwise(
     m: Motion,
     forced_mode: Option<MotionMode>,
 ) -> RegisterData {
-    let mut inclusive = inclusive(ctx, m) || ctx.last_nav.last_nav_overshot();
+    let mut inclusive = inclusive(ctx, m) || (charwise(m) && ctx.last_nav.last_nav_overshot());
     if forced_mode.is_some_and(|mode| mode == MotionMode::Charwise) {
         inclusive = !inclusive;
     }
@@ -154,6 +154,8 @@ fn adjust_blockwise(ctx: &mut EditorCtx, span: (Coords, Coords)) -> RegisterData
     let mut br = Coords::new(start.row.max(end.row), start.col.max(end.col));
     br.col += 1;
 
+    println!("Rec: {tl:?} - {br:?}");
+
     let mut rows = Vec::with_capacity(br.row - tl.row + 1);
 
     for row in tl.row..=br.row {
@@ -161,7 +163,9 @@ fn adjust_blockwise(ctx: &mut EditorCtx, span: (Coords, Coords)) -> RegisterData
         let line = buf_view.display_buf.ensure_line(&ctx.config, rope, row);
 
         if line.display_width > 0 {
-            for (g, span) in line.graphemes_between(tl.col, br.col + 1) {
+            for (g, span) in line.graphemes_between(tl.col, br.col) {
+                println!("Grapheme: {:?}", (g, span));
+
                 if span.start < tl.col && span.end > br.col {
                     curr_row.append(" ".repeat(br.col - tl.col).into());
                 } else if span.start < tl.col {
@@ -177,6 +181,8 @@ fn adjust_blockwise(ctx: &mut EditorCtx, span: (Coords, Coords)) -> RegisterData
                 }
             }
         }
+
+        println!("Pushing: {:?}", curr_row);
 
         rows.push(curr_row);
     }
@@ -513,5 +519,103 @@ mod test_charwise {
                 "  bar".into()
             ])
         );
+    }
+
+    fn test_moot_to_line() {
+        let mut ctx = setup("foo bar baz", Coords::new(0, 0));
+        let m = Motion::StartOfLine;
+        let result = emulate_motion(&mut ctx, m, 1, 1, Some(MotionMode::Linewise));
+        assert_eq!(result.unwrap(), RegisterData::line("foo bar baz\n".into()));
+    }
+}
+
+#[cfg(test)]
+mod test_linewise {
+    use super::test_commons::setup;
+    use super::*;
+
+    #[test]
+    fn test_moot() {
+        let mut ctx = setup("foo bar baz\nfoo bar baz", Coords::new(0, 1));
+        let m = Motion::Up;
+        let result = emulate_motion(&mut ctx, m, 1, 1, None);
+        assert_eq!(result.unwrap(), RegisterData::line("foo bar baz\n".into()));
+
+        let mut ctx = setup("foo bar baz\n2", Coords::new(1, 0));
+        let m = Motion::Down;
+        let result = emulate_motion(&mut ctx, m, 1, 1, None);
+        assert_eq!(result.unwrap(), RegisterData::line("2\n".into()));
+    }
+
+    #[test]
+    fn test_double() {
+        // Single line
+        let mut ctx = setup("foo bar baz\nfoo bar baz", Coords::new(0, 1));
+        let m = Motion::Line;
+        let result = emulate_motion(&mut ctx, m, 1, 1, None);
+        assert_eq!(result.unwrap(), RegisterData::line("foo bar baz\n".into()));
+
+        // Two lines
+        let m = Motion::Line;
+        let result = emulate_motion(&mut ctx, m, 2, 1, None);
+        assert_eq!(
+            result.unwrap(),
+            RegisterData::line("foo bar baz\nfoo bar baz\n".into())
+        );
+    }
+
+    #[test]
+    fn test_line_movements() {
+        let mut ctx = setup("foo bar baz\nfoo bar baz", Coords::new(0, 1));
+        let m = Motion::Down;
+        let result = emulate_motion(&mut ctx, m, 1, 1, None);
+        assert_eq!(
+            result.unwrap(),
+            RegisterData::line("foo bar baz\nfoo bar baz\n".into())
+        );
+
+        let mut ctx = setup("foo bar baz\nfoo bar baz", Coords::new(1, 1));
+        let m = Motion::Up;
+        let result = emulate_motion(&mut ctx, m, 1, 1, None);
+        assert_eq!(
+            result.unwrap(),
+            RegisterData::line("foo bar baz\nfoo bar baz\n".into())
+        );
+    }
+
+    #[test]
+    fn test_charwise_coercion() {
+        // Double to charwise
+        let mut ctx = setup("foo bar baz\nfoo bar baz", Coords::new(0, 4));
+        let m = Motion::Line;
+        let result = emulate_motion(&mut ctx, m, 1, 1, Some(MotionMode::Charwise));
+        assert_eq!(result.unwrap(), RegisterData::char("".into()));
+
+        // 2 doubles to charwise
+        let mut ctx = setup("foo bar baz\nfoo bar baz", Coords::new(0, 4));
+        let m = Motion::Line;
+        let result = emulate_motion(&mut ctx, m, 2, 1, Some(MotionMode::Charwise));
+        assert_eq!(result.unwrap(), RegisterData::char("bar baz\nfoo ".into()));
+
+        // Line motion to charwise
+        let mut ctx = setup("foo bar baz\nfoo bar baz", Coords::new(0, 4));
+        let m = Motion::Line;
+        let result = emulate_motion(&mut ctx, m, 2, 1, Some(MotionMode::Charwise));
+        assert_eq!(result.unwrap(), RegisterData::char("bar baz\nfoo ".into()))
+    }
+
+    #[test]
+    fn test_blockwise_coercion() {
+        // Single row
+        let mut ctx = setup("foo bar baz\nfoo bar baz\nfoo bar baz", Coords::new(0, 4));
+        let m = Motion::Line;
+        let result = emulate_motion(&mut ctx, m, 1, 1, Some(MotionMode::Blockwise));
+        assert_eq!(result.unwrap(), RegisterData::block(vec!["b".into()]));
+
+        // Multiple rows
+        let mut ctx = setup("foo bar baz\nfoo bar baz\nfoo bar baz", Coords::new(0, 4));
+        let m = Motion::Line;
+        let result = emulate_motion(&mut ctx, m, 2, 1, Some(MotionMode::Blockwise));
+        assert_eq!(result.unwrap(), RegisterData::block(vec!["b\n".into(), "b".into()]));
     }
 }
