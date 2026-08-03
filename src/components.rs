@@ -3,7 +3,7 @@ mod config;
 mod display;
 mod editor;
 mod insert_log;
-mod last_nav;
+mod last_search;
 mod marks;
 mod registers;
 mod repeat;
@@ -16,7 +16,7 @@ pub use config::Config;
 pub use display::{DisplayBuffer, DisplayLine, DisplayLineRef};
 pub use editor::{Editor, Focus, Level, Status, TextStyle};
 pub use insert_log::InsertLog;
-pub use last_nav::LastNav;
+pub use last_search::LastSearch;
 pub use marks::{Change, Marks};
 pub use registers::{Register, RegisterData, Registers};
 pub use repeat::{RepeatBuffer, RepeatBufferItem};
@@ -41,7 +41,7 @@ pub struct EditorCtx {
     pub status: Status,
     pub registers: Registers,
     pub repbuf: RepeatBuffer,
-    pub last_nav: LastNav,
+    pub last_search: LastSearch,
 }
 
 impl EditorCtx {
@@ -62,7 +62,7 @@ impl EditorCtx {
             status: Status::new(),
             registers: Registers::empty(),
             repbuf: RepeatBuffer::new(),
-            last_nav: LastNav::empty(),
+            last_search: LastSearch::empty(),
         }
     }
 

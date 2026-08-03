@@ -67,6 +67,7 @@ pub struct BufferView {
     pub cursor: Coords,
     pub target_col: usize,
     pub display_buf: DisplayBuffer,
+    pub overshoot: bool,
 }
 
 impl BufferView {
@@ -75,6 +76,7 @@ impl BufferView {
             cursor: Coords::default(),
             target_col: 0,
             display_buf: DisplayBuffer::empty(),
+            overshoot: false,
         }
     }
 }

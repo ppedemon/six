@@ -1,28 +1,14 @@
 use crate::cmd::Motion;
 
-pub struct LastNav {
-    overshot: bool,
+pub struct LastSearch {
     last_char_search: Option<Motion>,
 }
 
-impl LastNav {
+impl LastSearch {
     pub fn empty() -> Self {
         Self {
-            overshot: false,
             last_char_search: None,
         }
-    }
-
-    pub fn clear_overshot(&mut self) {
-        self.overshot = false;
-    }
-
-    pub fn save_overshot(&mut self) {
-        self.overshot = true;
-    }
-
-    pub fn last_nav_overshot(&self) -> bool {
-        self.overshot
     }
 
     pub fn save_char_search(&mut self, m: Motion) {

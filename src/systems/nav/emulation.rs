@@ -83,7 +83,8 @@ fn adjust_charwise(
     m: Motion,
     forced_mode: Option<MotionMode>,
 ) -> RegisterData {
-    let mut inclusive = inclusive(ctx, m) || (charwise(m) && ctx.last_nav.last_nav_overshot());
+    let overshot = active_session!(ctx).1.overshoot;
+    let mut inclusive = inclusive(ctx, m) || (charwise(m) && overshot);
     if forced_mode.is_some_and(|mode| mode == MotionMode::Charwise) {
         inclusive = !inclusive;
     }
@@ -250,11 +251,11 @@ fn inclusive(ctx: &EditorCtx, m: Motion) -> bool {
         Motion::EndSubWord => true,
         Motion::EndBigWord => true,
         Motion::RepeatBackward => ctx
-            .last_nav
+            .last_search
             .last_char_search()
             .is_some_and(|m| !inclusive(ctx, m)),
         Motion::RepeatForward => ctx
-            .last_nav
+            .last_search
             .last_char_search()
             .is_some_and(|m| inclusive(ctx, m)),
 
