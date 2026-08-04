@@ -46,7 +46,7 @@ fn handle_ex_nav(ctx: &mut EditorCtx, args: NavArgs) {
     }
 }
 
-fn handle_session_nav(ctx: &mut EditorCtx, args: NavArgs) {
+pub fn handle_session_nav(ctx: &mut EditorCtx, args: NavArgs) {
     let config = &ctx.config;
     let (session, buf_view, buffer) = active_session_and_buffer!(mut ctx);
 
@@ -56,7 +56,7 @@ fn handle_session_nav(ctx: &mut EditorCtx, args: NavArgs) {
             session_nav::<InsertNav>(
                 config,
                 buffer,
-                &mut ctx.search,
+                &mut ctx.last_search,
                 &mut session.viewport,
                 buf_view,
                 args,
@@ -66,7 +66,7 @@ fn handle_session_nav(ctx: &mut EditorCtx, args: NavArgs) {
             session_nav::<NormalNav>(
                 &ctx.config,
                 buffer,
-                &mut ctx.search,
+                &mut ctx.last_search,
                 &mut session.viewport,
                 buf_view,
                 args,
@@ -88,11 +88,16 @@ fn session_nav<R: NavRules>(
     let reps = args.cmd.reps.unwrap_or(1);
     let rope = buffer.rope();
 
+    buf_view.overshot = false;
+
     match args.motion {
         Motion::Up => buffer::move_up::<R>(config, rope, buf_view, reps),
         Motion::Down => buffer::move_down::<R>(config, rope, buf_view, reps),
         Motion::Left => buffer::move_left::<R>(config, rope, buf_view, reps),
-        Motion::Right => buffer::move_right::<R>(config, rope, buf_view, reps),
+        Motion::Right => {
+            let overshot = buffer::move_right::<R>(config, rope, buf_view, reps);
+            buf_view.overshot = overshot;
+        }
         Motion::PageUp => {
             let pg_size = viewport.pg_size(PAGE_SCROLL_MARGIN);
             buffer::page_up::<R>(config, rope, buf_view, reps, pg_size);
@@ -103,13 +108,24 @@ fn session_nav<R: NavRules>(
             buffer::page_down::<R>(config, rope, buf_view, reps, pg_size);
             viewport.scroll_to_row(buf_view.cursor.row);
         }
-        Motion::NextBigWord => buffer::next_big_word(config, rope, buf_view, reps),
-        Motion::NextSubWord => buffer::next_sub_word(config, rope, buf_view, reps),
+        Motion::NextBigWord => {
+            let overshot = buffer::next_big_word(config, rope, buf_view, reps);
+            buf_view.overshot = overshot;
+        }
+        Motion::NextSubWord => {
+            let overshot = buffer::next_sub_word(config, rope, buf_view, reps);
+            buf_view.overshot = overshot;
+        }
         Motion::PrevBigWord => buffer::prev_big_word(config, rope, buf_view, reps),
         Motion::PrevSubWord => buffer::prev_sub_word(config, rope, buf_view, reps),
-        Motion::EndBigWord => buffer::end_big_word(config, rope, buf_view, reps),
-        Motion::EndSubWord => buffer::end_sub_word(config, rope, buf_view, reps),
-
+        Motion::EndBigWord => {
+            let overshot = buffer::end_big_word(config, rope, buf_view, reps);
+            buf_view.overshot = overshot;
+        }
+        Motion::EndSubWord => {
+            let overshot = buffer::end_sub_word(config, rope, buf_view, reps);
+            buf_view.overshot = overshot;
+        }
         Motion::FindNextChar(c) => {
             last_search.save_char_search(args.motion);
             buffer::find_char_forward(config, rope, buf_view, c, reps);
@@ -140,7 +156,7 @@ fn session_nav<R: NavRules>(
         Motion::GotoMark(c) => goto_mark::<R>(config, buffer, viewport, buf_view, c),
         Motion::ExactGotoMark(c) => exact_goto_mark::<R>(config, buffer, viewport, buf_view, c),
 
-        Motion::Line => {}
+        Motion::Line => line::<R>(buffer, buf_view, reps),
     }
 }
 
@@ -158,7 +174,7 @@ fn repeat_forward(
     buf_view: &mut BufferView,
     reps: usize,
 ) {
-    if let Some(&m) = last_search.char_search().as_ref() {
+    if let Some(&m) = last_search.last_char_search().as_ref() {
         match m {
             Motion::FindNextChar(c) => buffer::find_char_forward(config, rope, buf_view, c, reps),
             Motion::FindPrevChar(c) => buffer::find_char_backward(config, rope, buf_view, c, reps),
@@ -180,7 +196,7 @@ fn repeat_backward(
     buf_view: &mut BufferView,
     reps: usize,
 ) {
-    if let Some(&m) = last_search.char_search().as_ref() {
+    if let Some(&m) = last_search.last_char_search().as_ref() {
         match m {
             Motion::FindNextChar(c) => buffer::find_char_backward(config, rope, buf_view, c, reps),
             Motion::FindPrevChar(c) => buffer::find_char_forward(config, rope, buf_view, c, reps),
@@ -193,6 +209,11 @@ fn repeat_backward(
             _ => {}
         }
     }
+}
+
+pub fn line<R: NavRules>(buffer: &Buffer, buf_view: &mut BufferView, reps: usize) {
+    let max_row = buffer.rope().len_lines().saturating_sub(1);
+    buf_view.cursor.row = (buf_view.cursor.row + reps.saturating_sub(1)).min(max_row);
 }
 
 pub fn goto_line<R: NavRules>(

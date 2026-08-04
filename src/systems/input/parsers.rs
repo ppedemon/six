@@ -138,13 +138,14 @@ static MOTION_TRIE: LazyLock<Trie<KeyEvent, ParseResult<Motion>>> = LazyLock::ne
     t.insert(&[char(';')], ok(Motion::RepeatForward));
     t.insert(&[char(',')], ok(Motion::RepeatBackward));
 
-    t.insert(&[char('0')], ok(Motion::StartOfLine));
     t.insert(&[char('^')], ok(Motion::FirstNonBlankInLine));
-    t.insert(&[char('$')], ok(Motion::EndOfLine));
-    t.insert(&[home().ctrl()], ok(Motion::FirstNonBlankInFile));
+    t.insert(&[char('0')], ok(Motion::StartOfLine));
     t.insert(&[home()], ok(Motion::StartOfLine));
-    t.insert(&[end().ctrl()], ok(Motion::EndOfFile));
+    t.insert(&[char('$')], ok(Motion::EndOfLine));
     t.insert(&[end()], ok(Motion::EndOfLine));
+
+    t.insert(&[home().ctrl()], ok(Motion::FirstNonBlankInFile));
+    t.insert(&[end().ctrl()], ok(Motion::EndOfFile));
 
     t.insert(
         &[char('G')],

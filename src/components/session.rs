@@ -8,7 +8,7 @@ use crate::{
     misc,
 };
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Coords {
     pub row: usize,
     pub col: usize,
@@ -67,6 +67,9 @@ pub struct BufferView {
     pub cursor: Coords,
     pub target_col: usize,
     pub display_buf: DisplayBuffer,
+
+    // Whether last motion overshot
+    pub overshot: bool,
 }
 
 impl BufferView {
@@ -75,6 +78,7 @@ impl BufferView {
             cursor: Coords::default(),
             target_col: 0,
             display_buf: DisplayBuffer::empty(),
+            overshot: false,
         }
     }
 }

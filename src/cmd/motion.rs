@@ -26,13 +26,13 @@ pub enum Motion {
 
     // Line-based
     Line,
+    GotoLine(usize), // usize::MAX = last line
     FirstNonBlankInLine,
     StartOfLine,
     EndOfLine,
-    FirstNonBlankInFile,
-    GotoLine(usize), // usize::MAX = last line
 
     // File-based
+    FirstNonBlankInFile,
     StartOfFile,
     EndOfFile,
 

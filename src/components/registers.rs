@@ -1,35 +1,111 @@
 use ropey::{Rope, RopeSlice};
-use std::collections::HashMap;
+use std::collections::{HashMap, hash_map::Entry};
 
 use crate::cmd::EditOp;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum YankFlavor {
-    Character,
-    Line,
-    Block { width: usize },
-}
-
-#[derive(Debug)]
-pub struct RegisterData {
-    pub rope: Rope,
-    pub flavor: YankFlavor,
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RegisterData {
+    Char { rope: Rope },
+    Line { rope: Rope },
+    Block { rope: Rope },
 }
 
 impl RegisterData {
-    pub fn new(rope_slice: RopeSlice, flavor: YankFlavor) -> Self {
-        Self {
-            rope: rope_slice.into(),
-            flavor,
+    pub fn char(rope: Rope) -> Self {
+        Self::Char { rope }
+    }
+
+    pub fn line(rope: Rope) -> Self {
+        Self::Line { rope }
+    }
+
+    pub fn block(ropes: Vec<Rope>) -> Self {
+        Self::Block {
+            rope: vstack(ropes),
         }
     }
 
-    pub fn append(&mut self, rope_slice: RopeSlice, flavor: YankFlavor) {
-        self.rope.append(rope_slice.into());
-        self.flavor = match (flavor, self.flavor) {
-            (YankFlavor::Character, YankFlavor::Character) => YankFlavor::Character,
-            _ => YankFlavor::Line,
+    pub fn is_empty(&self) -> bool {
+        match self {
+            RegisterData::Char { rope }
+            | RegisterData::Line { rope }
+            | RegisterData::Block { rope } => rope.len_chars() == 0,
+        }
+    }
+
+    pub fn append(&mut self, incoming: RegisterData) {
+        let current = std::mem::replace(self, Self::Char { rope: Rope::new() });
+
+        *self = match (current, incoming) {
+            (Self::Char { mut rope }, Self::Char { rope: other }) => {
+                rope.append(other);
+                Self::Char { rope }
+            }
+            (Self::Char { rope }, Self::Line { rope: other })
+            | (Self::Line { rope }, Self::Char { rope: other })
+            | (Self::Line { rope }, Self::Line { rope: other }) => Self::Line {
+                rope: append(rope, other),
+            },
+            (Self::Block { rope }, Self::Block { rope: other }) => Self::Line {
+                rope: append(rope, other),
+            },
+            (Self::Block { rope }, Self::Line { rope: other })
+            | (Self::Block { rope }, Self::Char { rope: other }) => Self::Line {
+                rope: append(rope, other),
+            },
+            (Self::Line { rope }, Self::Block { rope: other })
+            | (Self::Char { rope }, Self::Block { rope: other }) => Self::Line {
+                rope: append(rope, other),
+            },
         };
+    }
+}
+
+fn vstack(ropes: impl IntoIterator<Item = Rope>) -> Rope {
+    let mut rope = Rope::new();
+    for (i, r) in ropes.into_iter().enumerate() {
+        if i > 0 {
+            rope.insert_char(rope.len_chars(), '\n');
+        }
+        rope.append(r);
+    }
+    rope
+}
+
+fn append(mut left: Rope, right: Rope) -> Rope {
+    if left.len_chars() > 0 {
+        ensure_nl(&mut left);
+    }
+    left.append(right);
+    ensure_nl(&mut left);
+    left
+}
+
+fn ensure_nl(rope: &mut Rope) {
+    let len = rope.len_chars();
+    if len == 0 || rope.char(len - 1) != '\n' {
+        rope.insert_char(len, '\n');
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_append() {
+        let mut left = Rope::from("Hello");
+        let right = Rope::from("World");
+        let result = append(left.clone(), right.clone());
+        assert_eq!(result, Rope::from("Hello\nWorld\n"));
+
+        left = Rope::from("Hello\n");
+        let result = append(left.clone(), right.clone());
+        assert_eq!(result, Rope::from("Hello\nWorld\n"));
+
+        left = Rope::from("");
+        let result = append(left.clone(), right.clone());
+        assert_eq!(result, Rope::from("World\n"));
     }
 }
 
@@ -93,17 +169,15 @@ impl Registers {
         self.last_insert = ops;
     }
 
-    pub fn record_delete(&mut self, rope_slice: RopeSlice, flavor: YankFlavor) {
+    pub fn record_delete(&mut self, data: RegisterData) {
         for i in (2..Self::NUM_REGS).rev() {
             let data = std::mem::take(&mut self.numbered[i as usize - 1]);
             self.numbered[i as usize] = data;
         }
-        let data = RegisterData::new(rope_slice, flavor);
         self.numbered[1] = Some(data);
     }
 
-    pub fn write(&mut self, reg: Register, rope_slice: RopeSlice, flavor: YankFlavor) {
-        let data = RegisterData::new(rope_slice, flavor);
+    pub fn write(&mut self, reg: Register, data: RegisterData) {
         match reg {
             Register::Unnamed => self.unnamed = Some(data),
             Register::Named(c) => {
@@ -111,10 +185,14 @@ impl Registers {
             }
             Register::Append(c) => {
                 let key = c.to_ascii_lowercase();
-                self.named
-                    .entry(c)
-                    .and_modify(|v| v.append(rope_slice, flavor))
-                    .or_insert(data);
+                match self.named.entry(key) {
+                    Entry::Occupied(mut entry) => {
+                        entry.get_mut().append(data);
+                    }
+                    Entry::Vacant(entry) => {
+                        entry.insert(data);
+                    }
+                }
             }
             Register::Numbered(i) => {
                 if (i as usize) < Self::NUM_REGS {
@@ -136,15 +214,26 @@ impl Registers {
         &self.last_insert
     }
 
-    pub fn small_delete(&mut self, reg: Option<char>, deleted: RopeSlice) {
+    pub fn record_small_delete(&mut self, reg: Option<char>, deleted: RopeSlice) {
         let r = reg.map_or(Register::SMALL_DELETE, Register::from);
 
         if r.is_blackhole() || r.is_readonly() {
             return;
         }
 
-        let flavor = YankFlavor::Character;
-        self.write(Register::Unnamed, deleted, flavor);
-        self.write(r, deleted, flavor);
+        let data = RegisterData::char(deleted.into());
+        self.write(Register::Unnamed, data.clone());
+        self.write(r, data);
+    }
+
+    pub fn record_yank(&mut self, reg: Option<char>, data: RegisterData) {
+        let r = reg.map_or(Register::Numbered(0), Register::from);
+
+        if r.is_blackhole() || r.is_readonly() {
+            return;
+        }
+
+        self.write(Register::Unnamed, data.clone());
+        self.write(r, data);
     }
 }

@@ -1,14 +1,18 @@
 use ropey::Rope;
-use std::{ops::Range, panic};
+use std::ops::Range;
 
 use crate::{
     active_session, active_session_and_buffer,
-    cmd::{Cmd, ImmediateOp},
-    components::{Buffer, Coords, EditorCtx, MutBuffer, Register, Registers},
+    cmd::{Arg, Cmd, ImmediateOp, Motion, MotionMode},
+    components::{Buffer, Coords, EditorCtx, MutBuffer, Register, RegisterData, Registers},
     systems::{
         commons::{char_idx_to_coords, coords_to_char_idx, curr_line},
+        event,
         insert::{Damage, DamageEvent, broadcast_damage},
-        nav::{NormalNav, goto_col, utils::ensure_cursor_inside_line},
+        nav::{
+            NormalNav, charwise, exec_motion, goto_col, inclusive, select_blockwise,
+            select_charwise, select_linewise, utils::ensure_cursor_inside_line,
+        },
     },
 };
 
@@ -28,7 +32,9 @@ pub fn handle_immediate(ctx: &mut EditorCtx, args: ImmediateArgs) {
         return;
     }
 
-    ctx.repbuf.record_immediate(args.cmd);
+    if args.op != ImmediateOp::Yank {
+        ctx.repbuf.record_immediate(args.cmd);
+    }
 
     let damage = match args.op {
         ImmediateOp::Delete => {
@@ -38,7 +44,10 @@ pub fn handle_immediate(ctx: &mut EditorCtx, args: ImmediateArgs) {
         }
         ImmediateOp::Backspace => backspace(ctx, args.cmd.reg, args.cmd.reps.unwrap_or(1)),
         ImmediateOp::Join => join(ctx, args.cmd.reps.unwrap_or(1)),
-        ImmediateOp::Yank => panic!("Command = {:?}", args.cmd),
+        ImmediateOp::Yank => {
+            yank(ctx, args.cmd);
+            Damage::Intact
+        }
     };
 
     let (session, _) = active_session!(ctx);
@@ -47,7 +56,7 @@ pub fn handle_immediate(ctx: &mut EditorCtx, args: ImmediateArgs) {
 }
 
 // -----------------------------------------------------------------------
-// Rules for immediate updates:
+// Rules for immediate updates
 // Every immediate update must follow this sequence:
 //
 //  1. Update registers
@@ -76,7 +85,7 @@ fn backspace(ctx: &mut EditorCtx, reg: Option<char>, reps: usize) -> Damage {
 fn small_delete(ctx: &mut EditorCtx, reg: Option<char>, reps: usize, rng: Range<usize>) -> Damage {
     let (session, buf_view, buffer) = active_session_and_buffer!(mut ctx);
 
-    report_small_delete(&mut ctx.registers, reg, buffer.rope(), rng.clone());
+    record_small_delete(&mut ctx.registers, reg, buffer.rope(), rng.clone());
 
     buffer.edit().remove(rng.clone());
 
@@ -145,10 +154,20 @@ fn calc_backspace_range(ctx: &mut EditorCtx, reps: usize) -> Range<usize> {
     start_idx..end_idx
 }
 
+// Store small delete in registers
+fn record_small_delete(
+    registers: &mut Registers,
+    reg: Option<char>,
+    rope: &Rope,
+    range: Range<usize>,
+) {
+    let deleted = rope.slice(range);
+    registers.record_small_delete(reg, deleted);
+}
+
 // -----------------------------------------------------------------------
 // Join N lines (J command)
 // -----------------------------------------------------------------------
-
 fn join(ctx: &mut EditorCtx, reps: usize) -> Damage {
     let (session, buf_view, buffer) = active_session_and_buffer!(mut ctx);
 
@@ -217,19 +236,73 @@ fn join_single(buffer: &mut Buffer, row: usize) -> usize {
 }
 
 // -----------------------------------------------------------------------
-// Auxiliary stuff from now on
+// Yank
 // -----------------------------------------------------------------------
-
-fn is_readonly(reg: Option<char>) -> bool {
-    reg.map(Register::from).is_some_and(|r| r.is_readonly())
+pub fn yank(ctx: &mut EditorCtx, cmd: Cmd) {
+    match cmd.arg {
+        Arg::Motion { reps, motion } => {
+            let cmd_reps = cmd.reps.unwrap_or(1);
+            let arg_reps = reps.unwrap_or(1);
+            // TODO get forced_mode from cmd
+            match motion_yank(ctx, motion, cmd_reps, arg_reps, None) {
+                None => {}
+                Some(reg_data) => {
+                    event::on_yank(&mut ctx.status, &reg_data);
+                    ctx.registers.record_yank(cmd.reg, reg_data);
+                }
+            }
+        }
+        Arg::TextObject { .. } => {}
+        Arg::None => {}
+    };
 }
 
-fn report_small_delete(
-    registers: &mut Registers,
-    reg: Option<char>,
-    rope: &Rope,
-    range: Range<usize>,
-) {
-    let deleted = rope.slice(range);
-    registers.small_delete(reg, deleted);
+fn motion_yank(
+    ctx: &mut EditorCtx,
+    m: Motion,
+    cmd_reps: usize,
+    args_reps: usize,
+    forced_mode: Option<MotionMode>,
+) -> Option<RegisterData> {
+    let (orig_cursor, orig_target_col) = {
+        let (_, buf_view) = active_session!(ctx);
+        let orig_cursor = buf_view.cursor;
+        let orig_target_col = buf_view.target_col;
+        (orig_cursor, orig_target_col)
+    };
+
+    let extent = exec_motion(ctx, m, cmd_reps, args_reps)?;
+
+    let orig_mode = if charwise(m) {
+        MotionMode::Charwise
+    } else {
+        MotionMode::Linewise
+    };
+
+    let mut inclusive = inclusive(ctx, m) || (orig_mode == MotionMode::Charwise && extent.overshot);
+    if forced_mode.is_some_and(|mode| mode == MotionMode::Charwise) {
+        inclusive = !inclusive;
+    }
+
+    let span = (extent.start, extent.end);
+    let reg_data = match forced_mode.unwrap_or(orig_mode) {
+        MotionMode::Charwise => select_charwise(ctx, span, inclusive),
+        MotionMode::Linewise => select_linewise(ctx, span),
+        MotionMode::Blockwise => select_blockwise(ctx, span),
+    };
+
+    if extent.start < extent.end{
+        let (_, buf_view) = active_session!(mut ctx);
+        buf_view.cursor = orig_cursor;
+        buf_view.target_col = orig_target_col;
+    }
+
+    Some(reg_data)
+}
+
+// -----------------------------------------------------------------------
+// Auxiliary stuff from now on
+// -----------------------------------------------------------------------
+fn is_readonly(reg: Option<char>) -> bool {
+    reg.map(Register::from).is_some_and(|r| r.is_readonly())
 }
