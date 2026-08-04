@@ -291,7 +291,7 @@ fn motion_yank(
         MotionMode::Blockwise => select_blockwise(ctx, span),
     };
 
-    if extent.start < extent.end{
+    if extent.start < extent.end {
         let (_, buf_view) = active_session!(mut ctx);
         buf_view.cursor = orig_cursor;
         buf_view.target_col = orig_target_col;
