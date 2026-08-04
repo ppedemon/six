@@ -44,18 +44,18 @@ impl RegisterData {
             (Self::Char { rope }, Self::Line { rope: other })
             | (Self::Line { rope }, Self::Char { rope: other })
             | (Self::Line { rope }, Self::Line { rope: other }) => Self::Line {
-                rope: vstack_nl([rope, other]),
+                rope: append(rope, other),
             },
             (Self::Block { rope }, Self::Block { rope: other }) => Self::Line {
-                rope: vstack_nl([rope, other]),
+                rope: append(rope, other),
             },
             (Self::Block { rope }, Self::Line { rope: other })
             | (Self::Block { rope }, Self::Char { rope: other }) => Self::Line {
-                rope: vstack_nl([rope, other]),
+                rope: append(rope, other),
             },
             (Self::Line { rope }, Self::Block { rope: other })
             | (Self::Char { rope }, Self::Block { rope: other }) => Self::Line {
-                rope: vstack_nl([rope, other]),
+                rope: append(rope, other),
             },
         };
     }
@@ -65,23 +65,47 @@ fn vstack(ropes: impl IntoIterator<Item = Rope>) -> Rope {
     let mut rope = Rope::new();
     for (i, r) in ropes.into_iter().enumerate() {
         if i > 0 {
-            ensure_nl(&mut rope);
+            rope.insert_char(rope.len_chars(), '\n');
         }
         rope.append(r);
     }
     rope
 }
 
-fn vstack_nl(ropes: impl IntoIterator<Item = Rope>) -> Rope {
-    let mut rope = vstack(ropes);
-    ensure_nl(&mut rope);
-    rope
+fn append(mut left: Rope, right: Rope) -> Rope {
+    if left.len_chars() > 0 {
+        ensure_nl(&mut left);
+    }
+    left.append(right);
+    ensure_nl(&mut left);
+    left
 }
 
 fn ensure_nl(rope: &mut Rope) {
     let len = rope.len_chars();
     if len == 0 || rope.char(len - 1) != '\n' {
         rope.insert_char(len, '\n');
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_append() {
+        let mut left = Rope::from("Hello");
+        let right = Rope::from("World");
+        let result = append(left.clone(), right.clone());
+        assert_eq!(result, Rope::from("Hello\nWorld\n"));
+
+        left = Rope::from("Hello\n");
+        let result = append(left.clone(), right.clone());
+        assert_eq!(result, Rope::from("Hello\nWorld\n"));
+
+        left = Rope::from("");
+        let result = append(left.clone(), right.clone());
+        assert_eq!(result, Rope::from("World\n"));
     }
 }
 

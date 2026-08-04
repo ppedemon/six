@@ -88,7 +88,7 @@ fn session_nav<R: NavRules>(
     let reps = args.cmd.reps.unwrap_or(1);
     let rope = buffer.rope();
 
-    buf_view.overshoot = false;
+    buf_view.overshot = false;
 
     match args.motion {
         Motion::Up => buffer::move_up::<R>(config, rope, buf_view, reps),
@@ -96,9 +96,7 @@ fn session_nav<R: NavRules>(
         Motion::Left => buffer::move_left::<R>(config, rope, buf_view, reps),
         Motion::Right => {
             let overshot = buffer::move_right::<R>(config, rope, buf_view, reps);
-            if overshot {
-                buf_view.overshoot = true;
-            }
+            buf_view.overshot = overshot;
         }
         Motion::PageUp => {
             let pg_size = viewport.pg_size(PAGE_SCROLL_MARGIN);
@@ -112,29 +110,21 @@ fn session_nav<R: NavRules>(
         }
         Motion::NextBigWord => {
             let overshot = buffer::next_big_word(config, rope, buf_view, reps);
-            if overshot {
-                buf_view.overshoot = true;
-            }
+            buf_view.overshot = overshot;
         }
         Motion::NextSubWord => {
             let overshot = buffer::next_sub_word(config, rope, buf_view, reps);
-            if overshot {
-                buf_view.overshoot = true;
-            }
+            buf_view.overshot = overshot;
         }
         Motion::PrevBigWord => buffer::prev_big_word(config, rope, buf_view, reps),
         Motion::PrevSubWord => buffer::prev_sub_word(config, rope, buf_view, reps),
         Motion::EndBigWord => {
             let overshot = buffer::end_big_word(config, rope, buf_view, reps);
-            if overshot {
-                buf_view.overshoot = true;
-            }
+            buf_view.overshot = overshot;
         }
         Motion::EndSubWord => {
             let overshot = buffer::end_sub_word(config, rope, buf_view, reps);
-            if overshot {
-                buf_view.overshoot = true;
-            }
+            buf_view.overshot = overshot;
         }
         Motion::FindNextChar(c) => {
             last_search.save_char_search(args.motion);
