@@ -20,21 +20,31 @@ pub enum Arg {
     None,
     Motion {
         reps: Option<usize>,
+        mode: Option<MotionMode>,
         motion: Motion,
     },
     TextObject {
         reps: Option<usize>,
+        mode: Option<MotionMode>,
         text_object: TextObject,
     },
 }
 
 impl Arg {
-    pub fn motion(reps: Option<usize>, motion: Motion) -> Self {
-        Self::Motion { reps, motion }
+    pub fn motion(reps: Option<usize>, mode: Option<MotionMode>, motion: Motion) -> Self {
+        Self::Motion { reps, mode, motion }
     }
 
-    pub fn text_object(reps: Option<usize>, text_object: TextObject) -> Self {
-        Self::TextObject { reps, text_object }
+    pub fn text_object(
+        reps: Option<usize>,
+        mode: Option<MotionMode>,
+        text_object: TextObject,
+    ) -> Self {
+        Self::TextObject {
+            reps,
+            mode,
+            text_object,
+        }
     }
 }
 
