@@ -1,10 +1,10 @@
-use crossterm::event::{KeyCode, KeyEvent};
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use std::sync::LazyLock;
 
 use crate::{
     cmd::{
-        ExMode, ImmediateOp, InsertPoint, InteractiveOp, Motion, Operator, SysOp, TextObjectKind,
-        TextObjectScope,
+        ExMode, ImmediateOp, InsertPoint, InteractiveOp, Motion, MotionMode, Operator, SysOp,
+        TextObjectKind, TextObjectScope,
     },
     systems::input::{
         evt::*,
@@ -289,6 +289,17 @@ pub fn parse_textobject_kind(evt: KeyEvent) -> Option<TextObjectKind> {
         's' => Some(TextObjectKind::Sentence),
         _ => None,
     })
+}
+
+pub fn parse_motion_mode(evt: KeyEvent) -> Option<MotionMode> {
+    match evt.code.as_char() {
+        Some('v') | Some('V') if evt.modifiers.contains(KeyModifiers::CONTROL) => {
+            Some(MotionMode::Blockwise)
+        }
+        Some('v') => Some(MotionMode::Charwise),
+        Some('V') => Some(MotionMode::Linewise),
+        _ => None,
+    }
 }
 
 fn parse_mark(evt: KeyEvent) -> Option<char> {

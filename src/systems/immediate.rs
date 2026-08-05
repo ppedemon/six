@@ -240,11 +240,10 @@ fn join_single(buffer: &mut Buffer, row: usize) -> usize {
 // -----------------------------------------------------------------------
 pub fn yank(ctx: &mut EditorCtx, cmd: Cmd) {
     match cmd.arg {
-        Arg::Motion { reps, motion } => {
+        Arg::Motion { reps, mode, motion } => {
             let cmd_reps = cmd.reps.unwrap_or(1);
             let arg_reps = reps.unwrap_or(1);
-            // TODO get forced_mode from cmd
-            match motion_yank(ctx, motion, cmd_reps, arg_reps, None) {
+            match motion_yank(ctx, motion, cmd_reps, arg_reps, mode) {
                 None => {}
                 Some(reg_data) => {
                     event::on_yank(&mut ctx.status, &reg_data);
