@@ -43,7 +43,9 @@ impl InsertInputHandler {
 
     fn handle_immediate(&mut self, ctx: &mut EditorCtx, event: KeyEvent) {
         let op = match event.code {
-            KeyCode::Char('k') | KeyCode::Char('K') if event.modifiers == KeyModifiers::CONTROL => {
+            KeyCode::Char('k') | KeyCode::Char('K')
+                if event.modifiers.contains(KeyModifiers::CONTROL) =>
+            {
                 self.dg_start(ctx);
                 return;
             }

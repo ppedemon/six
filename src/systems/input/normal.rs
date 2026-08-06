@@ -3,7 +3,13 @@ use crossterm::event::{Event, KeyCode, KeyEvent};
 use crate::{
     cmd::{Arg, Cmd, MotionMode, Operator, TextObject, TextObjectScope},
     components::EditorCtx,
-    systems::input::{evt::Pretty, handler::dispatch_cmd, parsers::*, trie::FindResult},
+    digraphs,
+    systems::input::{
+        evt::{self, Pretty},
+        handler::dispatch_cmd,
+        parsers::*,
+        trie::FindResult,
+    },
 };
 
 enum State {
@@ -20,6 +26,8 @@ enum State {
     ArgMode,
     ArgModeReps,
     ArgMotion,
+    Digraph0 { parsing_op: bool },
+    Digraph1 { parsing_op: bool, c: char },
     ToKind,
 }
 
@@ -97,6 +105,8 @@ impl NormalInputHandler {
             State::ArgMode => self.handle_arg_mode(ctx, evt),
             State::ArgModeReps => self.handle_arg_mode_reps(ctx, evt),
             State::ArgMotion => self.handle_arg_motion(ctx, evt),
+            State::Digraph0 { parsing_op } => self.handle_digraph0(ctx, evt, parsing_op),
+            State::Digraph1 { parsing_op, c } => self.handle_digraph1(ctx, evt, parsing_op, c),
             State::ToKind => self.handle_to_kind(ctx, evt),
         }
     }
@@ -239,6 +249,11 @@ impl NormalInputHandler {
     }
 
     fn handle_op(&mut self, ctx: &mut EditorCtx, evt: KeyEvent) {
+        if digraph_allowed(&self.input) && starts_digraph(evt) {
+            self.state = State::Digraph0 { parsing_op: true };
+            return;
+        }
+
         self.input.push(evt);
 
         match parse_op(self.reps, &self.input) {
@@ -410,6 +425,11 @@ impl NormalInputHandler {
     }
 
     fn handle_arg_motion(&mut self, ctx: &mut EditorCtx, evt: KeyEvent) {
+        if digraph_allowed(&self.input) && starts_digraph(evt) {
+            self.state = State::Digraph0 { parsing_op: false };
+            return;
+        }
+
         self.input.push(evt);
 
         match parse_motion_arg(self.op, self.arg_reps, &self.input) {
@@ -436,6 +456,51 @@ impl NormalInputHandler {
                     self.reset(ctx);
                 }
             }
+        }
+    }
+
+    fn handle_digraph0(&mut self, ctx: &mut EditorCtx, evt: KeyEvent, parsing_op: bool) {
+        match evt.code {
+            KeyCode::Char(c) => self.state = State::Digraph1 { parsing_op, c },
+            _ => self.reset(ctx),
+        }
+    }
+
+    fn handle_digraph1(&mut self, ctx: &mut EditorCtx, evt: KeyEvent, parsing_op: bool, c0: char) {
+        let dg = evt.code.as_char().and_then(|c1| digraphs::get(c0, c1));
+
+        if let Some(c) = dg {
+            let fake_evt = evt::char(c);
+            self.input.push(fake_evt);
+
+            if parsing_op {
+                match parse_op(self.reps, &self.input) {
+                    FindResult::Miss => self.reset(ctx),
+                    FindResult::Partial => self.state = State::Op,
+                    FindResult::Hit(OpSpec { op, needs_arg }) => {
+                        if needs_arg {
+                            self.op = op;
+                            self.input.clear();
+                            self.state = State::ArgInit;
+                        } else {
+                            let cmd = Cmd::new(op).reg(self.reg).reps(self.reps);
+                            self.done(ctx, cmd);
+                        }
+                    }
+                }
+            } else {
+                match parse_motion_arg(self.op, self.arg_reps, &self.input) {
+                    FindResult::Partial => self.state = State::ArgMotion,
+                    FindResult::Hit(motion) => {
+                        let arg = Arg::motion(self.arg_reps, self.mode, motion);
+                        let cmd = Cmd::new(self.op).reg(self.reg).reps(self.reps).arg(arg);
+                        self.done(ctx, cmd);
+                    }
+                    FindResult::Miss => self.reset(ctx),
+                }
+            }
+        } else {
+            self.reset(ctx);
         }
     }
 }

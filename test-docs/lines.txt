@@ -19,3 +19,5 @@ ccc
 foo	🧑‍🧑‍🧒‍🧒	
 baz baz
 	🧑‍🧑‍🧒‍🧒
+
+Esta es una línea con árboles, comunicación, un cable eléctrico, y un tipo que actúa muy bien.

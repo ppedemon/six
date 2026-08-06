@@ -14,7 +14,7 @@ use crate::{
 
 // Generic parse result.
 // This type is what we are going to retrieve from the motion and op tries,
-// telling us what to do once we hit something in the trie. Once of:
+// telling us what to do once we hit something in the trie. One of:
 //
 //    - Ok(T): congrats, you just found an motion or an operator, nothing to do
 //    - WantsReps(f): this is an op or motion that needs the number of reps as an arg (like G or gg)
@@ -239,6 +239,27 @@ pub fn parse_op(reps: Option<usize>, input: &[KeyEvent]) -> FindResult<OpSpec> {
         FindResult::Hit(ParseResult::WantsReps(f)) => FindResult::Hit(f(reps)),
         FindResult::Hit(ParseResult::WantsArg(_)) => FindResult::Partial,
     }
+}
+
+// We are only allowed to parse digraphs if the last key event we saw matches
+// any of the motions taking a digraph as argument: f, F, t, or T
+pub fn digraph_allowed(input: &[KeyEvent]) -> bool {
+    if input.len() > 0 {
+        let last = input[input.len() - 1];
+        last.modifiers == KeyModifiers::empty()
+            && last
+                .code
+                .as_char()
+                .map(|c| c.to_ascii_uppercase())
+                .is_some_and(|c| c == 'F' || c == 'T')
+    } else {
+        false
+    }
+}
+
+pub fn starts_digraph(evt: KeyEvent) -> bool {
+    evt.modifiers.contains(KeyModifiers::CONTROL)
+        && evt.code.as_char().is_some_and(|c| c == 'k' || c == 'K')
 }
 
 // -----------------------------------------------------------------------
