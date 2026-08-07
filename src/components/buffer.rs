@@ -78,6 +78,10 @@ impl<'a> MutBuffer for SessionMutableBuffer<'a> {
     }
 
     fn insert(&mut self, char_idx: usize, text: &str) {
+        if text.is_empty() {
+            return;
+        }
+
         self.buffer.rope.insert(char_idx, text);
         self.buffer
             .marks
@@ -92,6 +96,10 @@ impl<'a> MutBuffer for SessionMutableBuffer<'a> {
     }
 
     fn insert_rope(&mut self, char_idx: usize, rope: &Rope) {
+        if rope.len_chars() == 0 {
+            return;
+        }
+        
         let tail = self.buffer.rope.split_off(char_idx);
         self.buffer.rope.append(rope.clone());
         self.buffer.rope.append(tail);

@@ -2,17 +2,11 @@ use ropey::Rope;
 use std::{format, ops::Range};
 
 use crate::{
-    active_session, active_session_and_buffer,
-    cmd::{Arg, Cmd, ImmediateOp, Motion, MotionMode},
-    components::{
+    active_session, active_session_and_buffer, cmd::{Arg, Cmd, ImmediateOp, Motion, MotionMode}, components::{
         Buffer, BufferView, Config, Coords, EditorCtx, Level, MutBuffer, Register, RegisterData,
         Registers,
-    },
-    systems::{
-        commons::{char_idx_to_coords, coords_to_char_idx, curr_line},
-        event,
-        insert::{Damage, DamageEvent, broadcast_damage},
-        nav::{
+    }, systems::{
+        commons::{char_idx_to_coords, coords_to_char_idx, curr_line, cursor_to_char_idx}, event, insert::{Damage, DamageEvent, broadcast_damage}, nav::{
             NormalNav, charwise, exec_motion, goto_col, inclusive, select_blockwise,
             select_charwise, select_linewise, utils::ensure_cursor_inside_line,
         },
@@ -359,8 +353,9 @@ fn paste_charwise(
     data: &Rope,
 ) -> Damage {
     let cursor = buf_view.cursor;
-    let line = curr_line(config, buffer.rope(), buf_view);
+    let cursor_idx = cursor_to_char_idx(config, buf_view, buffer.rope());
 
+    let line = curr_line(config, buffer.rope(), buf_view);
     let anchor_col = match line.grapheme_at(cursor.col) {
         None => line.display_width,
         Some((_, span)) => {
@@ -372,16 +367,15 @@ fn paste_charwise(
         }
     };
     let anchor_coords = Coords::new(cursor.row, anchor_col);
-    let mut anchor_idx = coords_to_char_idx(config, buffer.rope(), buf_view, anchor_coords);
+    let anchor_idx = coords_to_char_idx(config, buffer.rope(), buf_view, anchor_coords);
 
-    for i in 0..reps {
-        buffer.edit().insert_rope(anchor_idx, data);
-        if i + 1 < reps {
-            anchor_idx += data.len_chars();
-        }
+    let mut agg_data = Rope::new();
+    for _ in 0..reps {
+        agg_data.append(data.clone());
     }
+    buffer.edit().insert_rope(anchor_idx, &agg_data);
 
-    let damage = if data.len_lines() <= 1 {
+    let damage = if agg_data.len_lines() <= 1 {
         buf_view
             .display_buf
             .patch_range(config, buffer.rope(), cursor.row..cursor.row + 1);
@@ -395,7 +389,7 @@ fn paste_charwise(
         config,
         buffer.rope(),
         buf_view,
-        anchor_idx + data.len_chars().saturating_sub(1),
+        cursor_idx + agg_data.len_chars(),
     );
     buf_view.cursor = new_coords;
     buf_view.target_col = new_coords.col;

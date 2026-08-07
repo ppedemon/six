@@ -191,6 +191,9 @@ impl MutBuffer for ExMutableBuffer<'_> {
     }
 
     fn insert(&mut self, char_idx: usize, text: &str) {
+        if text.is_empty() {
+            return;
+        }
         self.rope.insert(char_idx, text);
     }
 
@@ -199,6 +202,10 @@ impl MutBuffer for ExMutableBuffer<'_> {
     }
 
     fn insert_rope(&mut self, char_idx: usize, rope: &Rope) {
+        if rope.len_chars() == 0 {
+            return;
+        }
+        
         let tail = self.rope.split_off(char_idx);
         self.rope.append(rope.clone());
         self.rope.append(tail);
