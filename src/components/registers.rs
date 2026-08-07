@@ -123,25 +123,19 @@ impl Register {
     pub const LAST_INSERT: Self = Self::Named('.');
 
     pub fn from(c: char) -> Self {
-        if c.is_ascii_digit() {
-            Self::Numbered((c as u8) - b'0')
-        } else if c.is_ascii_uppercase() {
-            Self::Append(c.to_ascii_lowercase())
-        } else {
-            Self::Named(c)
+        match c {
+            c if c.is_ascii_digit() => Self::Numbered((c as u8) - b'0'),
+            c if c.is_ascii_whitespace() => Self::Append(c.to_ascii_lowercase()),
+            c if c == '"' => Self::Unnamed,
+            _ => Self::Named(c),
         }
     }
 
-    pub fn is_blackhole(&self) -> bool {
-        self == &Self::BLACKHOLE
-    }
-
-    pub fn is_last_insert(&self) -> bool {
-        self == &Self::LAST_INSERT
-    }
-
     pub fn is_readonly(&self) -> bool {
-        self.is_last_insert()
+        match self {
+            Self::Named(c) if "%#.:/=_".contains(*c) => true,
+            _ => false,
+        }
     }
 }
 
@@ -215,25 +209,41 @@ impl Registers {
     }
 
     pub fn record_small_delete(&mut self, reg: Option<char>, deleted: RopeSlice) {
-        let r = reg.map_or(Register::SMALL_DELETE, Register::from);
+        match reg {
+            None => {
+                let data = RegisterData::char(deleted.into());
+                self.write(Register::Unnamed, data.clone());
+                self.write(Register::SMALL_DELETE, data);
+            }
+            Some(r) => {
+                let r = Register::from(r);
+                if r.is_readonly() {
+                    return;
+                }
 
-        if r.is_blackhole() || r.is_readonly() {
-            return;
+                let data = RegisterData::char(deleted.into());
+                self.record_delete(data.clone());
+                self.write(Register::Unnamed, data.clone());
+                self.write(r, data);
+            }
         }
-
-        let data = RegisterData::char(deleted.into());
-        self.write(Register::Unnamed, data.clone());
-        self.write(r, data);
     }
 
     pub fn record_yank(&mut self, reg: Option<char>, data: RegisterData) {
-        let r = reg.map_or(Register::Numbered(0), Register::from);
+        match reg {
+            None | Some('"') => {
+                self.write(Register::Unnamed, data.clone());
+                self.write(Register::Numbered(0), data);
+            }
+            Some(r) => {
+                let r = Register::from(r);
+                if r.is_readonly() || r == Register::SMALL_DELETE {
+                    return;
+                }
 
-        if r.is_blackhole() || r.is_readonly() {
-            return;
+                self.write(Register::Unnamed, data.clone());
+                self.write(r, data);
+            }
         }
-
-        self.write(Register::Unnamed, data.clone());
-        self.write(r, data);
     }
 }

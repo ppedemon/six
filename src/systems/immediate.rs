@@ -1,10 +1,13 @@
 use ropey::Rope;
-use std::ops::Range;
+use std::{format, ops::Range};
 
 use crate::{
     active_session, active_session_and_buffer,
     cmd::{Arg, Cmd, ImmediateOp, Motion, MotionMode},
-    components::{Buffer, Coords, EditorCtx, MutBuffer, Register, RegisterData, Registers},
+    components::{
+        Buffer, BufferView, Config, Coords, EditorCtx, Level, MutBuffer, Register, RegisterData,
+        Registers,
+    },
     systems::{
         commons::{char_idx_to_coords, coords_to_char_idx, curr_line},
         event,
@@ -29,11 +32,11 @@ impl ImmediateArgs {
 }
 
 pub fn handle_immediate(ctx: &mut EditorCtx, args: ImmediateArgs) {
-    if args.op != ImmediateOp::Join && is_readonly(args.cmd.reg) {
+    if updates_registers(args.op) && is_readonly(args.cmd.reg) {
         return;
     }
 
-    if args.op != ImmediateOp::Yank {
+    if is_repeatable(args.op) {
         ctx.repbuf.record_immediate(args.cmd);
     }
 
@@ -55,6 +58,12 @@ pub fn handle_immediate(ctx: &mut EditorCtx, args: ImmediateArgs) {
             yank(ctx, fake_args.cmd);
             Damage::Intact
         }
+        ImmediateOp::Paste => paste(
+            ctx,
+            args.cmd.reg,
+            args.cmd.reps.unwrap_or(1),
+            PasteMode::After,
+        ),
     };
 
     let (session, _) = active_session!(ctx);
@@ -66,7 +75,7 @@ pub fn handle_immediate(ctx: &mut EditorCtx, args: ImmediateArgs) {
 // Rules for immediate updates
 // Every immediate update must follow this sequence:
 //
-//  1. Update registers
+//  1. Update registers if required
 //  2. Mutate the buffer's rope
 //  3. Patch the active session's buffer view
 //  4. Update cursor position
@@ -307,8 +316,110 @@ fn motion_yank(
 }
 
 // -----------------------------------------------------------------------
+// Paste
+// -----------------------------------------------------------------------
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum PasteMode {
+    Before,
+    After,
+}
+
+fn paste(ctx: &mut EditorCtx, reg: Option<char>, reps: usize, mode: PasteMode) -> Damage {
+    let source = reg.map_or(Register::Unnamed, Register::from);
+    let (_, buf_view, buffer) = active_session_and_buffer!(mut ctx);
+
+    let r = reg.map_or(Register::Unnamed, Register::from);
+    let data = ctx.registers.read(r);
+
+    match data {
+        None => {
+            if let Register::Named(name) = r {
+                let msg = &format!("Nothing in register {name}");
+                ctx.status.set_msg(Level::Error, msg);
+            }
+            Damage::Intact
+        }
+        Some(data) => match data {
+            RegisterData::Char { rope } => {
+                paste_charwise(&ctx.config, buf_view, buffer, reps, mode, rope)
+            }
+            RegisterData::Line { rope } => Damage::Intact,
+            RegisterData::Block { rope } => Damage::Intact,
+        },
+    }
+}
+
+fn paste_charwise(
+    config: &Config,
+    buf_view: &mut BufferView,
+    buffer: &mut Buffer,
+    reps: usize,
+    mode: PasteMode,
+    data: &Rope,
+) -> Damage {
+    let cursor = buf_view.cursor;
+    let line = curr_line(config, buffer.rope(), buf_view);
+
+    let anchor_col = match line.grapheme_at(cursor.col) {
+        None => line.display_width,
+        Some((_, span)) => {
+            if mode == PasteMode::After {
+                span.end
+            } else {
+                span.start
+            }
+        }
+    };
+    let anchor_coords = Coords::new(cursor.row, anchor_col);
+    let mut anchor_idx = coords_to_char_idx(config, buffer.rope(), buf_view, anchor_coords);
+
+    for i in 0..reps {
+        buffer.edit().insert_rope(anchor_idx, data);
+        if i + 1 < reps {
+            anchor_idx += data.len_chars();
+        }
+    }
+
+    let damage = if data.len_lines() <= 1 {
+        buf_view
+            .display_buf
+            .patch_range(config, buffer.rope(), cursor.row..cursor.row + 1);
+        Damage::Line(cursor.row)
+    } else {
+        buf_view.display_buf.destroy_from(cursor.row);
+        Damage::From(cursor.row)
+    };
+
+    let new_coords = char_idx_to_coords(
+        config,
+        buffer.rope(),
+        buf_view,
+        anchor_idx + data.len_chars().saturating_sub(1),
+    );
+    buf_view.cursor = new_coords;
+    buf_view.target_col = new_coords.col;
+
+    damage
+}
+
+// -----------------------------------------------------------------------
 // Auxiliary stuff from now on
 // -----------------------------------------------------------------------
 fn is_readonly(reg: Option<char>) -> bool {
     reg.map(Register::from).is_some_and(|r| r.is_readonly())
+}
+
+fn is_repeatable(op: ImmediateOp) -> bool {
+    match op {
+        ImmediateOp::Yank | ImmediateOp::YankLine => false,
+        _ => true,
+    }
+}
+
+fn updates_registers(op: ImmediateOp) -> bool {
+    match op {
+        ImmediateOp::Join | ImmediateOp::Paste => false,
+        _ => true,
+    }
 }

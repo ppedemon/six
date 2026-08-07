@@ -9,6 +9,7 @@ pub trait MutBuffer {
     fn rope(&self) -> &Rope;
     fn insert_char(&mut self, char_idx: usize, ch: char);
     fn insert(&mut self, char_idx: usize, text: &str);
+    fn insert_rope(&mut self, char_idx: usize, rope: &Rope);
     fn remove(&mut self, char_range: Range<usize>);
 }
 
@@ -80,13 +81,21 @@ impl<'a> MutBuffer for SessionMutableBuffer<'a> {
         self.buffer.rope.insert(char_idx, text);
         self.buffer
             .marks
-            .adjust(Change::insert(char_idx, text.len()));
+            .adjust(Change::insert(char_idx, text.chars().count()));
         self.buffer.dirty = true;
     }
 
     fn remove(&mut self, char_range: Range<usize>) {
         self.buffer.rope.remove(char_range.clone());
         self.buffer.marks.adjust(Change::delete(char_range));
+        self.buffer.dirty = true;
+    }
+
+    fn insert_rope(&mut self, char_idx: usize, rope: &Rope) {
+        let tail = self.buffer.rope.split_off(char_idx);
+        self.buffer.rope.append(rope.clone());
+        self.buffer.rope.append(tail);
+        self.buffer.marks.adjust(Change::insert(char_idx, rope.len_chars()));
         self.buffer.dirty = true;
     }
 }

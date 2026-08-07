@@ -197,4 +197,10 @@ impl MutBuffer for ExMutableBuffer<'_> {
     fn remove(&mut self, char_range: Range<usize>) {
         self.rope.remove(char_range);
     }
+
+    fn insert_rope(&mut self, char_idx: usize, rope: &Rope) {
+        let tail = self.rope.split_off(char_idx);
+        self.rope.append(rope.clone());
+        self.rope.append(tail);
+    }
 }

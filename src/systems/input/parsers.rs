@@ -95,6 +95,7 @@ static OP_TRIE: LazyLock<Trie<KeyEvent, ParseResult<OpSpec>>> = LazyLock::new(||
     t.insert(&[char('J')], ok_op(ImmediateOp::Join));
     t.insert(&[char('y')], ok_needy_op(ImmediateOp::Yank));
     t.insert(&[char('Y')], ok_op(ImmediateOp::YankLine));
+    t.insert(&[char('p')], ok_op(ImmediateOp::Paste));
     t
 });
 
@@ -287,7 +288,7 @@ pub fn parse_reg(evt: KeyEvent) -> Option<char> {
     evt.code.as_char().and_then(|c| match c {
         _ if c.is_ascii_digit() => Some(c),
         _ if c.is_ascii_alphabetic() => Some(c),
-        _ if "%#.:/=-_".contains(c) => Some(c),
+        _ if "\"%#.:/=-_".contains(c) => Some(c),
         _ => None,
     })
 }
