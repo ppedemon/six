@@ -45,6 +45,7 @@ pub enum ImmediateOp {
     Backspace,
     Join,
     Yank,
+    YankLine,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -16,6 +16,7 @@ use crate::{
     },
 };
 
+#[derive(Clone, Copy)]
 pub struct ImmediateArgs {
     op: ImmediateOp,
     cmd: Cmd,
@@ -46,6 +47,12 @@ pub fn handle_immediate(ctx: &mut EditorCtx, args: ImmediateArgs) {
         ImmediateOp::Join => join(ctx, args.cmd.reps.unwrap_or(1)),
         ImmediateOp::Yank => {
             yank(ctx, args.cmd);
+            Damage::Intact
+        }
+        ImmediateOp::YankLine => {
+            let mut fake_args = args;
+            fake_args.cmd = fake_args.cmd.arg(Arg::motion(None, None, Motion::Line));
+            yank(ctx, fake_args.cmd);
             Damage::Intact
         }
     };
