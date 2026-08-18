@@ -1,90 +1,89 @@
-use ropey::{Rope, RopeSlice};
 use std::collections::{HashMap, hash_map::Entry};
 
 use crate::cmd::EditOp;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RegisterData {
-    Char { rope: Rope },
-    Line { rope: Rope },
-    Block { rope: Rope },
+    Char { data: String },
+    Line { data: String },
+    Block { data: String },
 }
 
 impl RegisterData {
-    pub fn char(rope: Rope) -> Self {
-        Self::Char { rope }
+    pub fn char(data: String) -> Self {
+        Self::Char { data }
     }
 
-    pub fn line(rope: Rope) -> Self {
-        Self::Line { rope }
+    pub fn line(data: String) -> Self {
+        Self::Line { data }
     }
 
-    pub fn block(ropes: Vec<Rope>) -> Self {
+    pub fn block(data: Vec<String>) -> Self {
         Self::Block {
-            rope: vstack(ropes),
+            data: vstack(data),
         }
     }
 
     pub fn is_empty(&self) -> bool {
         match self {
-            RegisterData::Char { rope }
-            | RegisterData::Line { rope }
-            | RegisterData::Block { rope } => rope.len_chars() == 0,
+            RegisterData::Char { data }
+            | RegisterData::Line { data }
+            | RegisterData::Block { data } => data.is_empty(),
         }
     }
 
     pub fn append(&mut self, incoming: RegisterData) {
-        let current = std::mem::replace(self, Self::Char { rope: Rope::new() });
+        let current = std::mem::replace(self, Self::Char { data: String::new() });
 
         *self = match (current, incoming) {
-            (Self::Char { mut rope }, Self::Char { rope: other }) => {
-                rope.append(other);
-                Self::Char { rope }
+            (Self::Char { mut data }, Self::Char { data: other }) => {
+                data.push_str(&other);
+                Self::Char { data }
             }
-            (Self::Char { rope }, Self::Line { rope: other })
-            | (Self::Line { rope }, Self::Char { rope: other })
-            | (Self::Line { rope }, Self::Line { rope: other }) => Self::Line {
-                rope: append(rope, other),
+            (Self::Char { data }, Self::Line { data: other })
+            | (Self::Line { data }, Self::Char { data: other })
+            | (Self::Line { data }, Self::Line { data: other }) => Self::Line {
+                data: append(data, other),
             },
-            (Self::Block { rope }, Self::Block { rope: other }) => Self::Line {
-                rope: append(rope, other),
+            (Self::Block { data }, Self::Block { data: other }) => Self::Line {
+                data: append(data, other),
             },
-            (Self::Block { rope }, Self::Line { rope: other })
-            | (Self::Block { rope }, Self::Char { rope: other }) => Self::Line {
-                rope: append(rope, other),
+            (Self::Block { data }, Self::Line { data: other })
+            | (Self::Block { data }, Self::Char { data: other }) => Self::Line {
+                data: append(data, other),
             },
-            (Self::Line { rope }, Self::Block { rope: other })
-            | (Self::Char { rope }, Self::Block { rope: other }) => Self::Line {
-                rope: append(rope, other),
+            (Self::Line { data }, Self::Block { data: other })
+            | (Self::Char { data }, Self::Block { data: other }) => Self::Line {
+                data: append(data, other),
             },
         };
     }
 }
 
-fn vstack(ropes: impl IntoIterator<Item = Rope>) -> Rope {
-    let mut rope = Rope::new();
-    for (i, r) in ropes.into_iter().enumerate() {
+fn vstack(data: impl IntoIterator<Item = String>) -> String {
+    let mut s = String::new();
+    for (i, r) in data.into_iter().enumerate() {
         if i > 0 {
-            rope.insert_char(rope.len_chars(), '\n');
+            s.push('\n');
         }
-        rope.append(r);
+        s.push_str(&r);
     }
-    rope
+    s
 }
 
-fn append(mut left: Rope, right: Rope) -> Rope {
-    if left.len_chars() > 0 {
+fn append(mut left: String, right: String) -> String {
+    if left.len() > 0 {
         ensure_nl(&mut left);
     }
-    left.append(right);
+    left.push_str(&right);
     ensure_nl(&mut left);
     left
 }
 
-fn ensure_nl(rope: &mut Rope) {
-    let len = rope.len_chars();
-    if len == 0 || rope.char(len - 1) != '\n' {
-        rope.insert_char(len, '\n');
+fn ensure_nl(s: &mut String) {
+    let len = s.len();
+    if len == 0 || !s.ends_with('\n') {
+        s.push('\n');
     }
 }
 
@@ -94,18 +93,18 @@ mod tests {
 
     #[test]
     fn test_append() {
-        let mut left = Rope::from("Hello");
-        let right = Rope::from("World");
-        let result = append(left.clone(), right.clone());
-        assert_eq!(result, Rope::from("Hello\nWorld\n"));
+        let mut left = "Hello".to_owned();
+        let right = "World".to_owned();
+        let result = append(left, right.clone());
+        assert_eq!(result, "Hello\nWorld\n".to_owned());
 
-        left = Rope::from("Hello\n");
-        let result = append(left.clone(), right.clone());
-        assert_eq!(result, Rope::from("Hello\nWorld\n"));
+        left = "Hello\n".to_owned();
+        let result = append(left, right.clone());
+        assert_eq!(result, "Hello\nWorld\n".to_owned());
 
-        left = Rope::from("");
-        let result = append(left.clone(), right.clone());
-        assert_eq!(result, Rope::from("World\n"));
+        left = "".to_owned();
+        let result = append(left, right.clone());
+        assert_eq!(result, "World\n".to_owned());
     }
 }
 
@@ -208,10 +207,10 @@ impl Registers {
         &self.last_insert
     }
 
-    pub fn record_small_delete(&mut self, reg: Option<char>, deleted: RopeSlice) {
+    pub fn record_small_delete(&mut self, reg: Option<char>, deleted: String) {
         match reg {
             None => {
-                let data = RegisterData::char(deleted.into());
+                let data = RegisterData::char(deleted);
                 self.write(Register::Unnamed, data.clone());
                 self.write(Register::SMALL_DELETE, data);
             }
@@ -221,7 +220,7 @@ impl Registers {
                     return;
                 }
 
-                let data = RegisterData::char(deleted.into());
+                let data = RegisterData::char(deleted);
                 self.record_delete(data.clone());
                 self.write(Register::Unnamed, data.clone());
                 self.write(r, data);

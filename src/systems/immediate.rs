@@ -177,7 +177,7 @@ fn record_small_delete(
     rope: &Rope,
     range: Range<usize>,
 ) {
-    let deleted = rope.slice(range);
+    let deleted = rope.slice(range).to_string();
     registers.record_small_delete(reg, deleted);
 }
 
@@ -330,9 +330,9 @@ fn paste(ctx: &mut EditorCtx, reg: Option<char>, reps: usize, mode: PasteMode) -
     let (_, buf_view, buffer) = active_session_and_buffer!(mut ctx);
 
     let r = reg.map_or(Register::Unnamed, Register::from);
-    let data = ctx.registers.read(r);
+    let reg_data = ctx.registers.read(r);
 
-    match data {
+    match reg_data {
         None => {
             if let Register::Named(name) = r {
                 let msg = &format!("Nothing in register {name}");
@@ -340,17 +340,21 @@ fn paste(ctx: &mut EditorCtx, reg: Option<char>, reps: usize, mode: PasteMode) -
             }
             Damage::Intact
         }
-        Some(data) => match data {
-            RegisterData::Char { rope } => {
-                paste_charwise(&ctx.config, buf_view, buffer, reps, mode, rope)
-            }
-            RegisterData::Line { rope } => {
-                let damage = paste_linewise(&ctx.config, buf_view, buffer, reps, mode, rope);
-                event::on_paste(&mut ctx.status, data, reps);
+        Some(reg_data) => {
+            match reg_data {
+            RegisterData::Char { data } => {
+                let damage = paste_charwise(&ctx.config, buf_view, buffer, reps, mode, data.as_ref());
+                event::on_paste(&mut ctx.status, reg_data, reps);
                 damage
             }
-            RegisterData::Block { rope } => Damage::Intact,
-        },
+            RegisterData::Line { data } => {
+                let damage = paste_linewise(&ctx.config, buf_view, buffer, reps, mode, data.as_ref());
+                event::on_paste(&mut ctx.status, reg_data, reps);
+                damage
+            }
+            RegisterData::Block { data } => Damage::Intact,
+        }
+        }
     }
 }
 
@@ -360,7 +364,7 @@ fn paste_charwise(
     buffer: &mut Buffer,
     reps: usize,
     mode: PasteMode,
-    data: &Rope,
+    data: &str,
 ) -> Damage {
     let cursor = buf_view.cursor;
     let cursor_idx = cursor_to_char_idx(config, buf_view, buffer.rope());
@@ -379,13 +383,13 @@ fn paste_charwise(
     let anchor_coords = Coords::new(cursor.row, anchor_col);
     let anchor_idx = coords_to_char_idx(config, buffer.rope(), buf_view, anchor_coords);
 
-    let mut agg_data = Rope::new();
-    for _ in 0..reps {
-        agg_data.append(data.clone());
-    }
-    buffer.edit().insert_rope(anchor_idx, &agg_data);
+    let mut agg_data = String::with_capacity(reps * data.len());
+    agg_data.extend(std::iter::repeat(data).take(reps));
+    let rope = Rope::from(agg_data);
 
-    let damage = if agg_data.len_lines() <= 1 {
+    buffer.edit().insert_rope(anchor_idx, &rope);
+
+    let damage = if rope.len_lines() <= 1 {
         buf_view
             .display_buf
             .patch_range(config, buffer.rope(), cursor.row..cursor.row + 1);
@@ -399,7 +403,7 @@ fn paste_charwise(
         config,
         buffer.rope(),
         buf_view,
-        cursor_idx + agg_data.len_chars(),
+        cursor_idx + rope.len_chars(),
     );
     buf_view.cursor = new_coords;
     buf_view.target_col = new_coords.col;
@@ -413,17 +417,15 @@ fn paste_linewise(
     buffer: &mut Buffer,
     reps: usize,
     mode: PasteMode,
-    data: &Rope,
+    data: &str,
 ) -> Damage {
     let char_idx = cursor_to_char_idx(config, buf_view, buffer.rope());
     let line_idx = buffer.rope().char_to_line(char_idx);
 
     let norm = norm_data(data);
     let norm_ref = norm.as_ref();
-    let mut agg_data = Rope::new();
-    for _ in 0..reps {
-        agg_data.append(norm_ref.clone());
-    }
+    let mut agg_data = String::with_capacity(reps * norm_ref.len());
+    agg_data.extend(std::iter::repeat(norm_ref).take(reps));
 
     let anchor_idx = if mode == PasteMode::Before {
         buffer.rope().line_to_char(line_idx)
@@ -431,14 +433,15 @@ fn paste_linewise(
         if line_idx + 1 < buffer.rope().len_lines() {
             buffer.rope().line_to_char(line_idx + 1)
         } else {
-            agg_data.remove(agg_data.len_chars() - 1..agg_data.len_chars());
+            agg_data.pop();
             let len = buffer.rope().len_chars();
             buffer.edit().insert_char(len, '\n');
             buffer.rope().len_chars()
         }
     };
 
-    buffer.edit().insert_rope(anchor_idx, &agg_data);
+    let rope = Rope::from(agg_data);
+    buffer.edit().insert_rope(anchor_idx, &rope);
     buf_view.display_buf.destroy_from(line_idx);
 
     let new_coords = char_idx_to_coords(config, buffer.rope(), buf_view, anchor_idx);
@@ -448,12 +451,11 @@ fn paste_linewise(
     Damage::From(line_idx)
 }
 
-fn norm_data(data: &Rope) -> Cow<'_, Rope> {
-    let len = data.len_chars();
-    if len == 0 || data.char(len - 1) != '\n' {
-        let mut r = data.clone();
-        r.insert_char(len, '\n');
-        Cow::Owned(r)
+fn norm_data(data: &str) -> Cow<'_, str> {
+    if !data.ends_with('\n') {
+        let mut s = data.to_owned();
+        s.push('\n');
+        Cow::Owned(s)
     } else {
         Cow::Borrowed(data)
     }

@@ -120,14 +120,12 @@ pub fn select_linewise(ctx: &mut EditorCtx, span: (Coords, Coords)) -> RegisterD
         rope.line_to_char(end_line + 1)
     };
 
-    let mut rope = safe_slice(rope, start_line_idx, end_line_idx);
-
-    let len = rope.len_chars();
-    if len > 0 && rope.char(len - 1) != '\n' {
-        rope.insert_char(len, '\n');
+    let mut data = safe_slice(rope, start_line_idx, end_line_idx);
+    if !data.ends_with('\n') {
+        data.push('\n');
     }
 
-    RegisterData::line(rope)
+    RegisterData::line(data)
 }
 
 pub fn select_blockwise(ctx: &mut EditorCtx, span: (Coords, Coords)) -> RegisterData {
@@ -141,21 +139,21 @@ pub fn select_blockwise(ctx: &mut EditorCtx, span: (Coords, Coords)) -> Register
     let mut rows = Vec::with_capacity(br.row - tl.row);
 
     for row in tl.row..br.row {
-        let mut curr_row = Rope::new();
+        let mut curr_row = String::new();
         let line = buf_view.display_buf.ensure_line(&ctx.config, rope, row);
 
         for (g, span) in line.graphemes_between(tl.col, br.col) {
             if span.start < tl.col && span.end > br.col {
-                curr_row.append(" ".repeat(br.col - tl.col).into());
+                curr_row.extend(std::iter::repeat(' ').take(br.col - tl.col));
             } else if span.start < tl.col {
-                curr_row.append(" ".repeat(span.end - tl.col).into());
+                curr_row.extend(std::iter::repeat(' ').take(span.end - tl.col));
             } else if span.end > br.col {
-                curr_row.append(" ".repeat(br.col - span.start).into());
+                curr_row.extend(std::iter::repeat(' ').take(br.col - span.start));
             } else {
                 if DisplayLine::is_tab(g) {
-                    curr_row.insert_char(curr_row.len_chars(), '\t');
+                    curr_row.push('\t');
                 } else {
-                    curr_row.append(g.into());
+                    curr_row.push_str(g);
                 }
             }
         }
@@ -176,12 +174,12 @@ fn go_right(line: DisplayLineRef<'_>, col: usize) -> usize {
     }
 }
 
-fn safe_slice(rope: &Rope, start_idx: usize, end_idx: usize) -> Rope {
+fn safe_slice(rope: &Rope, start_idx: usize, end_idx: usize) -> String {
     assert!(start_idx <= end_idx);
     if start_idx == end_idx {
-        Rope::new()
+        String::new()
     } else {
-        rope.slice(start_idx..end_idx).into()
+        rope.slice(start_idx..end_idx).to_string()
     }
 }
 
@@ -449,7 +447,7 @@ mod test_select_charwise {
         let mut ctx = setup("", Coords::default());
         let span = (Coords::default(), Coords::default());
         let data = select_charwise(&mut ctx, span, true);
-        assert_eq!(data, RegisterData::char(Rope::new()));
+        assert_eq!(data, RegisterData::char("".into()));
     }
 
     #[test]
@@ -525,7 +523,7 @@ mod test_select_linewise {
         let mut ctx = setup("", Coords::default());
         let span = (Coords::default(), Coords::default());
         let data = select_linewise(&mut ctx, span);
-        assert_eq!(data, RegisterData::line(Rope::new()));
+        assert_eq!(data, RegisterData::line("\n".into()));
     }
 
     #[test]
