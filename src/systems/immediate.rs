@@ -1,12 +1,18 @@
 use ropey::Rope;
-use std::{format, ops::Range};
+use std::{borrow::Cow, format, ops::Range};
 
 use crate::{
-    active_session, active_session_and_buffer, cmd::{Arg, Cmd, ImmediateOp, Motion, MotionMode}, components::{
+    active_session, active_session_and_buffer,
+    cmd::{Arg, Cmd, ImmediateOp, Motion, MotionMode},
+    components::{
         Buffer, BufferView, Config, Coords, EditorCtx, Level, MutBuffer, Register, RegisterData,
         Registers,
-    }, systems::{
-        commons::{char_idx_to_coords, coords_to_char_idx, curr_line, cursor_to_char_idx}, event, insert::{Damage, DamageEvent, broadcast_damage}, nav::{
+    },
+    systems::{
+        commons::{char_idx_to_coords, coords_to_char_idx, curr_line, cursor_to_char_idx},
+        event,
+        insert::{Damage, DamageEvent, broadcast_damage},
+        nav::{
             NormalNav, charwise, exec_motion, goto_col, inclusive, select_blockwise,
             select_charwise, select_linewise, utils::ensure_cursor_inside_line,
         },
@@ -313,7 +319,7 @@ fn motion_yank(
 // Paste
 // -----------------------------------------------------------------------
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum PasteMode {
     Before,
     After,
@@ -338,7 +344,11 @@ fn paste(ctx: &mut EditorCtx, reg: Option<char>, reps: usize, mode: PasteMode) -
             RegisterData::Char { rope } => {
                 paste_charwise(&ctx.config, buf_view, buffer, reps, mode, rope)
             }
-            RegisterData::Line { rope } => Damage::Intact,
+            RegisterData::Line { rope } => {
+                let damage = paste_linewise(&ctx.config, buf_view, buffer, reps, mode, rope);
+                event::on_paste(&mut ctx.status, data, reps);
+                damage
+            }
             RegisterData::Block { rope } => Damage::Intact,
         },
     }
@@ -395,6 +405,58 @@ fn paste_charwise(
     buf_view.target_col = new_coords.col;
 
     damage
+}
+
+fn paste_linewise(
+    config: &Config,
+    buf_view: &mut BufferView,
+    buffer: &mut Buffer,
+    reps: usize,
+    mode: PasteMode,
+    data: &Rope,
+) -> Damage {
+    let char_idx = cursor_to_char_idx(config, buf_view, buffer.rope());
+    let line_idx = buffer.rope().char_to_line(char_idx);
+
+    let norm = norm_data(data);
+    let norm_ref = norm.as_ref();
+    let mut agg_data = Rope::new();
+    for _ in 0..reps {
+        agg_data.append(norm_ref.clone());
+    }
+
+    let anchor_idx = if mode == PasteMode::Before {
+        buffer.rope().line_to_char(line_idx)
+    } else {
+        if line_idx + 1 < buffer.rope().len_lines() {
+            buffer.rope().line_to_char(line_idx + 1)
+        } else {
+            agg_data.remove(agg_data.len_chars() - 1..agg_data.len_chars());
+            let len = buffer.rope().len_chars();
+            buffer.edit().insert_char(len, '\n');
+            buffer.rope().len_chars()
+        }
+    };
+
+    buffer.edit().insert_rope(anchor_idx, &agg_data);
+    buf_view.display_buf.destroy_from(line_idx);
+
+    let new_coords = char_idx_to_coords(config, buffer.rope(), buf_view, anchor_idx);
+    buf_view.cursor = new_coords;
+    buf_view.target_col = new_coords.col;
+
+    Damage::From(line_idx)
+}
+
+fn norm_data(data: &Rope) -> Cow<'_, Rope> {
+    let len = data.len_chars();
+    if len == 0 || data.char(len - 1) != '\n' {
+        let mut r = data.clone();
+        r.insert_char(len, '\n');
+        Cow::Owned(r)
+    } else {
+        Cow::Borrowed(data)
+    }
 }
 
 // -----------------------------------------------------------------------

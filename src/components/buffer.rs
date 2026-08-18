@@ -99,11 +99,13 @@ impl<'a> MutBuffer for SessionMutableBuffer<'a> {
         if rope.len_chars() == 0 {
             return;
         }
-        
+
         let tail = self.buffer.rope.split_off(char_idx);
         self.buffer.rope.append(rope.clone());
         self.buffer.rope.append(tail);
-        self.buffer.marks.adjust(Change::insert(char_idx, rope.len_chars()));
+        self.buffer
+            .marks
+            .adjust(Change::insert(char_idx, rope.len_chars()));
         self.buffer.dirty = true;
     }
 }

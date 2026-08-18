@@ -205,7 +205,7 @@ impl MutBuffer for ExMutableBuffer<'_> {
         if rope.len_chars() == 0 {
             return;
         }
-        
+
         let tail = self.rope.split_off(char_idx);
         self.rope.append(rope.clone());
         self.rope.append(tail);
