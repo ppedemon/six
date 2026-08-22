@@ -3,7 +3,7 @@ use ropey::Rope;
 use crate::{
     active_session, active_session_and_buffer,
     cmd::{Cmd, Motion, Operator},
-    components::{Coords, DisplayLine, DisplayLineRef, EditorCtx, RegisterData},
+    components::{Coords, DisplayLineRef, EditorCtx, RegisterData},
     systems::{
         commons::coords_to_char_idx,
         nav::{NavArgs, handle_session_nav},
@@ -150,7 +150,7 @@ pub fn select_blockwise(ctx: &mut EditorCtx, span: (Coords, Coords)) -> Register
             } else if span.end > br.col {
                 curr_row.extend(std::iter::repeat(' ').take(br.col - span.start));
             } else {
-                if DisplayLine::is_tab(g) {
+                if rope.char(line.col_to_char_idx(span.start)) == '\t' {
                     curr_row.push('\t');
                 } else {
                     curr_row.push_str(g);

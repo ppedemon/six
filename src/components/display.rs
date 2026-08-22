@@ -343,7 +343,7 @@ impl DisplayLine {
         }
     }
 
-    pub fn is_tab(g: &str) -> bool {
+    fn is_tab(g: &str) -> bool {
         g.len() > 1 && g.chars().all(|c| c == ' ')
     }
 }
