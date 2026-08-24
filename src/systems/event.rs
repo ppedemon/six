@@ -39,19 +39,18 @@ pub fn on_yank(status: &mut Status, reg_data: &RegisterData) {
             }
         }
         RegisterData::Block { data } => {
-            let rows = data.lines().count();
-            if rows > 2 {
-                let mut lens = data.lines().map(&str::len);
+            if data.len() > 2 {
+                let mut lens = data.iter().map(String::len);
                 let perfect = match lens.next() {
                     Some(n) => lens.all(|x| x == n),
                     None => true,
                 };
 
                 let msg = if perfect {
-                    let cols = data.lines().next().map_or(0, &str::len);
-                    format!("{rows}x{cols} block yanked")
+                    let cols = data.iter().next().map_or(0, String::len);
+                    format!("{}x{cols} block yanked", data.len())
                 } else {
-                    format!("Block of {rows} rows yanked")
+                    format!("Block of {} rows yanked", data.len())
                 };
                 status.set_msg(Level::Info, &msg);
             }

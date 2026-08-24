@@ -341,19 +341,19 @@ fn paste(ctx: &mut EditorCtx, reg: Option<char>, reps: usize, mode: PasteMode) -
             Damage::Intact
         }
         Some(reg_data) => {
-            match reg_data {
-            RegisterData::Char { data } => {
-                let damage = paste_charwise(&ctx.config, buf_view, buffer, reps, mode, data.as_ref());
-                event::on_paste(&mut ctx.status, reg_data, reps);
-                damage
-            }
-            RegisterData::Line { data } => {
-                let damage = paste_linewise(&ctx.config, buf_view, buffer, reps, mode, data.as_ref());
-                event::on_paste(&mut ctx.status, reg_data, reps);
-                damage
-            }
-            RegisterData::Block { data } => Damage::Intact,
-        }
+            let damage = match reg_data {
+                RegisterData::Char { data } => {
+                    paste_charwise(&ctx.config, buf_view, buffer, reps, mode, data.as_ref())
+                }
+                RegisterData::Line { data } => {
+                    paste_linewise(&ctx.config, buf_view, buffer, reps, mode, data.as_ref())
+                }
+                RegisterData::Block { data } => {
+                    paste_blockwise(&ctx.config, buf_view, buffer, reps, mode, data)
+                }
+            };
+            event::on_paste(&mut ctx.status, reg_data, reps);
+            damage
         }
     }
 }
@@ -459,6 +459,84 @@ fn norm_data(data: &str) -> Cow<'_, str> {
     } else {
         Cow::Borrowed(data)
     }
+}
+
+fn paste_blockwise(
+    config: &Config,
+    buf_view: &mut BufferView,
+    buffer: &mut Buffer,
+    reps: usize,
+    mode: PasteMode,
+    data: &[String],
+) -> Damage {
+    let cursor = buf_view.cursor;
+    let cursor_idx = cursor_to_char_idx(config, buf_view, buffer.rope());
+
+    let line = curr_line(config, buffer.rope(), buf_view);
+    let anchor_col = match line.grapheme_at(cursor.col) {
+        None => line.display_width,
+        Some((_, span)) => {
+            if mode == PasteMode::After {
+                span.end
+            } else {
+                span.start
+            }
+        }
+    };
+
+    // Add missing lines
+    for _ in buffer.rope().len_lines()..cursor.row + data.len() {
+        let idx = buffer.rope().len_chars();
+        buffer.edit().insert_char(idx, '\n');
+    }
+
+    for (i, line) in data.iter().enumerate() {
+        let curr_row = cursor.row + i;
+        let buf_line = buf_view
+            .display_buf
+            .ensure_line(config, buffer.rope(), curr_row);
+
+        let line_idx = buffer.rope().line_to_char(curr_row);
+        let last_idx = line_idx + buf_line.display_width;
+
+        // buf_line too short, pad until anchor_col with spaces
+        if buf_line.display_width <= anchor_col {
+            buffer
+                .edit()
+                .insert(last_idx, &" ".repeat(anchor_col - buf_line.display_width));
+            buffer
+                .edit()
+                .insert(last_idx + anchor_col - buf_line.display_width, &line);
+        } else {
+            let (g, span) = buf_line.grapheme_at(anchor_col).unwrap();
+            let g_idx = line_idx + buf_line.col_to_char_idx(span.start);
+
+            // Life is though, anchor_col falls inside a wide grapheme:
+            //  If the wide grapheme is tab, "break" into before and after spaces
+            //  Otherwise, pad initial fragment with spaces and move wide grapheme after pasted data
+            if span.start < anchor_col {
+                let len_before = anchor_col - span.start;
+
+                if buffer.rope().char(g_idx) == '\t' {
+                    buffer.edit().remove(g_idx..g_idx + 1);
+                    buffer.edit().insert(g_idx, &" ".repeat(len_before));
+                    buffer.edit().insert(g_idx + len_before, &line);
+                    buffer.edit().insert(
+                        g_idx + len_before + line.len(),
+                        &" ".repeat(span.end - anchor_col),
+                    );
+                } else {
+                    buffer.edit().insert(g_idx, &" ".repeat(len_before));
+                    buffer.edit().insert(g_idx + len_before, &line);
+                }
+            } else {
+                buffer.edit().insert(g_idx, &line);
+            }
+        }
+    }
+
+    buf_view.display_buf.destroy_from(cursor.row);
+    Damage::From(cursor.row)
 }
 
 // -----------------------------------------------------------------------

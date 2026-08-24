@@ -6,7 +6,7 @@ use crate::cmd::EditOp;
 pub enum RegisterData {
     Char { data: String },
     Line { data: String },
-    Block { data: String },
+    Block { data: Vec<String> },
 }
 
 impl RegisterData {
@@ -19,21 +19,23 @@ impl RegisterData {
     }
 
     pub fn block(data: Vec<String>) -> Self {
-        Self::Block {
-            data: vstack(data),
-        }
+        Self::Block { data }
     }
 
     pub fn is_empty(&self) -> bool {
         match self {
-            RegisterData::Char { data }
-            | RegisterData::Line { data }
-            | RegisterData::Block { data } => data.is_empty(),
+            RegisterData::Char { data } | RegisterData::Line { data } => data.is_empty(),
+            RegisterData::Block { data } => data.is_empty(),
         }
     }
 
     pub fn append(&mut self, incoming: RegisterData) {
-        let current = std::mem::replace(self, Self::Char { data: String::new() });
+        let current = std::mem::replace(
+            self,
+            Self::Char {
+                data: String::new(),
+            },
+        );
 
         *self = match (current, incoming) {
             (Self::Char { mut data }, Self::Char { data: other }) => {
@@ -46,15 +48,15 @@ impl RegisterData {
                 data: append(data, other),
             },
             (Self::Block { data }, Self::Block { data: other }) => Self::Line {
-                data: append(data, other),
+                data: append(vstack(data), vstack(other)),
             },
             (Self::Block { data }, Self::Line { data: other })
             | (Self::Block { data }, Self::Char { data: other }) => Self::Line {
-                data: append(data, other),
+                data: append(vstack(data), other),
             },
             (Self::Line { data }, Self::Block { data: other })
             | (Self::Char { data }, Self::Block { data: other }) => Self::Line {
-                data: append(data, other),
+                data: append(data, vstack(other)),
             },
         };
     }

@@ -139,7 +139,7 @@ pub fn select_blockwise(ctx: &mut EditorCtx, span: (Coords, Coords)) -> Register
     let mut rows = Vec::with_capacity(br.row - tl.row);
 
     for row in tl.row..br.row {
-        let mut curr_row = String::new();
+        let mut curr_row = String::with_capacity(br.col - tl.col);
         let line = buf_view.display_buf.ensure_line(&ctx.config, rope, row);
 
         for (g, span) in line.graphemes_between(tl.col, br.col) {
@@ -150,7 +150,8 @@ pub fn select_blockwise(ctx: &mut EditorCtx, span: (Coords, Coords)) -> Register
             } else if span.end > br.col {
                 curr_row.extend(std::iter::repeat(' ').take(br.col - span.start));
             } else {
-                if rope.char(line.col_to_char_idx(span.start)) == '\t' {
+                let line_idx = buffer.rope().line_to_char(row);
+                if rope.char(line_idx + line.col_to_char_idx(span.start)) == '\t' {
                     curr_row.push('\t');
                 } else {
                     curr_row.push_str(g);
@@ -580,7 +581,7 @@ mod test_select_blockwise {
         let mut ctx = setup("", Coords::default());
         let span = (Coords::default(), Coords::default());
         let data = select_blockwise(&mut ctx, span);
-        assert_eq!(data, RegisterData::block(Vec::new()));
+        assert_eq!(data, RegisterData::block(vec!["".into()]));
     }
 
     #[test]
@@ -708,6 +709,33 @@ mod test_select_blockwise {
         assert_eq!(
             data,
             RegisterData::block(vec!["o    ".into(), "".into(), "a".into(), "  bar".into()])
+        );
+    }
+
+    #[test]
+    fn test_tabs() {
+        let mut ctx = setup("foo\n\t\nbar", Coords::default());
+        let span = (Coords::default(), Coords::new(2, 2));
+        let data = select_blockwise(&mut ctx, span);
+        assert_eq!(
+            data,
+            RegisterData::block(vec!["foo".into(), "   ".into(), "bar".into()])
+        );
+
+        let mut ctx = setup("foo\n\t\nbar", Coords::default());
+        let span = (Coords::new(0, 1), Coords::new(2, 2));
+        let data = select_blockwise(&mut ctx, span);
+        assert_eq!(
+            data,
+            RegisterData::block(vec!["oo".into(), "  ".into(), "ar".into()])
+        );
+
+        let mut ctx = setup("foofoofoo\n\t\nbarbarbar", Coords::default());
+        let span = (Coords::default(), Coords::new(2, 7));
+        let data = select_blockwise(&mut ctx, span);
+        assert_eq!(
+            data,
+            RegisterData::block(vec!["foofoofo".into(), "\t".into(), "barbarba".into()])
         );
     }
 }
