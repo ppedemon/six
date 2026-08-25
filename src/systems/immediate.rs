@@ -440,15 +440,21 @@ fn paste_linewise(
         }
     };
 
+    let repair_line_idx = if mode == PasteMode::Before {
+        line_idx
+    } else {
+        line_idx + 1
+    };
+
     let rope = Rope::from(agg_data);
     buffer.edit().insert_rope(anchor_idx, &rope);
-    buf_view.display_buf.destroy_from(line_idx);
+    buf_view.display_buf.destroy_from(repair_line_idx);
 
     let new_coords = char_idx_to_coords(config, buffer.rope(), buf_view, anchor_idx);
     buf_view.cursor = new_coords;
     buf_view.target_col = new_coords.col;
 
-    Damage::From(line_idx)
+    Damage::From(repair_line_idx)
 }
 
 fn norm_data(data: &str) -> Cow<'_, str> {
@@ -484,6 +490,8 @@ fn paste_blockwise(
         }
     };
 
+    let data = mk_block_data(data, reps);
+
     // Add missing lines
     for _ in buffer.rope().len_lines()..cursor.row + data.len() {
         let idx = buffer.rope().len_chars();
@@ -511,8 +519,8 @@ fn paste_blockwise(
             let (g, span) = buf_line.grapheme_at(anchor_col).unwrap();
             let g_idx = line_idx + buf_line.col_to_char_idx(span.start);
 
-            // Life is though, anchor_col falls inside a wide grapheme:
-            //  If the wide grapheme is tab, "break" into before and after spaces
+            // anchor_col falls inside a wide grapheme:
+            //  If the wide grapheme is a tab, break into before and after whitespace
             //  Otherwise, pad initial fragment with spaces and move wide grapheme after pasted data
             if span.start < anchor_col {
                 let len_before = anchor_col - span.start;
@@ -536,7 +544,26 @@ fn paste_blockwise(
     }
 
     buf_view.display_buf.destroy_from(cursor.row);
+    buf_view.cursor = Coords::new(cursor.row, anchor_col);
+    buf_view.target_col = anchor_col;
+
     Damage::From(cursor.row)
+}
+
+fn mk_block_data(data: &[String], reps: usize) -> Cow<'_, [String]> {
+    if reps == 1 {
+        Cow::Borrowed(data)
+    } else {
+        let mut block_data = Vec::with_capacity(data.len());
+        for line in data {
+            let mut curr_line = String::with_capacity(line.len() * reps);
+            for _ in 0..reps {
+                curr_line.push_str(line);
+            }
+            block_data.push(curr_line);
+        }
+        Cow::Owned(block_data)
+    }
 }
 
 // -----------------------------------------------------------------------
