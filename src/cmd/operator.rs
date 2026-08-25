@@ -47,6 +47,7 @@ pub enum ImmediateOp {
     Yank,
     YankLine,
     Paste,
+    PasteBefore,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

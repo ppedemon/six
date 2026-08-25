@@ -36,6 +36,8 @@ pub fn on_yank(status: &mut Status, reg_data: &RegisterData) {
             if lines > 2 {
                 let msg = format!("{lines} lines yanked");
                 status.set_msg(Level::Info, &msg);
+            } else {
+                status.clear_msg();
             }
         }
         RegisterData::Block { data } => {
@@ -53,6 +55,8 @@ pub fn on_yank(status: &mut Status, reg_data: &RegisterData) {
                     format!("Block of {} rows yanked", data.len())
                 };
                 status.set_msg(Level::Info, &msg);
+            } else {
+                status.clear_msg();
             }
         }
     };
@@ -66,6 +70,8 @@ pub fn on_paste(status: &mut Status, reg_data: &RegisterData, reps: usize) {
             if pasted_lines > 2 {
                 let msg = format!("{pasted_lines} lines pasted");
                 status.set_msg(Level::Info, &msg);
+            } else {
+                status.clear_msg();
             }
         }
         RegisterData::Line { data } => {
@@ -73,8 +79,10 @@ pub fn on_paste(status: &mut Status, reg_data: &RegisterData, reps: usize) {
             if pasted_lines > 2 {
                 let msg = format!("{pasted_lines} lines pasted");
                 status.set_msg(Level::Info, &msg);
+            } else {
+                status.clear_msg();
             }
         }
-        RegisterData::Block { data } => {}
+        RegisterData::Block { data } => status.clear_msg(),
     }
 }

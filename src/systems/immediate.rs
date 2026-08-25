@@ -64,6 +64,12 @@ pub fn handle_immediate(ctx: &mut EditorCtx, args: ImmediateArgs) {
             args.cmd.reps.unwrap_or(1),
             PasteMode::After,
         ),
+        ImmediateOp::PasteBefore => paste(
+            ctx,
+            args.cmd.reg,
+            args.cmd.reps.unwrap_or(1),
+            PasteMode::Before,
+        ),
     };
 
     let (session, _) = active_session!(ctx);
@@ -399,14 +405,16 @@ fn paste_charwise(
         Damage::From(cursor.row)
     };
 
-    let new_coords = char_idx_to_coords(
-        config,
-        buffer.rope(),
-        buf_view,
-        cursor_idx + rope.len_chars(),
-    );
-    buf_view.cursor = new_coords;
-    buf_view.target_col = new_coords.col;
+    if rope.len_chars() > 0 {
+        let new_coords = char_idx_to_coords(
+            config,
+            buffer.rope(),
+            buf_view,
+            anchor_idx + rope.len_chars().saturating_sub(1),
+        );
+        buf_view.cursor = new_coords;
+        buf_view.target_col = new_coords.col;
+    }
 
     damage
 }
