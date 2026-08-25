@@ -554,14 +554,10 @@ fn mk_block_data(data: &[String], reps: usize) -> Cow<'_, [String]> {
     if reps == 1 {
         Cow::Borrowed(data)
     } else {
-        let mut block_data = Vec::with_capacity(data.len());
-        for line in data {
-            let mut curr_line = String::with_capacity(line.len() * reps);
-            for _ in 0..reps {
-                curr_line.push_str(line);
-            }
-            block_data.push(curr_line);
-        }
+        let block_data = data
+            .iter()
+            .map(|line| line.repeat(reps))
+            .collect::<Vec<_>>();
         Cow::Owned(block_data)
     }
 }
