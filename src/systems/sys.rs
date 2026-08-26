@@ -46,7 +46,7 @@ pub fn enter_insert(ctx: &mut EditorCtx, insert_point: InsertPoint, cmd: Cmd) {
     ctx.status
         .set_styled_msg(Level::Info, TextStyle::Bold, "-- INSERT --");
 
-    ctx.repbuf.start_interaction(cmd);
+    ctx.repbuf.save_last_cmd(cmd);
 
     let (session, buf_view, buffer) = active_session_and_buffer!(mut ctx);
 
@@ -54,9 +54,7 @@ pub fn enter_insert(ctx: &mut EditorCtx, insert_point: InsertPoint, cmd: Cmd) {
     ctx.editor.char_at_cursor = None;
 
     session.mode = Mode::Insert;
-    session
-        .insert_log
-        .init(cmd.reps.unwrap_or(1).saturating_sub(1));
+    session.insert_log.init();
 
     apply_insert_point(&ctx.config, buffer.rope(), buf_view, insert_point);
 }

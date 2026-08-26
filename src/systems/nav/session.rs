@@ -52,7 +52,7 @@ pub fn handle_session_nav(ctx: &mut EditorCtx, args: NavArgs) {
 
     match session.mode {
         Mode::Insert => {
-            session.insert_log.reset();
+            session.insert_log.poison();
             session_nav::<InsertNav>(
                 config,
                 buffer,

@@ -2,19 +2,12 @@ use ropey::Rope;
 use std::{borrow::Cow, format, ops::Range};
 
 use crate::{
-    active_session, active_session_and_buffer,
-    cmd::{Arg, Cmd, ImmediateOp, Motion, MotionMode},
-    components::{
+    active_session, active_session_and_buffer, cmd::{Arg, Cmd, ImmediateOp, Motion, MotionMode}, components::{
         Buffer, BufferView, Config, Coords, EditorCtx, Level, MutBuffer, Register, RegisterData,
         Registers,
-    },
-    systems::{
-        commons::{char_idx_to_coords, coords_to_char_idx, curr_line, cursor_to_char_idx},
-        event,
-        insert::{Damage, DamageEvent, broadcast_damage},
-        nav::{
-            NormalNav, charwise, exec_motion, goto_col, inclusive, select_blockwise,
-            select_charwise, select_linewise, utils::ensure_cursor_inside_line,
+    }, systems::{
+        commons::{char_idx_to_coords, coords_to_char_idx, curr_line, cursor_to_char_idx}, event, insert::{self, Damage, DamageEvent, broadcast_damage}, nav::{
+            self, InsertNav, NormalNav, charwise, exec_motion, goto_col, inclusive, select_blockwise, select_charwise, select_linewise, utils::ensure_cursor_inside_line,
         },
     },
 };
@@ -37,7 +30,7 @@ pub fn handle_immediate(ctx: &mut EditorCtx, args: ImmediateArgs) {
     }
 
     if is_repeatable(args.op) {
-        ctx.repbuf.record_immediate(args.cmd);
+        ctx.repbuf.save_last_cmd(args.cmd);
     }
 
     let damage = match args.op {
@@ -273,6 +266,7 @@ pub fn yank(ctx: &mut EditorCtx, cmd: Cmd) {
                 }
             }
         }
+        // TODO Implement text-object movement and selection
         Arg::TextObject { .. } => {}
         Arg::None => {}
     };
@@ -332,12 +326,14 @@ enum PasteMode {
 }
 
 fn paste(ctx: &mut EditorCtx, reg: Option<char>, reps: usize, mode: PasteMode) -> Damage {
-    let source = reg.map_or(Register::Unnamed, Register::from);
     let (_, buf_view, buffer) = active_session_and_buffer!(mut ctx);
-
     let r = reg.map_or(Register::Unnamed, Register::from);
-    let reg_data = ctx.registers.read(r);
 
+    if r == Register::Named('.') {
+        return paste_last_insert(ctx, reps, mode);
+    }
+
+    let reg_data = ctx.registers.read(r);
     match reg_data {
         None => {
             if let Register::Named(name) = r {
@@ -362,6 +358,21 @@ fn paste(ctx: &mut EditorCtx, reg: Option<char>, reps: usize, mode: PasteMode) -
             damage
         }
     }
+}
+
+fn paste_last_insert(ctx: &mut EditorCtx, reps: usize, mode: PasteMode) -> Damage {
+    let (_, buf_view, buffer) = active_session_and_buffer!(mut ctx);
+
+    if mode == PasteMode::After {
+        nav::move_right::<InsertNav>(&ctx.config, buffer.rope(), buf_view, 1);
+    }
+
+    // apply_insert_log takes full care of damage control, nothing to do here
+    let ops = &ctx.registers.last_insert().to_vec();
+    insert::apply_insert_log(ctx, ops, reps);
+    ensure_cursor_inside_line(ctx);
+
+    Damage::Intact
 }
 
 fn paste_charwise(
@@ -586,7 +597,7 @@ fn is_repeatable(op: ImmediateOp) -> bool {
 
 fn updates_registers(op: ImmediateOp) -> bool {
     match op {
-        ImmediateOp::Join | ImmediateOp::Paste => false,
+        ImmediateOp::Join | ImmediateOp::Paste | ImmediateOp::PasteBefore => false,
         _ => true,
     }
 }

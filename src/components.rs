@@ -19,7 +19,7 @@ pub use insert_log::InsertLog;
 pub use last_search::LastSearch;
 pub use marks::{Change, Marks};
 pub use registers::{Register, RegisterData, Registers};
-pub use repeat::{RepeatBuffer, RepeatBufferItem};
+pub use repeat::RepeatBuffer;
 pub use session::{BufferName, BufferView, Coords, ExSession, ExState, Mode, Session, Viewport};
 
 pub type SessionId = usize;

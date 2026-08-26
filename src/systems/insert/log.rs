@@ -11,12 +11,12 @@ use crate::{
     },
 };
 
-pub fn apply_insert_log(ctx: &mut EditorCtx, ops: &Vec<EditOp>, reps: usize) {
+pub fn apply_insert_log(ctx: &mut EditorCtx, ops: &[EditOp], reps: usize) {
     let damage_evt = intepret_insert_log(ctx, ops, reps);
     broadcast_damage(ctx, damage_evt)
 }
 
-pub fn intepret_insert_log(ctx: &mut EditorCtx, ops: &Vec<EditOp>, reps: usize) -> DamageEvent {
+pub fn intepret_insert_log(ctx: &mut EditorCtx, ops: &[EditOp], reps: usize) -> DamageEvent {
     let (session, buf_view, buffer) = active_session_and_buffer!(mut ctx);
 
     let buffer = &mut buffer.edit();
@@ -61,7 +61,7 @@ impl<'a, T: MutBuffer> InsertLogInterpreter<'a, T> {
         }
     }
 
-    fn interpret(&mut self, log: &Vec<EditOp>, reps: usize) -> Damage {
+    fn interpret(&mut self, log: &[EditOp], reps: usize) -> Damage {
         if reps == 0 {
             return Damage::Intact;
         }

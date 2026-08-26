@@ -1,7 +1,8 @@
 use crate::cmd::EditOp;
 
 pub struct InsertLog {
-    reps: usize,
+    poisoned: bool,
+    repetable: bool,
     log: Vec<EditOp>,
 }
 
@@ -10,28 +11,33 @@ impl InsertLog {
 
     pub fn new() -> Self {
         Self {
-            reps: 0,
+            poisoned: false,
+            repetable: true,
             log: Vec::with_capacity(Self::DEF_CAPACITY),
         }
     }
 
-    pub fn reset(&mut self) {
-        self.reps = 0;
+    pub fn init(&mut self) {
+        self.poisoned = false;
+        self.repetable = true;
         self.log.clear();
     }
 
-    pub fn init(&mut self, reps: usize) {
-        self.reset();
-        self.reps = reps;
+    pub fn poison(&mut self) {
+        self.poisoned = true;
+        self.repetable = false;
     }
 
     pub fn append(&mut self, op: EditOp) {
-        if self.reps > 0 {
-            self.log.push(op);
+        if self.poisoned {
+            self.poisoned = false;
+            self.log.clear();
         }
+        self.log.push(op);
     }
 
-    pub fn take_log(&mut self) -> Vec<EditOp> {
-        std::mem::take(&mut self.log)
+    pub fn take_log(&mut self) -> (Vec<EditOp>, bool) {
+        let edit_ops = std::mem::take(&mut self.log);
+        (edit_ops, self.repetable)
     }
 }
