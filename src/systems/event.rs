@@ -90,16 +90,16 @@ pub fn on_paste(status: &mut Status, reg_data: &RegisterData, reps: usize) {
 pub fn on_delete(status: &mut Status, reg_data: &RegisterData, is_empty: bool) {
     match reg_data {
         RegisterData::Char { data } | RegisterData::Line { data } => {
-            if !matches!(reg_data, RegisterData::Char { .. }) && is_empty {
-                status.set_msg(Level::Info, "-- No lines in buffer --");
-            } else {
-                let lines = data.lines().count();
-                if lines > 2 {
-                    let msg = format!("{lines} lines deleted");
-                    status.set_msg(Level::Info, &msg);
+            let deleted_lines = data.lines().count();
+            if deleted_lines > 2 {
+                if !matches!(reg_data, RegisterData::Char { .. }) && is_empty {
+                    status.set_msg(Level::Info, "-- No lines in buffer --");
                 } else {
-                    status.clear_msg();
+                    let msg = format!("{deleted_lines} lines deleted");
+                    status.set_msg(Level::Info, &msg);
                 }
+            } else {
+                status.clear_msg();
             }
         }
         RegisterData::Block { data } => status.clear_msg(),

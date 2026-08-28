@@ -3,10 +3,11 @@ use crate::{
     cmd::{Arg, Cmd},
     components::{EditorCtx, MutBuffer, RegisterData},
     systems::{
-        commons::{cursor_to_char_idx, snap_coords},
+        commons::cursor_to_char_idx,
         event,
         immediate::yank::motion_yank,
         insert::Damage,
+        nav::{self, NormalNav, utils::ensure_cursor_inside_line},
     },
 };
 
@@ -35,7 +36,7 @@ fn delete_data(ctx: &mut EditorCtx, reg_data: &RegisterData) -> Damage {
     let (_, buf_view, buffer) = active_session_and_buffer!(mut ctx);
     match reg_data {
         RegisterData::Char { data } => delete_charwise(ctx, data),
-        RegisterData::Line { data } => Damage::Intact,
+        RegisterData::Line { data } => delete_linewise(ctx, data),
         RegisterData::Block { data } => Damage::Intact,
     }
 }
@@ -59,8 +60,23 @@ fn delete_charwise(ctx: &mut EditorCtx, data: &str) -> Damage {
         Damage::From(cursor.row)
     };
 
-    snap_coords(&ctx.config, buffer.rope(), buf_view, cursor);
+    ensure_cursor_inside_line(ctx);
     damage
+}
+
+fn delete_linewise(ctx: &mut EditorCtx, data: &str) -> Damage {
+    let (_, buf_view, buffer) = active_session_and_buffer!(mut ctx);
+
+    let cursor = buf_view.cursor;
+    let start_idx = buffer.rope().line_to_char(cursor.row);
+    let data = &data[0..data.len().min(buffer.rope().len_chars() - start_idx)];
+    let len_chars = data.chars().count();
+
+    buffer.edit().remove(start_idx..start_idx + len_chars);
+    buf_view.display_buf.destroy_from(cursor.row);
+
+    nav::line_first_non_blank::<NormalNav>(&ctx.config, buffer.rope(), buf_view);
+    Damage::From(cursor.row)
 }
 
 fn notity_delete(ctx: &mut EditorCtx, reg_data: &RegisterData) {
