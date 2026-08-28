@@ -88,8 +88,8 @@ static OP_TRIE: LazyLock<Trie<KeyEvent, ParseResult<OpSpec>>> = LazyLock::new(||
     t.insert(&[char('O')], ok_op(InteractiveOp::OpenAbove));
     t.insert(&[char('o')], ok_op(InteractiveOp::OpenBelow));
 
-    t.insert(&[char('x')], ok_op(ImmediateOp::Delete));
-    t.insert(&[delete()], ok_op(ImmediateOp::Delete));
+    t.insert(&[char('x')], ok_op(ImmediateOp::DeleteChar));
+    t.insert(&[delete()], ok_op(ImmediateOp::DeleteChar));
     t.insert(&[char('X')], ok_op(ImmediateOp::Backspace));
     t.insert(&[backspace()], ok_op(ImmediateOp::Backspace));
     t.insert(&[char('J')], ok_op(ImmediateOp::Join));
@@ -97,6 +97,8 @@ static OP_TRIE: LazyLock<Trie<KeyEvent, ParseResult<OpSpec>>> = LazyLock::new(||
     t.insert(&[char('Y')], ok_op(ImmediateOp::YankLine));
     t.insert(&[char('p')], ok_op(ImmediateOp::Paste));
     t.insert(&[char('P')], ok_op(ImmediateOp::PasteBefore));
+    t.insert(&[char('d')], ok_needy_op(ImmediateOp::Delete));
+
     t
 });
 

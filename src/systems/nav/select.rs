@@ -87,12 +87,7 @@ pub fn select_charwise(
     }
 
     let start_idx = coords_to_char_idx(&ctx.config, buffer.rope(), buf_view, start);
-    let mut end_idx = coords_to_char_idx(&ctx.config, buffer.rope(), buf_view, end);
-
-    // Charwise ranges must not end in '\n'
-    if end_idx > 0 && rope.char(end_idx - 1) == '\n' {
-        end_idx -= 1;
-    }
+    let end_idx = coords_to_char_idx(&ctx.config, buffer.rope(), buf_view, end);
 
     let selection = safe_slice(rope, start_idx, end_idx);
     RegisterData::char(selection)
@@ -440,6 +435,8 @@ mod test_exec {
 
 #[cfg(test)]
 mod test_select_charwise {
+    use std::assert_eq;
+
     use super::test_commons::setup;
     use super::*;
 
@@ -511,6 +508,14 @@ mod test_select_charwise {
         let span = (Coords::default(), Coords::new(0, 7));
         let data = select_charwise(&mut ctx, span, true);
         assert_eq!(data, RegisterData::char("foo bar".into()));
+    }
+
+    #[test]
+    fn test_eof() {
+        let mut ctx = setup("a\n\n", Coords::default());
+        let span = (Coords::new(2, 0), Coords::new(2, 0));
+        let data = select_charwise(&mut ctx, span, true);
+        assert_eq!(data, RegisterData::char("".into()));
     }
 }
 

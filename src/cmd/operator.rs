@@ -41,13 +41,14 @@ pub enum InteractiveOp {
 // Example: x, d, y, p
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ImmediateOp {
-    Delete,
+    DeleteChar,
     Backspace,
     Join,
     Yank,
     YankLine,
     Paste,
     PasteBefore,
+    Delete,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -88,6 +89,7 @@ impl Operator {
     pub fn line_arg_char(&self) -> Option<char> {
         match self {
             Operator::Immediate(ImmediateOp::Yank) => Some('y'),
+            Operator::Immediate(ImmediateOp::Delete) => Some('d'),
             _ => None,
         }
     }

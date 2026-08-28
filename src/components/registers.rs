@@ -29,6 +29,14 @@ impl RegisterData {
         }
     }
 
+    fn is_small(&self) -> bool {
+        match self {
+            RegisterData::Line { data: _ } => false,
+            RegisterData::Char { data } => data.lines().count() == 1,
+            RegisterData::Block { data } => data.len() == 1,
+        }
+    }
+
     pub fn append(&mut self, incoming: RegisterData) {
         let current = std::mem::replace(
             self,
@@ -119,6 +127,7 @@ pub enum Register {
 }
 
 impl Register {
+    const EXPLICIT_UNNAMED: Self = Self::Named('"');
     pub const SMALL_DELETE: Self = Self::Named('-');
     pub const BLACKHOLE: Self = Self::Named('_');
     pub const LAST_INSERT: Self = Self::Named('.');
@@ -164,17 +173,9 @@ impl Registers {
         self.last_insert = ops;
     }
 
-    pub fn record_delete(&mut self, data: RegisterData) {
-        for i in (2..Self::NUM_REGS).rev() {
-            let data = std::mem::take(&mut self.numbered[i as usize - 1]);
-            self.numbered[i as usize] = data;
-        }
-        self.numbered[1] = Some(data);
-    }
-
-    pub fn write(&mut self, reg: Register, data: RegisterData) {
+    fn write(&mut self, reg: Register, data: RegisterData) {
         match reg {
-            Register::Unnamed => self.unnamed = Some(data),
+            Register::Unnamed | Register::EXPLICIT_UNNAMED => self.unnamed = Some(data),
             Register::Named(c) => {
                 self.named.insert(c, data);
             }
@@ -197,6 +198,14 @@ impl Registers {
         }
     }
 
+    fn shift(&mut self, data: RegisterData) {
+        for i in (2..Self::NUM_REGS).rev() {
+            let data = std::mem::take(&mut self.numbered[i as usize - 1]);
+            self.numbered[i as usize] = data;
+        }
+        self.numbered[1] = Some(data);
+    }
+
     pub fn read(&self, reg: Register) -> Option<&RegisterData> {
         match reg {
             Register::Unnamed => self.unnamed.as_ref(),
@@ -209,12 +218,15 @@ impl Registers {
         &self.last_insert
     }
 
-    pub fn record_small_delete(&mut self, reg: Option<char>, deleted: String) {
+    pub fn record_delete(&mut self, reg: Option<char>, data: RegisterData) {
         match reg {
-            None => {
-                let data = RegisterData::char(deleted);
+            None | Some('"') => {
                 self.write(Register::Unnamed, data.clone());
-                self.write(Register::SMALL_DELETE, data);
+                if data.is_small() {
+                    self.write(Register::SMALL_DELETE, data);
+                } else {
+                    self.shift(data);
+                }
             }
             Some(r) => {
                 let r = Register::from(r);
@@ -222,8 +234,7 @@ impl Registers {
                     return;
                 }
 
-                let data = RegisterData::char(deleted);
-                self.record_delete(data.clone());
+                self.shift(data.clone());
                 self.write(Register::Unnamed, data.clone());
                 self.write(r, data);
             }

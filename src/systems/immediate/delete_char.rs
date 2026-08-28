@@ -3,7 +3,7 @@ use std::ops::Range;
 
 use crate::{
     active_session_and_buffer,
-    components::{Coords, EditorCtx, MutBuffer, Registers},
+    components::{Coords, EditorCtx, MutBuffer, RegisterData, Registers},
     systems::{
         commons::{char_idx_to_coords, coords_to_char_idx, curr_line},
         insert::Damage,
@@ -12,7 +12,7 @@ use crate::{
 };
 
 // Delete chars at the current cursor position (x command)
-pub fn delete(ctx: &mut EditorCtx, reg: Option<char>, reps: usize) -> Damage {
+pub fn delete_char(ctx: &mut EditorCtx, reg: Option<char>, reps: usize) -> Damage {
     let rng = calc_delete_range(ctx, reps);
     let damage = small_delete(ctx, reg, reps, rng);
     ensure_cursor_inside_line(ctx);
@@ -105,5 +105,5 @@ fn record_small_delete(
     range: Range<usize>,
 ) {
     let deleted = rope.slice(range).to_string();
-    registers.record_small_delete(reg, deleted);
+    registers.record_delete(reg, RegisterData::char(deleted));
 }

@@ -29,6 +29,7 @@ pub fn coords_to_char_idx(
     let line_idx = rope.line_to_char(coords.row);
     let display_line = curr_line(config, rope, buf_view);
     let col_idx = display_line.col_to_char_idx(coords.col);
+
     line_idx + col_idx
 }
 
@@ -38,6 +39,10 @@ pub fn char_idx_to_coords(
     buf_view: &mut BufferView,
     char_idx: usize,
 ) -> Coords {
+    if rope.len_chars() == 0 {
+        return Coords::new(0, 0);
+    }
+
     let line_idx = rope.char_to_line(char_idx);
     let start_idx = rope.line_to_char(line_idx);
     let line = buf_view.display_buf.ensure_line(config, rope, line_idx);
@@ -56,4 +61,24 @@ pub fn snap_coords(config: &Config, rope: &Rope, buf_view: &mut BufferView, coor
     buf_view.cursor.row = coords.row;
     buf_view.cursor.col = col;
     buf_view.target_col = col;
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use std::assert_eq;
+
+    #[test]
+    fn test_eof_border() {
+        let config = Config::default();
+        let rope = Rope::from_str("a\n\n");
+        let mut buf_view = BufferView::empty();
+        let coords = Coords::new(2, 0);
+
+        let char_idx = coords_to_char_idx(&config, &rope, &mut buf_view, coords);
+        assert_eq!(char_idx, rope.len_chars());
+
+        let new_coords = char_idx_to_coords(&config, &rope, &mut buf_view, char_idx);
+        assert_eq!(new_coords, coords);
+    }
 }

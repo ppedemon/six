@@ -331,6 +331,10 @@ pub fn next_big_word(rope: &Rope, char_idx: usize) -> usize {
         c = rope.char(char_idx);
     }
 
+    if char_idx == max_idx && rope.char(char_idx) == '\n' {
+        char_idx += 1;
+    }
+
     char_idx
 }
 
@@ -358,6 +362,10 @@ pub fn next_sub_word(rope: &Rope, char_idx: usize) -> usize {
     while char_idx < max_idx && c.is_whitespace() {
         char_idx += 1;
         c = rope.char(char_idx);
+    }
+
+    if char_idx == max_idx && rope.char(char_idx) == '\n' {
+        char_idx += 1;
     }
 
     char_idx
@@ -433,6 +441,10 @@ pub fn end_big_word(rope: &Rope, char_idx: usize) -> usize {
         c = rope.char(char_idx.saturating_add(1).min(max_idx));
     }
 
+    if char_idx == max_idx && rope.char(char_idx) == '\n' {
+        char_idx += 1;
+    }
+
     char_idx
 }
 
@@ -460,6 +472,10 @@ pub fn end_sub_word(rope: &Rope, char_idx: usize) -> usize {
             char_idx += 1;
             c = rope.char(char_idx.saturating_add(1).min(max_idx));
         }
+    }
+
+    if char_idx == max_idx && rope.char(char_idx) == '\n' {
+        char_idx += 1;
     }
 
     char_idx

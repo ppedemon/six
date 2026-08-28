@@ -3,17 +3,19 @@ use crate::{
     cmd::{Arg, Cmd, ImmediateOp, Motion},
     components::{EditorCtx, Register},
     systems::{
+        immediate::delete::delete,
         insert::{Damage, DamageEvent, broadcast_damage},
         nav::utils::ensure_cursor_inside_line,
     },
 };
 
+mod delete;
 mod delete_char;
 mod join;
 mod paste;
 mod yank;
 
-use delete_char::{backspace, delete};
+use delete_char::{backspace, delete_char};
 use join::join;
 use paste::{PasteMode, paste};
 use yank::yank;
@@ -51,8 +53,8 @@ pub fn handle_immediate(ctx: &mut EditorCtx, args: ImmediateArgs) {
     }
 
     let damage = match args.op {
-        ImmediateOp::Delete => {
-            let damage = delete(ctx, args.cmd.reg, args.cmd.reps.unwrap_or(1));
+        ImmediateOp::DeleteChar => {
+            let damage = delete_char(ctx, args.cmd.reg, args.cmd.reps.unwrap_or(1));
             ensure_cursor_inside_line(ctx);
             damage
         }
@@ -68,18 +70,9 @@ pub fn handle_immediate(ctx: &mut EditorCtx, args: ImmediateArgs) {
             yank(ctx, fake_args.cmd);
             Damage::Intact
         }
-        ImmediateOp::Paste => paste(
-            ctx,
-            args.cmd.reg,
-            args.cmd.reps.unwrap_or(1),
-            PasteMode::After,
-        ),
-        ImmediateOp::PasteBefore => paste(
-            ctx,
-            args.cmd.reg,
-            args.cmd.reps.unwrap_or(1),
-            PasteMode::Before,
-        ),
+        ImmediateOp::Paste => paste(ctx, args.cmd, PasteMode::After),
+        ImmediateOp::PasteBefore => paste(ctx, args.cmd, PasteMode::Before),
+        ImmediateOp::Delete => delete(ctx, args.cmd),
     };
 
     let (session, _) = active_session!(ctx);

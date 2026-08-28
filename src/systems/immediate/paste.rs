@@ -3,6 +3,7 @@ use std::{borrow::Cow, format};
 
 use crate::{
     active_session_and_buffer,
+    cmd::Cmd,
     components::{
         Buffer, BufferView, Config, Coords, EditorCtx, Level, MutBuffer, Register, RegisterData,
     },
@@ -20,11 +21,14 @@ pub enum PasteMode {
     After,
 }
 
-pub fn paste(ctx: &mut EditorCtx, reg: Option<char>, reps: usize, mode: PasteMode) -> Damage {
+pub fn paste(ctx: &mut EditorCtx, cmd: Cmd, mode: PasteMode) -> Damage {
+    let reg = cmd.reg;
+    let reps = cmd.reps.unwrap_or(1);
+
     let (_, buf_view, buffer) = active_session_and_buffer!(mut ctx);
     let r = reg.map_or(Register::Unnamed, Register::from);
 
-    if r == Register::Named('.') {
+    if r == Register::LAST_INSERT {
         return paste_last_insert(ctx, reps, mode);
     }
 

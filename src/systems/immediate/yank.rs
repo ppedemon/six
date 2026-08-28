@@ -29,7 +29,7 @@ pub fn yank(ctx: &mut EditorCtx, cmd: Cmd) {
     };
 }
 
-fn motion_yank(
+pub fn motion_yank(
     ctx: &mut EditorCtx,
     m: Motion,
     cmd_reps: usize,
