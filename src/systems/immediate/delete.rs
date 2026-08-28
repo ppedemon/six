@@ -63,6 +63,5 @@ fn delete_data(ctx: &mut EditorCtx, reg_data: &RegisterData) -> Damage {
 
 fn notity_delete(ctx: &mut EditorCtx, reg_data: &RegisterData) {
     let (_, _, buffer) = active_session_and_buffer!(ctx);
-    let empty = buffer.rope().len_lines();
-    event::on_delete(&mut ctx.status, reg_data, buffer.rope().len_lines() == 0);
+    event::on_delete(&mut ctx.status, reg_data, buffer.rope().len_chars() == 0);
 }

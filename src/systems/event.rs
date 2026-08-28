@@ -1,4 +1,4 @@
-use std::format;
+use std::{format, matches};
 
 use ropey::{Rope, RopeSlice};
 
@@ -88,11 +88,11 @@ pub fn on_paste(status: &mut Status, reg_data: &RegisterData, reps: usize) {
 }
 
 pub fn on_delete(status: &mut Status, reg_data: &RegisterData, is_empty: bool) {
-    if is_empty {
-        status.set_msg(Level::Info, "-- No lines in buffer --");
-    } else {
-        match reg_data {
-            RegisterData::Char { data } | RegisterData::Line { data } => {
+    match reg_data {
+        RegisterData::Char { data } | RegisterData::Line { data } => {
+            if !matches!(reg_data, RegisterData::Char { .. }) && is_empty {
+                status.set_msg(Level::Info, "-- No lines in buffer --");
+            } else {
                 let lines = data.lines().count();
                 if lines > 2 {
                     let msg = format!("{lines} lines deleted");
@@ -101,7 +101,7 @@ pub fn on_delete(status: &mut Status, reg_data: &RegisterData, is_empty: bool) {
                     status.clear_msg();
                 }
             }
-            RegisterData::Block { data } => status.clear_msg(),
-        };
-    }
+        }
+        RegisterData::Block { data } => status.clear_msg(),
+    };
 }
