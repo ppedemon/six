@@ -73,6 +73,25 @@ pub fn select_charwise(
     span: (Coords, Coords),
     inclusive: bool,
 ) -> RegisterData {
+    let mut selection = basic_charwise_select(ctx, span, inclusive);
+
+    while selection.ends_with('\n') {
+        selection.pop();
+    }
+
+    RegisterData::char(selection)
+}
+
+pub fn select_charwise_nl(
+    ctx: &mut EditorCtx,
+    span: (Coords, Coords),
+    inclusive: bool,
+) -> RegisterData {
+    let selection = basic_charwise_select(ctx, span, inclusive);
+    RegisterData::char(selection)
+}
+
+fn basic_charwise_select(ctx: &mut EditorCtx, span: (Coords, Coords), inclusive: bool) -> String {
     let (mut start, mut end) = span;
     let (_, buf_view, buffer) = active_session_and_buffer!(mut ctx);
     let rope = buffer.rope();
@@ -89,8 +108,7 @@ pub fn select_charwise(
     let start_idx = coords_to_char_idx(&ctx.config, buffer.rope(), buf_view, start);
     let end_idx = coords_to_char_idx(&ctx.config, buffer.rope(), buf_view, end);
 
-    let selection = safe_slice(rope, start_idx, end_idx);
-    RegisterData::char(selection)
+    safe_slice(rope, start_idx, end_idx)
 }
 
 pub fn select_linewise(ctx: &mut EditorCtx, span: (Coords, Coords)) -> RegisterData {

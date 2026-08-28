@@ -5,7 +5,8 @@ use crate::{
     systems::{
         event,
         nav::{
-            charwise, exec_motion, inclusive, select_blockwise, select_charwise, select_linewise,
+            charwise, exec_motion, inclusive, select_blockwise, select_charwise,
+            select_charwise_nl, select_linewise,
         },
     },
 };
@@ -58,7 +59,16 @@ pub fn motion_yank(
 
     let span = (extent.start, extent.end);
     let reg_data = match forced_mode.unwrap_or(orig_mode) {
-        MotionMode::Charwise => select_charwise(ctx, span, inclusive),
+        MotionMode::Charwise => {
+            // We keep trailing '\n' in a charwise selection only if charwise is forced
+            if forced_mode.is_some_and(|mode| mode == MotionMode::Charwise)
+                && orig_mode != MotionMode::Charwise
+            {
+                select_charwise_nl(ctx, span, inclusive)
+            } else {
+                select_charwise(ctx, span, inclusive)
+            }
+        }
         MotionMode::Linewise => select_linewise(ctx, span),
         MotionMode::Blockwise => select_blockwise(ctx, span),
     };
