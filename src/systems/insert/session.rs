@@ -92,6 +92,11 @@ pub fn broadcast_damage(ctx: &mut EditorCtx, damage_evt: DamageEvent) {
                         .display_buf
                         .patch_range(&ctx.config, buffer.rope(), row..row + 1);
                 }
+                Damage::Range(lo, hi) => {
+                    buf_view
+                        .display_buf
+                        .patch_range(&ctx.config, buffer.rope(), lo..hi)
+                }
                 Damage::From(row) => buf_view.display_buf.destroy_from(row),
             }
 

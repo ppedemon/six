@@ -20,12 +20,12 @@ fn get_insert_log(ctx: &mut EditorCtx) -> (Vec<EditOp>, bool) {
 
 fn commit_to_regs(ctx: &mut EditorCtx, insert_log: Vec<EditOp>) {
     // Open commands add a leading Enter that we don't want to store in the ". register
-    let ops = if is_open_cmd(ctx.repbuf.last_cmd()) {
-        &insert_log[1..]
-    } else {
-        &insert_log
-    };
-    ctx.registers.commit_insert_log(ops.to_vec());
+    // let ops = if is_open_cmd(ctx.repbuf.last_cmd()) {
+    //     &insert_log[1..]
+    // } else {
+    //     &insert_log
+    // };
+    ctx.registers.commit_insert_log(insert_log);
 }
 
 fn is_open_cmd(cmd: Option<Cmd>) -> bool {

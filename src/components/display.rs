@@ -19,6 +19,7 @@ impl Default for Span {
     }
 }
 
+#[derive(Debug)]
 pub struct DisplayLine {
     text: String,
     byte_offsets: Vec<usize>,
@@ -523,6 +524,7 @@ impl DisplayBuffer {
     }
 }
 
+#[derive(Debug)]
 pub enum DisplayLineRef<'a> {
     Borrowed(&'a DisplayLine),
     Owned(DisplayLine),

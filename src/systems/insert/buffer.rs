@@ -8,6 +8,7 @@ use crate::systems::nav::{InsertNav, move_down, move_right, move_up};
 pub enum Damage {
     Intact,
     Line(usize),
+    Range(usize, usize),
     From(usize),
 }
 

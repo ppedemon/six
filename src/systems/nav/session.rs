@@ -148,6 +148,8 @@ fn session_nav<R: NavRules>(
         Motion::FirstNonBlankInLine => buffer::line_first_non_blank::<R>(config, rope, buf_view),
         Motion::StartOfLine => buffer::start_of_line::<R>(config, rope, buf_view),
         Motion::EndOfLine => buffer::end_of_line::<R>(config, rope, buf_view),
+        Motion::EndOfLinePlusOne => buffer::end_of_line::<InsertNav>(config, rope, buf_view),
+        
         Motion::FirstNonBlankInFile => buffer::file_first_non_blank::<R>(config, rope, buf_view),
         Motion::StartOfFile => buffer::start_of_file::<R>(config, rope, buf_view),
         Motion::EndOfFile => buffer::end_of_file::<R>(config, rope, buf_view),

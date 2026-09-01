@@ -30,6 +30,7 @@ pub enum Motion {
     FirstNonBlankInLine,
     StartOfLine,
     EndOfLine,
+    EndOfLinePlusOne, // Non-parseable, only for internal use
 
     // File-based
     FirstNonBlankInFile,

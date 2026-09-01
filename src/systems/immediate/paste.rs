@@ -1,5 +1,5 @@
 use ropey::Rope;
-use std::{borrow::Cow, format};
+use std::{borrow::Cow, format, panic};
 
 use crate::{
     active_session_and_buffer,
@@ -194,9 +194,8 @@ fn paste_blockwise(
     data: &[String],
 ) -> Damage {
     let cursor = buf_view.cursor;
-    let cursor_idx = cursor_to_char_idx(config, buf_view, buffer.rope());
-
     let line = curr_line(config, buffer.rope(), buf_view);
+
     let anchor_col = match line.grapheme_at(cursor.col) {
         None => line.display_width,
         Some((_, span)) => {
@@ -210,7 +209,13 @@ fn paste_blockwise(
 
     let data = mk_block_data(data, reps);
 
-    // Add missing lines
+    let damage = if cursor.row + data.len() > buffer.rope().len_lines() {
+        Damage::From(cursor.row)
+    } else {
+        Damage::Range(cursor.row, cursor.row + data.len())
+    };
+
+    // Add missing lines if necessary
     for _ in buffer.rope().len_lines()..cursor.row + data.len() {
         let idx = buffer.rope().len_chars();
         buffer.edit().insert_char(idx, '\n');
@@ -234,7 +239,7 @@ fn paste_blockwise(
                 .edit()
                 .insert(last_idx + anchor_col - buf_line.display_width, &line);
         } else {
-            let (g, span) = buf_line.grapheme_at(anchor_col).unwrap();
+            let (_, span) = buf_line.grapheme_at(anchor_col).unwrap();
             let g_idx = line_idx + buf_line.col_to_char_idx(span.start);
 
             // anchor_col falls inside a wide grapheme:
@@ -261,11 +266,19 @@ fn paste_blockwise(
         }
     }
 
+    match damage {
+        Damage::Range(lo, hi) => buf_view
+            .display_buf
+            .patch_range(config, buffer.rope(), lo..hi),
+        Damage::From(row) => buf_view.display_buf.destroy_from(cursor.row),
+        _ => panic!("Impossible damage: {damage:?}"),
+    }
+
     buf_view.display_buf.destroy_from(cursor.row);
     buf_view.cursor = Coords::new(cursor.row, anchor_col);
     buf_view.target_col = anchor_col;
 
-    Damage::From(cursor.row)
+    damage
 }
 
 fn mk_block_data(data: &[String], reps: usize) -> Cow<'_, [String]> {
