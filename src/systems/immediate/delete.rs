@@ -37,7 +37,7 @@ fn delete_data(ctx: &mut EditorCtx, reg_data: &RegisterData) -> Damage {
     match reg_data {
         RegisterData::Char { data } => delete_charwise(ctx, data),
         RegisterData::Line { data } => delete_linewise(ctx, data),
-        RegisterData::Block { data } => delete_blockwise(ctx, data),
+        RegisterData::Block { data, idxs } => delete_blockwise(ctx, data, idxs),
     }
 }
 
@@ -91,96 +91,82 @@ fn delete_linewise(ctx: &mut EditorCtx, data: &str) -> Damage {
 // This ended up being SUPER complicated... is it possible to simplify via an alternative approach?
 // All options I tried ended up being a bug farm because of off-by-ones and incorrect assumptions.
 // As complex as it is, this implementation seems to work.
-fn delete_blockwise(ctx: &mut EditorCtx, data: &[String]) -> Damage {
+fn delete_blockwise(ctx: &mut EditorCtx, data: &[String], idxs: &[(usize, usize)]) -> Damage {
     let (_, buf_view, buffer) = active_session_and_buffer!(mut ctx);
     let cursor = buf_view.cursor;
 
+    let mut deleted_chars = 0;
+    let mut padding = 0;
+
     for (i, line) in data.iter().enumerate() {
-        if line.len() == 0 {
+        if line.is_empty() {
             continue;
         }
 
+        let first_c = line.chars().next().unwrap();
+        let last_c = line.chars().last().unwrap();
+
+        let (start_idx, end_idx) = {
+            let (start_idx, end_idx) = idxs[i];
+            (
+                start_idx - deleted_chars + padding,
+                end_idx - deleted_chars + padding,
+            )
+        };
+
+        // Trivial case: line matches exactly the slice to be deleted
+        if buffer.rope().char(start_idx) == first_c && buffer.rope().char(end_idx - 1) == last_c {
+            buffer.edit().remove(start_idx..end_idx);
+            deleted_chars += end_idx - start_idx;
+            continue;
+        }
+
+        // Oh my, initial and/or final chars don't match because of wide chars: must compute padding
+        let line_len = line.chars().count();
+
         let curr_row = cursor.row + i;
+        let line_idx = buffer.rope().line_to_char(curr_row);
         let buf_line = buf_view
             .display_buf
             .ensure_line(&ctx.config, buffer.rope(), curr_row);
 
-        let line_idx = buffer.rope().line_to_char(curr_row);
-        let char_idx = buf_line.col_to_char_idx(cursor.col);
-        let start_idx = line_idx + char_idx;
-        let end_idx = start_idx + line.chars().count().saturating_sub(1);
+        let (_, lspan) = buf_line.grapheme_at(cursor.col).unwrap();
+        let (_, rspan) = buf_line
+            .grapheme_at(buf_line.char_idx_to_col(end_idx - line_idx - 1))
+            .unwrap();
 
-        let first = line.chars().next().unwrap();
-        let last = line.chars().last().unwrap();
+        let mut pad = 0;
 
-        // Trivial case: line matches exactly the slice to be deleted
-        if buffer.rope().char(start_idx) == first && buffer.rope().char(end_idx) == last {
-            buffer.edit().remove(start_idx..end_idx + 1);
-            continue;
-        }
-
-        // Oh, my... initial and/or final chars don't match because of wide chars
-
-        // We use spaces to deal with wide chars, so line has to start or end with spaces
-        let llen = line.chars().take_while(|c| *c == ' ').count();
-        let rlen = line.chars().rev().take_while(|c| *c == ' ').count();
-        assert!(llen > 0 || rlen > 0);
-
-        // And the rope has to differ from the line at some end
-        let rope_first = buffer.rope().char(start_idx);
-        let rope_last = buffer.rope().char(end_idx);
-        assert!(first != rope_first || last != rope_last);
-
-        // Left span
-        let rope_idx = start_idx - line_idx;
-        let col = buf_line.char_idx_to_col(rope_idx);
-        let (_, lspan) = buf_line.grapheme_at(col).unwrap();
-
-        // Right span
-        let rope_idx = end_idx - line_idx;
-        let col = buf_line.char_idx_to_col(rope_idx);
-        let (_, rspan) = buf_line.grapheme_at(col).unwrap();
-
-        // Special case: contiguous spaces for a sequence of wide chars
-        if llen == line.len() && rlen == line.len() {
-            let start_idx = line_idx + buf_line.col_to_char_idx(lspan.start);
-            let end_idx = line_idx + buf_line.col_to_char_idx(rspan.end);
-            buffer.edit().remove(start_idx..end_idx);
-            buffer
-                .edit()
-                .insert(start_idx, &" ".repeat(rspan.end - lspan.start - llen));
-            continue;
-        }
-
-        // Deal with left end
-        let (pad_left, start_idx) = if first != rope_first {
-            if rope_first == '\t' {
-                (lspan.end - lspan.start - llen, start_idx)
-            } else {
-                (0, line_idx + buf_line.col_to_char_idx(lspan.start))
+        if lspan == rspan {
+            // Line to delete is included in a single wide grapheme. If it's a tag, padding is whatever overflows the line
+            let char_idx = line_idx + buf_line.col_to_char_idx(lspan.start);
+            if buffer.rope().char(char_idx) == '\t' {
+                pad = lspan.end - lspan.start - line.chars().count();
             }
         } else {
-            (0, start_idx)
-        };
-
-        // Deal with right end
-        let (pad_right, end_idx) = if last != rope_last {
-            if rope_last == '\t' {
-                (rspan.end - rspan.start - rlen, end_idx + 1)
-            } else {
-                (0, line_idx + buf_line.col_to_char_idx(rspan.end))
+            let mut lspaces = line.chars().take_while(|c| *c == ' ').count();
+            let mut rspaces = line.chars().rev().take_while(|c| *c == ' ').count();
+            if lspaces == line_len && rspaces == line_len {
+                lspaces = lspan.end - cursor.col;
+                rspaces = line_len - lspaces;
             }
-        } else {
-            (0, end_idx + 1)
-        };
+
+            let char_idx = line_idx + buf_line.col_to_char_idx(lspan.start);
+            if buffer.rope().char(char_idx) == '\t' {
+                pad += lspan.end - lspan.start - lspaces;
+            }
+
+            let char_idx = line_idx + buf_line.col_to_char_idx(rspan.start);
+            if buffer.rope().char(char_idx) == '\t' {
+                pad += rspan.end - rspan.start - rspaces;
+            }
+        }
 
         buffer.edit().remove(start_idx..end_idx);
+        buffer.edit().insert(start_idx, &" ".repeat(pad));
 
-        if pad_left + pad_right > 0 {
-            buffer
-                .edit()
-                .insert(start_idx, &" ".repeat(pad_left + pad_right));
-        }
+        deleted_chars += end_idx - start_idx;
+        padding += pad;
     }
 
     buf_view.display_buf.patch_range(

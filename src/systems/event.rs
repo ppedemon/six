@@ -40,7 +40,7 @@ pub fn on_yank(status: &mut Status, reg_data: &RegisterData) {
                 status.clear_msg();
             }
         }
-        RegisterData::Block { data } => {
+        RegisterData::Block { data, .. } => {
             if data.len() > 2 {
                 let mut lens = data.iter().map(String::len);
                 let perfect = match lens.next() {
@@ -83,7 +83,7 @@ pub fn on_paste(status: &mut Status, reg_data: &RegisterData, reps: usize) {
                 status.clear_msg();
             }
         }
-        RegisterData::Block { data } => status.clear_msg(),
+        RegisterData::Block { .. } => status.clear_msg(),
     }
 }
 
@@ -102,6 +102,6 @@ pub fn on_delete(status: &mut Status, reg_data: &RegisterData, is_empty: bool) {
                 status.clear_msg();
             }
         }
-        RegisterData::Block { data } => status.clear_msg(),
+        RegisterData::Block { .. } => status.clear_msg(),
     };
 }

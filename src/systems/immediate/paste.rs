@@ -49,7 +49,7 @@ pub fn paste(ctx: &mut EditorCtx, cmd: Cmd, mode: PasteMode) -> Damage {
                 RegisterData::Line { data } => {
                     paste_linewise(&ctx.config, buf_view, buffer, reps, mode, data.as_ref())
                 }
-                RegisterData::Block { data } => {
+                RegisterData::Block { data, .. } => {
                     paste_blockwise(&ctx.config, buf_view, buffer, reps, mode, data)
                 }
             };

@@ -150,12 +150,21 @@ pub fn select_blockwise(ctx: &mut EditorCtx, span: (Coords, Coords)) -> Register
     let br = Coords::new(start.row.max(end.row) + 1, start.col.max(end.col) + 1);
 
     let mut rows = Vec::with_capacity(br.row - tl.row);
+    let mut idxs = Vec::with_capacity(br.row - tl.row);
 
     for row in tl.row..br.row {
-        let mut curr_row = String::with_capacity(br.col - tl.col);
+        let line_idx = rope.line_to_char(row);
         let line = buf_view.display_buf.ensure_line(&ctx.config, rope, row);
 
+        let (mut start_idx, mut end_idx) = (line_idx, line_idx);
+        let mut curr_row = String::with_capacity(br.col - tl.col);
+
         for (g, span) in line.graphemes_between(tl.col, br.col) {
+            if span.start <= tl.col {
+                start_idx = line_idx + line.col_to_char_idx(span.start);
+            }
+            end_idx = line_idx + line.col_to_char_idx(span.end);
+
             if span.start < tl.col && span.end > br.col {
                 curr_row.extend(std::iter::repeat(' ').take(br.col - tl.col));
             } else if span.start < tl.col {
@@ -173,9 +182,10 @@ pub fn select_blockwise(ctx: &mut EditorCtx, span: (Coords, Coords)) -> Register
         }
 
         rows.push(curr_row);
+        idxs.push((start_idx, end_idx));
     }
 
-    RegisterData::block(rows)
+    RegisterData::block(rows, idxs)
 }
 
 // Move the given column one grapheme to the right if possible.
@@ -604,7 +614,18 @@ mod test_select_blockwise {
         let mut ctx = setup("", Coords::default());
         let span = (Coords::default(), Coords::default());
         let data = select_blockwise(&mut ctx, span);
-        assert_eq!(data, RegisterData::block(vec!["".into()]));
+        assert_eq!(data, RegisterData::block(vec!["".into()], vec![(0, 0)]));
+
+        let mut ctx = setup("\n\n\n", Coords::default());
+        let span = (Coords::default(), Coords::new(3, 0));
+        let data = select_blockwise(&mut ctx, span);
+        assert_eq!(
+            data,
+            RegisterData::block(
+                vec!["".into(), "".into(), "".into(), "".into()],
+                vec![(0, 0), (1, 1), (2, 2), (3, 3)]
+            )
+        );
     }
 
     #[test]
@@ -613,21 +634,38 @@ mod test_select_blockwise {
         let mut ctx = setup("foo bar\nbaz baz\nword1 word2", Coords::default());
         let span = (Coords::new(0, 4), Coords::new(0, 4));
         let data = select_blockwise(&mut ctx, span);
-        assert_eq!(data, RegisterData::block(vec!["b".into()]));
+        assert_eq!(data, RegisterData::block(vec!["b".into()], vec![(4, 5)]));
 
         // Single line
         let mut ctx = setup("foo bar\nbaz baz\nword1 word2", Coords::default());
         let span = (Coords::default(), Coords::new(0, 2));
         let data = select_blockwise(&mut ctx, span);
-        assert_eq!(data, RegisterData::block(vec!["foo".into()]));
+        assert_eq!(data, RegisterData::block(vec!["foo".into()], vec![(0, 3)]));
 
-        // Single column
+        // // Single column
         let mut ctx = setup("foo bar\nbaz baz\nword1 word2", Coords::default());
         let span = (Coords::new(0, 4), Coords::new(2, 4));
         let data = select_blockwise(&mut ctx, span);
         assert_eq!(
             data,
-            RegisterData::block(vec!["b".into(), "b".into(), "1".into()])
+            RegisterData::block(
+                vec!["b".into(), "b".into(), "1".into()],
+                vec![(4, 5), (12, 13), (20, 21)]
+            )
+        );
+    }
+
+    #[test]
+    fn test_all() {
+        let mut ctx = setup("aaaaaa\nbbbbbb", Coords::default());
+        let span = (Coords::default(), Coords::new(1, 5));
+        let data = select_blockwise(&mut ctx, span);
+        assert_eq!(
+            data,
+            RegisterData::block(
+                vec!["aaaaaa".into(), "bbbbbb".into()],
+                vec![(0, 6), (7, 13)]
+            ),
         );
     }
 
@@ -637,25 +675,37 @@ mod test_select_blockwise {
         let mut ctx = setup("aaaaaa\nbbbbbb", Coords::default());
         let span = (Coords::new(0, 2), Coords::new(1, 3));
         let data = select_blockwise(&mut ctx, span);
-        assert_eq!(data, RegisterData::block(vec!["aa".into(), "bb".into()]));
+        assert_eq!(
+            data,
+            RegisterData::block(vec!["aa".into(), "bb".into()], vec![(2, 4), (9, 11)]),
+        );
 
         // TR → BL
         let mut ctx = setup("aaaaaa\nbbbbbb", Coords::default());
         let span = (Coords::new(0, 3), Coords::new(1, 2));
         let data = select_blockwise(&mut ctx, span);
-        assert_eq!(data, RegisterData::block(vec!["aa".into(), "bb".into()]));
+        assert_eq!(
+            data,
+            RegisterData::block(vec!["aa".into(), "bb".into()], vec![(2, 4), (9, 11)]),
+        );
 
         // BR → TL
         let mut ctx = setup("aaaaaa\nbbbbbb", Coords::default());
         let span = (Coords::new(1, 3), Coords::new(0, 2));
         let data = select_blockwise(&mut ctx, span);
-        assert_eq!(data, RegisterData::block(vec!["aa".into(), "bb".into()]));
+        assert_eq!(
+            data,
+            RegisterData::block(vec!["aa".into(), "bb".into()], vec![(2, 4), (9, 11)]),
+        );
 
         // BL → TR
         let mut ctx = setup("aaaaaa\nbbbbbb", Coords::default());
         let span = (Coords::new(1, 2), Coords::new(0, 3));
         let data = select_blockwise(&mut ctx, span);
-        assert_eq!(data, RegisterData::block(vec!["aa".into(), "bb".into()]));
+        assert_eq!(
+            data,
+            RegisterData::block(vec!["aa".into(), "bb".into()], vec![(2, 4), (9, 11)]),
+        );
     }
 
     #[test]
@@ -665,7 +715,10 @@ mod test_select_blockwise {
         let data = select_blockwise(&mut ctx, span);
         assert_eq!(
             data,
-            RegisterData::block(vec!["bar".into(), "".into(), "1 w".into()])
+            RegisterData::block(
+                vec!["bar".into(), "".into(), "1 w".into()],
+                vec![(4, 7), (8, 8), (13, 16)]
+            )
         );
     }
 
@@ -676,7 +729,10 @@ mod test_select_blockwise {
         let data = select_blockwise(&mut ctx, span);
         assert_eq!(
             data,
-            RegisterData::block(vec!["aaaa".into(), "    ".into(), "aaaa".into()])
+            RegisterData::block(
+                vec!["aaaa".into(), "    ".into(), "aaaa".into()],
+                vec![(2, 6), (11, 12), (16, 20)]
+            )
         );
     }
 
@@ -687,7 +743,10 @@ mod test_select_blockwise {
         let data = select_blockwise(&mut ctx, span);
         assert_eq!(
             data,
-            RegisterData::block(vec!["aaaaa".into(), "    |".into(), "aaaaa".into()])
+            RegisterData::block(
+                vec!["aaaaa".into(), "    |".into(), "aaaaa".into()],
+                vec![(4, 9), (11, 13), (18, 23)]
+            )
         );
     }
 
@@ -698,7 +757,10 @@ mod test_select_blockwise {
         let data = select_blockwise(&mut ctx, span);
         assert_eq!(
             data,
-            RegisterData::block(vec!["aaaa".into(), "|   ".into(), "aaaa".into()])
+            RegisterData::block(
+                vec!["aaaa".into(), "|   ".into(), "aaaa".into()],
+                vec![(0, 4), (10, 12), (14, 18)]
+            )
         );
     }
 
@@ -709,7 +771,21 @@ mod test_select_blockwise {
         let data = select_blockwise(&mut ctx, span);
         assert_eq!(
             data,
-            RegisterData::block(vec!["bbb".into(), "bbb".into(), "bbb".into()])
+            RegisterData::block(
+                vec!["bbb".into(), "bbb".into(), "bbb".into()],
+                vec![(4, 7), (16, 19), (28, 31)]
+            )
+        );
+
+        let mut ctx = setup("aaa bbb ccc\naaa bbb ccc\naaa bbb ccc", Coords::default());
+        let span = (Coords::new(0, 10), Coords::new(2, 10));
+        let data = select_blockwise(&mut ctx, span);
+        assert_eq!(
+            data,
+            RegisterData::block(
+                vec!["c".into(), "c".into(), "c".into()],
+                vec![(10, 11), (22, 23), (34, 35)]
+            )
         );
     }
 
@@ -720,7 +796,7 @@ mod test_select_blockwise {
         let data = select_blockwise(&mut ctx, span);
         assert_eq!(
             data,
-            RegisterData::block(vec!["o    ".into(), "  bar".into()])
+            RegisterData::block(vec!["o    ".into(), "  bar".into()], vec![(2, 4), (9, 17)])
         );
     }
 
@@ -731,7 +807,10 @@ mod test_select_blockwise {
         let data = select_blockwise(&mut ctx, span);
         assert_eq!(
             data,
-            RegisterData::block(vec!["o    ".into(), "".into(), "a".into(), "  bar".into()])
+            RegisterData::block(
+                vec!["o    ".into(), "".into(), "a".into(), "  bar".into()],
+                vec![(2, 4), (8, 8), (11, 12), (14, 22)],
+            )
         );
     }
 
@@ -742,7 +821,10 @@ mod test_select_blockwise {
         let data = select_blockwise(&mut ctx, span);
         assert_eq!(
             data,
-            RegisterData::block(vec!["foo".into(), "   ".into(), "bar".into()])
+            RegisterData::block(
+                vec!["foo".into(), "   ".into(), "bar".into()],
+                vec![(0, 3), (4, 5), (6, 9)]
+            )
         );
 
         let mut ctx = setup("foo\n\t\nbar", Coords::default());
@@ -750,7 +832,10 @@ mod test_select_blockwise {
         let data = select_blockwise(&mut ctx, span);
         assert_eq!(
             data,
-            RegisterData::block(vec!["oo".into(), "  ".into(), "ar".into()])
+            RegisterData::block(
+                vec!["oo".into(), "  ".into(), "ar".into()],
+                vec![(1, 3), (4, 5), (7, 9)]
+            )
         );
 
         let mut ctx = setup("foofoofoo\n\t\nbarbarbar", Coords::default());
@@ -758,7 +843,10 @@ mod test_select_blockwise {
         let data = select_blockwise(&mut ctx, span);
         assert_eq!(
             data,
-            RegisterData::block(vec!["foofoofo".into(), "\t".into(), "barbarba".into()])
+            RegisterData::block(
+                vec!["foofoofo".into(), "\t".into(), "barbarba".into()],
+                vec![(0, 8), (10, 11), (12, 20)]
+            )
         );
     }
 }

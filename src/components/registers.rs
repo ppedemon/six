@@ -4,9 +4,16 @@ use crate::cmd::EditOp;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RegisterData {
-    Char { data: String },
-    Line { data: String },
-    Block { data: Vec<String> },
+    Char {
+        data: String,
+    },
+    Line {
+        data: String,
+    },
+    Block {
+        data: Vec<String>,
+        idxs: Vec<(usize, usize)>,
+    },
 }
 
 impl RegisterData {
@@ -18,14 +25,14 @@ impl RegisterData {
         Self::Line { data }
     }
 
-    pub fn block(data: Vec<String>) -> Self {
-        Self::Block { data }
+    pub fn block(data: Vec<String>, idxs: Vec<(usize, usize)>) -> Self {
+        Self::Block { data, idxs }
     }
 
     pub fn is_empty(&self) -> bool {
         match self {
             RegisterData::Char { data } | RegisterData::Line { data } => data.is_empty(),
-            RegisterData::Block { data } => data.is_empty(),
+            RegisterData::Block { data, .. } => data.is_empty(),
         }
     }
 
@@ -33,7 +40,7 @@ impl RegisterData {
         match self {
             RegisterData::Line { data: _ } => false,
             RegisterData::Char { data } => data.lines().count() == 1,
-            RegisterData::Block { data } => data.len() == 1,
+            RegisterData::Block { data, .. } => data.len() == 1,
         }
     }
 
@@ -55,15 +62,15 @@ impl RegisterData {
             | (Self::Line { data }, Self::Line { data: other }) => Self::Line {
                 data: append(data, other),
             },
-            (Self::Block { data }, Self::Block { data: other }) => Self::Line {
+            (Self::Block { data, .. }, Self::Block { data: other, .. }) => Self::Line {
                 data: append(vstack(data), vstack(other)),
             },
-            (Self::Block { data }, Self::Line { data: other })
-            | (Self::Block { data }, Self::Char { data: other }) => Self::Line {
+            (Self::Block { data, .. }, Self::Line { data: other, .. })
+            | (Self::Block { data, .. }, Self::Char { data: other, .. }) => Self::Line {
                 data: append(vstack(data), other),
             },
-            (Self::Line { data }, Self::Block { data: other })
-            | (Self::Char { data }, Self::Block { data: other }) => Self::Line {
+            (Self::Line { data }, Self::Block { data: other, .. })
+            | (Self::Char { data }, Self::Block { data: other, .. }) => Self::Line {
                 data: append(data, vstack(other)),
             },
         };
