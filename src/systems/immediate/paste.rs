@@ -8,7 +8,9 @@ use crate::{
         Buffer, BufferView, Config, Coords, EditorCtx, Level, MutBuffer, Register, RegisterData,
     },
     systems::{
-        commons::{char_idx_to_coords, coords_to_char_idx, curr_line, cursor_to_char_idx},
+        commons::{
+            char_idx_to_coords, coords_to_char_idx, curr_line, cursor_to_char_idx, snap_coords,
+        },
         event,
         insert::{self, Damage},
         nav::{self, InsertNav, utils::ensure_cursor_inside_line},
@@ -122,8 +124,7 @@ fn paste_charwise(
             buf_view,
             anchor_idx + rope.len_chars().saturating_sub(1),
         );
-        buf_view.cursor = new_coords;
-        buf_view.target_col = new_coords.col;
+        snap_coords(config, buffer.rope(), buf_view, new_coords);
     }
 
     damage
@@ -169,8 +170,7 @@ fn paste_linewise(
     buf_view.display_buf.destroy_from(repair_line_idx);
 
     let new_coords = char_idx_to_coords(config, buffer.rope(), buf_view, anchor_idx);
-    buf_view.cursor = new_coords;
-    buf_view.target_col = new_coords.col;
+    snap_coords(config, buffer.rope(), buf_view, new_coords);
 
     Damage::From(repair_line_idx)
 }
@@ -275,8 +275,8 @@ fn paste_blockwise(
     }
 
     buf_view.display_buf.destroy_from(cursor.row);
-    buf_view.cursor = Coords::new(cursor.row, anchor_col);
-    buf_view.target_col = anchor_col;
+    let coords = Coords::new(cursor.row, anchor_col);
+    snap_coords(config, buffer.rope(), buf_view, coords);
 
     damage
 }
