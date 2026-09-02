@@ -118,12 +118,16 @@ fn paste_charwise(
     };
 
     if rope.len_chars() > 0 {
-        let new_coords = char_idx_to_coords(
-            config,
-            buffer.rope(),
-            buf_view,
-            anchor_idx + rope.len_chars().saturating_sub(1),
-        );
+        let new_coords = if rope.len_lines() > 1 {
+            anchor_coords
+        } else {
+            char_idx_to_coords(
+                config,
+                buffer.rope(),
+                buf_view,
+                anchor_idx + rope.len_chars().saturating_sub(1),
+            )
+        };
         snap_coords(config, buffer.rope(), buf_view, new_coords);
     }
 

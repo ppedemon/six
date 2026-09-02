@@ -268,7 +268,9 @@ pub fn start_of_line<R: NavRules>(config: &Config, rope: &Rope, buf_view: &mut B
     buf_view.target_col = col;
 }
 
-pub fn end_of_line<R: NavRules>(config: &Config, rope: &Rope, buf_view: &mut BufferView) {
+pub fn end_of_line<R: NavRules>(config: &Config, rope: &Rope, buf_view: &mut BufferView, reps: usize) {
+    move_down::<R>(config, rope, buf_view, reps.saturating_sub(1));
+
     let line = curr_line(config, rope, buf_view);
     let col = R::max_allowed_width(&line);
     let col = R::snap_col(&line, col);

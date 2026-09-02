@@ -49,6 +49,7 @@ pub enum ImmediateOp {
     Paste,
     PasteBefore,
     Delete,
+    DeleteEol,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

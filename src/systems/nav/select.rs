@@ -43,10 +43,10 @@ pub fn exec_motion(
     let mut cmd_reps = cmd_reps;
     let mut arg_reps = arg_reps;
 
-    // Line motion (what you get in commands like yy or dd) is sort of a hack.
-    // To get proper emulation, you have to execute all the line motions in
-    // one sweep, so we move all the intended reps to arg_reps.
-    if m == Motion::Line {
+    // Line motion (what you get in commands like yy or dd, or $) are sort of a hack.
+    // To get proper emulation you have to execute all the line motions in one sweep,
+    // so we move all the intended reps to arg_reps.
+    if m == Motion::Line || m == Motion::EndOfLine {
         arg_reps *= cmd_reps;
         cmd_reps = 1;
     }
