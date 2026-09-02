@@ -15,6 +15,7 @@ Nothing too fancy. I'm using the following crates:
   * [ropey](https://crates.io/crates/ropey) for backing the text buffers
   * [unicode-segmentation](https://crates.io/crates/unicode-segmentation) and [unicode-width](https://crates.io/crates/unicode-width) for dealing with unicode text
   * [nom](https://crates.io/crates/nom) for parsing ex commands
+  * [ratatui](https://ratatui.rs) and [corssterm](https://crates.io/crates/crossterm) for dealing with the terminal without loosing my mind
 
 ---
 Crafted by ppedemon (☹️🍅)
