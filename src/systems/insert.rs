@@ -2,7 +2,6 @@ mod buffer;
 mod log;
 mod post_insert;
 mod session;
-pub mod utils;
 
 pub use buffer::{Damage, insert_char};
 pub use log::apply_insert_log;

@@ -22,7 +22,6 @@ pub enum ExMode {
 pub enum SysOp {
     EnterNormal,
     EnterEx(ExMode),
-    EnterInsert(InsertPoint),
     HardQuit,
     CondWriteAndQuit,
     AddLocalMark(char),
@@ -33,6 +32,7 @@ pub enum SysOp {
 // TODO add c,C,s
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InteractiveOp {
+    EnterInsert(InsertPoint),
     OpenAbove,
     OpenBelow,
 }

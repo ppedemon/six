@@ -71,10 +71,6 @@ fn ok_needy_op<T: Into<Operator>>(t: T) -> ParseResult<OpSpec> {
 
 static OP_TRIE: LazyLock<Trie<KeyEvent, ParseResult<OpSpec>>> = LazyLock::new(|| {
     let mut t = Trie::new();
-    t.insert(&[char('i')], ok_op(SysOp::EnterInsert(InsertPoint::Curr)));
-    t.insert(&[char('I')], ok_op(SysOp::EnterInsert(InsertPoint::First)));
-    t.insert(&[char('a')], ok_op(SysOp::EnterInsert(InsertPoint::Next)));
-    t.insert(&[char('A')], ok_op(SysOp::EnterInsert(InsertPoint::Last)));
     t.insert(&[char(':')], ok_op(SysOp::EnterEx(ExMode::Colon)));
     t.insert(&[char('/')], ok_op(SysOp::EnterEx(ExMode::SearchForward)));
     t.insert(&[char('/')], ok_op(SysOp::EnterEx(ExMode::SearchForward)));
@@ -85,6 +81,22 @@ static OP_TRIE: LazyLock<Trie<KeyEvent, ParseResult<OpSpec>>> = LazyLock::new(||
         wants_arg(|evt| parse_mark(evt).map(|c| op(SysOp::AddLocalMark(c)))),
     );
 
+    t.insert(
+        &[char('i')],
+        ok_op(InteractiveOp::EnterInsert(InsertPoint::Curr)),
+    );
+    t.insert(
+        &[char('I')],
+        ok_op(InteractiveOp::EnterInsert(InsertPoint::First)),
+    );
+    t.insert(
+        &[char('a')],
+        ok_op(InteractiveOp::EnterInsert(InsertPoint::Next)),
+    );
+    t.insert(
+        &[char('A')],
+        ok_op(InteractiveOp::EnterInsert(InsertPoint::Last)),
+    );
     t.insert(&[char('O')], ok_op(InteractiveOp::OpenAbove));
     t.insert(&[char('o')], ok_op(InteractiveOp::OpenBelow));
 

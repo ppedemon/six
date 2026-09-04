@@ -81,3 +81,23 @@ impl Cmd {
         self
     }
 }
+
+#[derive(Debug, Clone, Copy)]
+pub enum TxnItem {
+    Cmd(Cmd),
+    EditOp(EditOp),
+}
+
+pub type Txn<'a> = &'a [TxnItem];
+
+impl From<Cmd> for TxnItem {
+    fn from(cmd: Cmd) -> Self {
+        Self::Cmd(cmd)
+    }
+}
+
+impl From<EditOp> for TxnItem {
+    fn from(edit_op: EditOp) -> Self {
+        Self::EditOp(edit_op)
+    }
+}

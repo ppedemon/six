@@ -1,11 +1,29 @@
+use std::{borrow::Cow, sync::LazyLock};
+
 use crate::{
-    cmd::{Cmd, EditOp, InsertPoint, InteractiveOp, Motion, Operator::Move},
+    cmd::{Cmd, EditOp, InsertPoint, InteractiveOp, Motion, Operator::Move, TxnItem},
     components::EditorCtx,
     systems::{
-        enter_insert, insert,
-        nav::{self, NavArgs},
+        enter_insert, input::dispatch_txn, insert::apply_insert_log, sys::goto_insert_point,
     },
 };
+
+static OPEN_ABOVE: LazyLock<Vec<TxnItem>> = LazyLock::new(|| {
+    let txn = vec![
+        Cmd::new(Move(Motion::StartOfLine)).into(),
+        EditOp::Enter.into(),
+        Cmd::new(Move(Motion::Up)).into(),
+    ];
+    txn
+});
+
+static OPEN_BELOW: LazyLock<Vec<TxnItem>> = LazyLock::new(|| {
+    let txn = vec![
+        Cmd::new(Move(Motion::EndOfLinePlusOne)).into(),
+        EditOp::Enter.into(),
+    ];
+    txn
+});
 
 pub struct InteractiveArgs {
     op: InteractiveOp,
@@ -19,42 +37,53 @@ impl InteractiveArgs {
 }
 
 pub fn handle_interactive(ctx: &mut EditorCtx, args: InteractiveArgs) {
+    ctx.repbuf.save_last_cmd(args.cmd);
+    exec_interactive(ctx, args);
+}
+
+fn prelude_txn<'a>(args: &'a InteractiveArgs) -> Cow<'a, [TxnItem]> {
     match args.op {
-        InteractiveOp::OpenAbove => open_above(ctx, args.cmd),
-        InteractiveOp::OpenBelow => open_below(ctx, args.cmd),
+        InteractiveOp::EnterInsert(_) => Cow::Borrowed(&[]),
+        InteractiveOp::OpenAbove => Cow::Borrowed(OPEN_ABOVE.as_slice()),
+        InteractiveOp::OpenBelow => Cow::Borrowed(OPEN_BELOW.as_slice()),
     }
 }
 
-fn open_above(ctx: &mut EditorCtx, cmd: Cmd) {
-    //let (_, buf_view) = active_session!(mut ctx);
-
-    let tmp_cmd = Cmd::new(Move(Motion::StartOfLine));
-    let nav_args = NavArgs::new(Motion::StartOfLine, tmp_cmd);
-    nav::handle_session_nav(ctx, nav_args);
-
-    insert::handle_edit(ctx, EditOp::Enter);
-
-    let tmp_cmd = Cmd::new(Move(Motion::Up));
-    let nav_args = NavArgs::new(Motion::Up, tmp_cmd);
-    nav::handle_session_nav(ctx, nav_args);
-
-    enter_insert(ctx, InsertPoint::Curr, cmd);
-
-    //buf_view.cursor.col = 0;
-    // enter_insert(ctx, InsertPoint::Curr, cmd);
-    //insert::utils::open_line(ctx);
-    // nav::utils::cursor_up::<InsertNav>(ctx)
+fn insert_point(op: InteractiveOp) -> InsertPoint {
+    match op {
+        InteractiveOp::EnterInsert(insert_point) => insert_point,
+        _ => InsertPoint::Curr,
+    }
 }
 
-fn open_below(ctx: &mut EditorCtx, cmd: Cmd) {
-    let tmp_cmd = Cmd::new(Move(Motion::EndOfLine));
-    let nav_args = NavArgs::new(Motion::EndOfLinePlusOne, tmp_cmd);
-    nav::handle_session_nav(ctx, nav_args);
+fn exec_interactive(ctx: &mut EditorCtx, args: InteractiveArgs) {
+    let txn = prelude_txn(&args);
+    let insert_point = insert_point(args.op);
+    dispatch_txn(ctx, &txn);
+    enter_insert(ctx, insert_point, args.cmd);
+}
 
-    insert::handle_edit(ctx, EditOp::Enter);
+pub fn exec_prologue(ctx: &mut EditorCtx, op: InteractiveOp, reps: usize) {
+    match op {
+        InteractiveOp::EnterInsert(_) => {
+            let ops = ctx.registers.last_insert().to_vec();
+            apply_insert_log(ctx, &ops, reps);
+        }
+        InteractiveOp::OpenAbove | InteractiveOp::OpenBelow => {
+            let ops = ctx.registers.last_insert();
+            let mut new_ops = Vec::with_capacity(ops.len() + 1);
+            new_ops.push(EditOp::Enter);
+            new_ops.extend(ops);
+            apply_insert_log(ctx, &new_ops, reps);
+        }
+    }
+}
 
-    enter_insert(ctx, InsertPoint::Curr, cmd);
-
-    // enter_insert(ctx, InsertPoint::Last, cmd);
-    // insert::utils::open_line(ctx)
+pub fn exec_batch(ctx: &mut EditorCtx, args: InteractiveArgs) {
+    let reps = args.cmd.reps.unwrap_or(1);
+    let txn = prelude_txn(&args);
+    let insert_point = insert_point(args.op);
+    dispatch_txn(ctx, &txn);
+    goto_insert_point(ctx, insert_point);
+    exec_prologue(ctx, args.op, reps);
 }

@@ -28,7 +28,6 @@ impl SysArgs {
 pub fn handle_sys(ctx: &mut EditorCtx, args: SysArgs) {
     match args.op {
         SysOp::EnterNormal => enter_normal(ctx),
-        SysOp::EnterInsert(insert_point) => enter_insert(ctx, insert_point, args.cmd),
         SysOp::EnterEx(ex_mode) => enter_ex(ctx, ex_mode),
         SysOp::HardQuit => quit_editor(ctx),
         SysOp::CondWriteAndQuit => {
@@ -45,8 +44,6 @@ pub fn enter_insert(ctx: &mut EditorCtx, insert_point: InsertPoint, cmd: Cmd) {
     ctx.status.clear_cmd();
     ctx.status
         .set_styled_msg(Level::Info, TextStyle::Bold, "-- INSERT --");
-
-    ctx.repbuf.save_last_cmd(cmd);
 
     let (session, buf_view, buffer) = active_session_and_buffer!(mut ctx);
 
@@ -118,6 +115,11 @@ fn apply_insert_point(
         InsertPoint::First => line.first_insert_non_blank(),
         InsertPoint::Last => line.display_width,
     };
+}
+
+pub fn goto_insert_point(ctx: &mut EditorCtx, insert_point: InsertPoint) {
+    let (_, buf_view, buffer) = active_session_and_buffer!(mut ctx);
+    apply_insert_point(&ctx.config, buffer.rope(), buf_view, insert_point);
 }
 
 fn add_local_mark(ctx: &mut EditorCtx, c: char) {

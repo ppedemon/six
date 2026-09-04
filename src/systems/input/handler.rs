@@ -2,7 +2,7 @@ use crossterm::event::Event;
 
 use crate::{
     active_session,
-    cmd::{Cmd, InsertOp, Operator},
+    cmd::{Cmd, InsertOp, Operator, Txn, TxnItem},
     components::{EditorCtx, Focus, Mode},
     systems::{
         immediate::{ImmediateArgs, handle_immediate},
@@ -74,6 +74,15 @@ pub fn dispatch_insert(ctx: &mut EditorCtx, op: InsertOp) {
         InsertOp::Move(motion) => {
             let nav_args = NavArgs::new(motion, Cmd::new(motion.into()));
             handle_nav(ctx, nav_args)
+        }
+    }
+}
+
+pub fn dispatch_txn(ctx: &mut EditorCtx, txn: Txn<'_>) {
+    for item in txn {
+        match item {
+            TxnItem::Cmd(cmd) => dispatch_cmd(ctx, *cmd),
+            TxnItem::EditOp(edit_op) => handle_edit(ctx, *edit_op),
         }
     }
 }

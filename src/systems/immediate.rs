@@ -75,7 +75,9 @@ pub fn handle_immediate(ctx: &mut EditorCtx, args: ImmediateArgs) {
         ImmediateOp::Delete => delete(ctx, args.cmd),
         ImmediateOp::DeleteEol => {
             let mut fake_args = args;
-            fake_args.cmd = fake_args.cmd.arg(Arg::motion(None, None, Motion::EndOfLine));
+            fake_args.cmd = fake_args
+                .cmd
+                .arg(Arg::motion(None, None, Motion::EndOfLine));
             delete(ctx, fake_args.cmd)
         }
     };

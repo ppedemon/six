@@ -127,7 +127,7 @@ pub fn next_big_word(config: &Config, rope: &Rope, buf_view: &mut BufferView, re
     let coords = char_idx_to_coords(config, rope, buf_view, char_idx);
     snap_coords(config, rope, buf_view, coords);
 
-    prev_idx == char_idx
+    prev_idx == char_idx || char_idx + 1 == rope.len_chars()
 }
 
 pub fn next_sub_word(config: &Config, rope: &Rope, buf_view: &mut BufferView, reps: usize) -> bool {
@@ -146,7 +146,7 @@ pub fn next_sub_word(config: &Config, rope: &Rope, buf_view: &mut BufferView, re
     let coords = char_idx_to_coords(config, rope, buf_view, char_idx);
     snap_coords(config, rope, buf_view, coords);
 
-    prev_idx == char_idx
+    prev_idx == char_idx || char_idx + 1 == rope.len_chars()
 }
 
 pub fn prev_big_word(config: &Config, rope: &Rope, buf_view: &mut BufferView, reps: usize) {
@@ -268,7 +268,12 @@ pub fn start_of_line<R: NavRules>(config: &Config, rope: &Rope, buf_view: &mut B
     buf_view.target_col = col;
 }
 
-pub fn end_of_line<R: NavRules>(config: &Config, rope: &Rope, buf_view: &mut BufferView, reps: usize) {
+pub fn end_of_line<R: NavRules>(
+    config: &Config,
+    rope: &Rope,
+    buf_view: &mut BufferView,
+    reps: usize,
+) {
     move_down::<R>(config, rope, buf_view, reps.saturating_sub(1));
 
     let line = curr_line(config, rope, buf_view);
