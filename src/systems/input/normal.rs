@@ -2,7 +2,7 @@ use crossterm::event::{Event, KeyCode, KeyEvent};
 
 use crate::{
     cmd::{Arg, Cmd, MotionMode, Operator, TextObject, TextObjectScope},
-    components::EditorCtx,
+    components::{EditorCtx, Register},
     digraphs,
     systems::input::{
         evt::{self, Pretty},
@@ -33,7 +33,7 @@ enum State {
 
 pub struct NormalInputHandler {
     state: State,
-    reg: Option<char>,
+    reg: Option<Register>,
     reps: Option<usize>,
     op: Operator,
     arg_reps: Option<usize>,

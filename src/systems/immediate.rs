@@ -112,8 +112,8 @@ fn repeat_last(ctx: &mut EditorCtx, cmd: Cmd, reps: Option<usize>) {
 // -----------------------------------------------------------------------
 // Auxiliary stuff from now on
 // -----------------------------------------------------------------------
-fn is_readonly(reg: Option<char>) -> bool {
-    reg.map(Register::from).is_some_and(|r| r.is_readonly())
+fn is_readonly(reg: Option<Register>) -> bool {
+    reg.is_some_and(|reg| reg.is_readonly())
 }
 
 fn is_repeatable(op: ImmediateOp) -> bool {

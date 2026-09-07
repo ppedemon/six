@@ -8,6 +8,8 @@ pub use motion::Motion;
 pub use operator::{ExMode, ImmediateOp, InsertPoint, InteractiveOp, Operator, SysOp};
 pub use text_object::{TextObject, TextObjectKind, TextObjectScope};
 
+use crate::components::Register;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MotionMode {
     Charwise,
@@ -51,7 +53,7 @@ impl Arg {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Cmd {
     pub reps: Option<usize>, // Set if reps specified, otherwise a None value to be interpreted by the operator
-    pub reg: Option<char>,   // Ignored if op doesn't use a register, None = default register
+    pub reg: Option<Register>, // Ignored if op doesn't use a register, None = default register
     pub op: Operator,
     pub arg: Arg,
 }
@@ -71,7 +73,7 @@ impl Cmd {
         self
     }
 
-    pub fn reg(mut self, reg: Option<char>) -> Self {
+    pub fn reg(mut self, reg: Option<Register>) -> Self {
         self.reg = reg;
         self
     }

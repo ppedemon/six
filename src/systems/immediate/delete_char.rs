@@ -3,7 +3,7 @@ use std::ops::Range;
 
 use crate::{
     active_session_and_buffer,
-    components::{Coords, EditorCtx, MutBuffer, RegisterData, Registers},
+    components::{Coords, EditorCtx, MutBuffer, Register, RegisterData, Registers},
     systems::{
         commons::{char_idx_to_coords, coords_to_char_idx, curr_line},
         insert::Damage,
@@ -12,7 +12,7 @@ use crate::{
 };
 
 // Delete chars at the current cursor position (x command)
-pub fn delete_char(ctx: &mut EditorCtx, reg: Option<char>, reps: usize) -> Damage {
+pub fn delete_char(ctx: &mut EditorCtx, reg: Option<Register>, reps: usize) -> Damage {
     let rng = calc_delete_range(ctx, reps);
     let damage = small_delete(ctx, reg, reps, rng);
     ensure_cursor_inside_line(ctx);
@@ -20,12 +20,17 @@ pub fn delete_char(ctx: &mut EditorCtx, reg: Option<char>, reps: usize) -> Damag
 }
 
 // Delete chars behind the current cursor position (X command)
-pub fn backspace(ctx: &mut EditorCtx, reg: Option<char>, reps: usize) -> Damage {
+pub fn backspace(ctx: &mut EditorCtx, reg: Option<Register>, reps: usize) -> Damage {
     let rng = calc_backspace_range(ctx, reps);
     small_delete(ctx, reg, reps, rng)
 }
 
-fn small_delete(ctx: &mut EditorCtx, reg: Option<char>, reps: usize, rng: Range<usize>) -> Damage {
+fn small_delete(
+    ctx: &mut EditorCtx,
+    reg: Option<Register>,
+    reps: usize,
+    rng: Range<usize>,
+) -> Damage {
     let (session, buf_view, buffer) = active_session_and_buffer!(mut ctx);
 
     record_small_delete(&mut ctx.registers, reg, buffer.rope(), rng.clone());
@@ -100,7 +105,7 @@ fn calc_backspace_range(ctx: &mut EditorCtx, reps: usize) -> Range<usize> {
 // Store small delete in registers
 fn record_small_delete(
     registers: &mut Registers,
-    reg: Option<char>,
+    reg: Option<Register>,
     rope: &Rope,
     range: Range<usize>,
 ) {

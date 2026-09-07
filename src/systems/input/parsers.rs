@@ -6,6 +6,7 @@ use crate::{
         ExMode, ImmediateOp, InsertPoint, InteractiveOp, Motion, MotionMode, Operator, SysOp,
         TextObjectKind, TextObjectScope,
     },
+    components::Register,
     systems::input::{
         evt::*,
         trie::{FindResult, Trie},
@@ -301,13 +302,8 @@ pub fn starts_reg(evt: KeyEvent) -> bool {
     evt.code.as_char().is_some_and(|c| c == '"')
 }
 
-pub fn parse_reg(evt: KeyEvent) -> Option<char> {
-    evt.code.as_char().and_then(|c| match c {
-        _ if c.is_ascii_digit() => Some(c),
-        _ if c.is_ascii_alphabetic() => Some(c),
-        _ if "\"%#.:/=-_".contains(c) => Some(c),
-        _ => None,
-    })
+pub fn parse_reg(evt: KeyEvent) -> Option<Register> {
+    evt.code.as_char().and_then(Register::from)
 }
 
 pub fn parse_textobject_scope(evt: KeyEvent) -> Option<TextObjectScope> {

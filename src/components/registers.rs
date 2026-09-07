@@ -134,23 +134,24 @@ pub enum Register {
 }
 
 impl Register {
-    const EXPLICIT_UNNAMED: Self = Self::Named('"');
-    pub const SMALL_DELETE: Self = Self::Named('-');
-    pub const BLACKHOLE: Self = Self::Named('_');
+    const BLACKHOLE: Self = Self::Named('_');
+    const SMALL_DELETE: Self = Self::Named('-');
     pub const LAST_INSERT: Self = Self::Named('.');
 
-    pub fn from(c: char) -> Self {
+    pub fn from(c: char) -> Option<Self> {
         match c {
-            c if c.is_ascii_digit() => Self::Numbered((c as u8) - b'0'),
-            c if c.is_ascii_whitespace() => Self::Append(c.to_ascii_lowercase()),
-            c if c == '"' => Self::Unnamed,
-            _ => Self::Named(c),
+            '"' => Some(Self::Unnamed),
+            _ if c.is_ascii_digit() => Some(Self::Numbered((c as u8) - b'0')),
+            _ if c.is_ascii_uppercase() => Some(Self::Append(c.to_ascii_lowercase())),
+            _ if c.is_ascii_lowercase() => Some(Self::Named(c)),
+            _ if "%#.:/=-_".contains(c) => Some(Self::Named(c)),
+            _ => None,
         }
     }
 
     pub fn is_readonly(&self) -> bool {
         match self {
-            Self::Named(c) if "%#.:/=_".contains(*c) => true,
+            Self::Named(c) if ".%#:/".contains(*c) => true,
             _ => false,
         }
     }
@@ -182,7 +183,7 @@ impl Registers {
 
     fn write(&mut self, reg: Register, data: RegisterData) {
         match reg {
-            Register::Unnamed | Register::EXPLICIT_UNNAMED => self.unnamed = Some(data),
+            Register::Unnamed => self.unnamed = Some(data),
             Register::Named(c) => {
                 self.named.insert(c, data);
             }
@@ -225,9 +226,9 @@ impl Registers {
         &self.last_insert
     }
 
-    pub fn record_delete(&mut self, reg: Option<char>, data: RegisterData) {
+    pub fn record_delete(&mut self, reg: Option<Register>, data: RegisterData) {
         match reg {
-            None | Some('"') => {
+            None => {
                 self.write(Register::Unnamed, data.clone());
                 if data.is_small() {
                     self.write(Register::SMALL_DELETE, data);
@@ -236,8 +237,7 @@ impl Registers {
                 }
             }
             Some(r) => {
-                let r = Register::from(r);
-                if r.is_readonly() {
+                if r.is_readonly() || r == Register::BLACKHOLE {
                     return;
                 }
 
@@ -248,15 +248,14 @@ impl Registers {
         }
     }
 
-    pub fn record_yank(&mut self, reg: Option<char>, data: RegisterData) {
+    pub fn record_yank(&mut self, reg: Option<Register>, data: RegisterData) {
         match reg {
-            None | Some('"') => {
+            None => {
                 self.write(Register::Unnamed, data.clone());
                 self.write(Register::Numbered(0), data);
             }
             Some(r) => {
-                let r = Register::from(r);
-                if r.is_readonly() || r == Register::SMALL_DELETE {
+                if r.is_readonly() || r == Register::BLACKHOLE || r == Register::SMALL_DELETE {
                     return;
                 }
 

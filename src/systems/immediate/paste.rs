@@ -28,7 +28,7 @@ pub fn paste(ctx: &mut EditorCtx, cmd: Cmd, mode: PasteMode) -> Damage {
     let reps = cmd.reps.unwrap_or(1);
 
     let (_, buf_view, buffer) = active_session_and_buffer!(mut ctx);
-    let r = reg.map_or(Register::Unnamed, Register::from);
+    let r = reg.unwrap_or(Register::Unnamed);
 
     if r == Register::LAST_INSERT {
         return paste_last_insert(ctx, reps, mode);
