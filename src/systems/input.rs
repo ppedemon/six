@@ -5,4 +5,4 @@ mod normal;
 mod parsers;
 mod trie;
 
-pub use handler::{InputHandler, dispatch_txn};
+pub use handler::{InputHandler, dispatch_cmd, dispatch_txn};

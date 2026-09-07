@@ -26,7 +26,7 @@ fn post_insert_repeat(ctx: &mut EditorCtx) {
     if let Some(cmd) = ctx.repbuf.last_cmd() {
         if let Operator::Interactive(op) = cmd.op {
             let reps = cmd.reps.unwrap_or(1).saturating_sub(1);
-            interactive::exec_prologue(ctx, op, reps);
+            interactive::finish_interactive(ctx, op, reps);
         }
     }
 }

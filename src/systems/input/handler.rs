@@ -9,8 +9,9 @@ use crate::{
         input::{insert::InsertInputHandler, normal::NormalInputHandler},
         insert::handle_edit,
         interactive::{InteractiveArgs, handle_interactive},
+        mode::enter_normal,
         nav::{NavArgs, handle_nav},
-        sys::{SysArgs, enter_normal, handle_sys},
+        sys::{SysArgs, handle_sys},
     },
 };
 

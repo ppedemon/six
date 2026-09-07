@@ -1,7 +1,7 @@
 use crate::{
     components::{EditorCtx, ExState, Level},
     ex::{ExCmd, ExError, ExRange, parse_cmd_line},
-    systems::{ex::builtin::exec_builtin, sys::enter_normal},
+    systems::{ex::builtin::exec_builtin, mode::enter_normal},
 };
 
 pub fn handle_ex_state(ctx: &mut EditorCtx) {

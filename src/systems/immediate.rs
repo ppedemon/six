@@ -1,10 +1,12 @@
 use crate::{
     active_session,
-    cmd::{Arg, Cmd, ImmediateOp, Motion},
+    cmd::{Arg, Cmd, ImmediateOp, Motion, Operator},
     components::{EditorCtx, Register},
     systems::{
         immediate::delete::delete,
+        input::dispatch_cmd,
         insert::{Damage, DamageEvent, broadcast_damage},
+        interactive::{InteractiveArgs, handle_interactive},
         nav::utils::ensure_cursor_inside_line,
     },
 };
@@ -80,11 +82,31 @@ pub fn handle_immediate(ctx: &mut EditorCtx, args: ImmediateArgs) {
                 .arg(Arg::motion(None, None, Motion::EndOfLine));
             delete(ctx, fake_args.cmd)
         }
+
+        ImmediateOp::RepeatLast => {
+            if let Some(cmd) = ctx.repbuf.last_cmd() {
+                let reps = args.cmd.reps.or(cmd.reps);
+                repeat_last(ctx, cmd, reps)
+            }
+            // cmd will take care of the damage
+            Damage::Intact
+        }
     };
 
     let (session, _) = active_session!(ctx);
     let damage_evt = DamageEvent::new(session.buf_id, damage);
     broadcast_damage(ctx, damage_evt);
+}
+
+fn repeat_last(ctx: &mut EditorCtx, cmd: Cmd, reps: Option<usize>) {
+    let new_cmd = cmd.reps(reps);
+    match cmd.op {
+        Operator::Interactive(op) => {
+            let args = InteractiveArgs::batch(op, new_cmd);
+            handle_interactive(ctx, args);
+        }
+        _ => dispatch_cmd(ctx, new_cmd),
+    }
 }
 
 // -----------------------------------------------------------------------
@@ -96,14 +118,17 @@ fn is_readonly(reg: Option<char>) -> bool {
 
 fn is_repeatable(op: ImmediateOp) -> bool {
     match op {
-        ImmediateOp::Yank | ImmediateOp::YankLine => false,
+        ImmediateOp::Yank | ImmediateOp::YankLine | ImmediateOp::RepeatLast => false,
         _ => true,
     }
 }
 
 fn updates_registers(op: ImmediateOp) -> bool {
     match op {
-        ImmediateOp::Join | ImmediateOp::Paste | ImmediateOp::PasteBefore => false,
+        ImmediateOp::Join
+        | ImmediateOp::Paste
+        | ImmediateOp::PasteBefore
+        | ImmediateOp::RepeatLast => false,
         _ => true,
     }
 }
