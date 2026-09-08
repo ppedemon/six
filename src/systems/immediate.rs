@@ -1,5 +1,3 @@
-use std::panic;
-
 use crate::{
     active_session,
     cmd::{Arg, Cmd, ImmediateOp, Motion, Operator},
