@@ -2,7 +2,7 @@ use crate::{
     active_session_and_buffer,
     components::{Coords, EditorCtx, MutBuffer},
     systems::{
-        commons::{coords_to_char_idx, cursor_to_char_idx},
+        commons::{char_idx_to_coords, coords_to_char_idx, cursor_to_char_idx},
         insert::Damage,
     },
 };
@@ -38,9 +38,10 @@ pub fn replace(ctx: &mut EditorCtx, c: char, reps: usize) -> Damage {
             .display_buf
             .patch_range(&ctx.config, buffer.rope(), cursor.row..cursor.row + 1);
 
-        let new_cursor = Coords::new(cursor.row, end_coords.col - 1);
-        buf_view.cursor = new_cursor;
-        buf_view.target_col = new_cursor.col;
+        let cursor_idx = start_idx + reps - 1;
+        let cursor = char_idx_to_coords(&ctx.config, buffer.rope(), buf_view, cursor_idx);
+        buf_view.cursor = cursor;
+        buf_view.target_col = cursor.col;
 
         Damage::Line(cursor.row)
     } else {
