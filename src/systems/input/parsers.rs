@@ -113,6 +113,10 @@ static OP_TRIE: LazyLock<Trie<KeyEvent, ParseResult<OpSpec>>> = LazyLock::new(||
     t.insert(&[char('d')], ok_needy_op(ImmediateOp::Delete));
     t.insert(&[char('D')], ok_op(ImmediateOp::DeleteEol));
     t.insert(&[char('.')], ok_op(ImmediateOp::RepeatLast));
+    t.insert(
+        &[char('r')],
+        wants_arg(|evt| char_or_tab(evt).map(|c| op(ImmediateOp::Replace(c)))),
+    );
 
     t
 });
@@ -217,7 +221,7 @@ fn parse_motion(reps: Option<usize>, input: &[KeyEvent]) -> FindResult<Motion> {
 // The state machine will call this function when the parsed operator is needy.
 // That means we need to parse an arg, either a motion or a text object.
 //
-// Note: this function deals with line scopes (dd, yy, pp, cc) as a special case.
+// Note: this function deals with line scopes (dd, yy, cc) as a special case.
 // The Operator type provides a `line_arg_char` function, returning Some(ch)
 // if an operator acts admits a double `ch` to act on lines. For example,
 // line_arg_char(Operator::Delete) = Some('d').
@@ -261,17 +265,13 @@ pub fn parse_op(reps: Option<usize>, input: &[KeyEvent]) -> FindResult<OpSpec> {
     }
 }
 
-// We are only allowed to parse digraphs if the last key event we saw matches
-// any of the motions taking a digraph as argument: f, F, t, or T
+// We are only allowed to parse digraphs if the last key event we saw matches any
+// of the motions/operators taking a digraph as argument: f, F, t, T, or R
 pub fn digraph_allowed(input: &[KeyEvent]) -> bool {
     if input.len() > 0 {
         let last = input[input.len() - 1];
         last.modifiers == KeyModifiers::empty()
-            && last
-                .code
-                .as_char()
-                .map(|c| c.to_ascii_uppercase())
-                .is_some_and(|c| c == 'F' || c == 'T')
+            && last.code.as_char().is_some_and(|c| "fFtFr".contains(c))
     } else {
         false
     }

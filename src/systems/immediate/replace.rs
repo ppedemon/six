@@ -1,0 +1,49 @@
+use crate::{
+    active_session_and_buffer,
+    components::{Coords, EditorCtx, MutBuffer},
+    systems::{
+        commons::{coords_to_char_idx, cursor_to_char_idx},
+        insert::Damage,
+    },
+};
+
+pub fn replace(ctx: &mut EditorCtx, c: char, reps: usize) -> Damage {
+    let (_, buf_view, buffer) = active_session_and_buffer!(mut ctx);
+
+    let cursor = buf_view.cursor;
+    let line = buf_view
+        .display_buf
+        .ensure_line(&ctx.config, buffer.rope(), cursor.row);
+
+    let mut n = 0;
+    let mut g = line.grapheme_at(cursor.col);
+    while n + 1 < reps
+        && let Some((_, span)) = g
+    {
+        n += 1;
+        g = line.grapheme_at(span.end);
+    }
+
+    if let Some((_, span)) = g {
+        let end_coords = Coords::new(cursor.row, span.end);
+        let start_idx = cursor_to_char_idx(&ctx.config, buf_view, buffer.rope());
+        let end_idx = coords_to_char_idx(&ctx.config, buffer.rope(), buf_view, end_coords);
+
+        buffer.edit().remove(start_idx..end_idx);
+        for _ in 0..reps {
+            buffer.edit().insert_char(start_idx, c);
+        }
+
+        buf_view
+            .display_buf
+            .patch_range(&ctx.config, buffer.rope(), cursor.row..cursor.row + 1);
+
+        let new_cursor = Coords::new(cursor.row, end_coords.col - 1);
+        buf_view.cursor = new_cursor;
+        buf_view.target_col = new_cursor.col;
+
+        Damage::Line(cursor.row)
+    } else {
+        Damage::Intact
+    }
+}

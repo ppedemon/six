@@ -1,9 +1,11 @@
+use std::panic;
+
 use crate::{
     active_session,
     cmd::{Arg, Cmd, ImmediateOp, Motion, Operator},
     components::{EditorCtx, Register},
     systems::{
-        immediate::delete::delete,
+        immediate::{delete::delete, replace::replace},
         input::dispatch_cmd,
         insert::{Damage, DamageEvent, broadcast_damage},
         interactive::{InteractiveArgs, handle_interactive},
@@ -15,6 +17,7 @@ mod delete;
 mod delete_char;
 mod join;
 mod paste;
+mod replace;
 mod yank;
 
 use delete_char::{backspace, delete_char};
@@ -82,7 +85,6 @@ pub fn handle_immediate(ctx: &mut EditorCtx, args: ImmediateArgs) {
                 .arg(Arg::motion(None, None, Motion::EndOfLine));
             delete(ctx, fake_args.cmd)
         }
-
         ImmediateOp::RepeatLast => {
             if let Some(cmd) = ctx.repbuf.last_cmd() {
                 let reps = args.cmd.reps.or(cmd.reps);
@@ -91,6 +93,7 @@ pub fn handle_immediate(ctx: &mut EditorCtx, args: ImmediateArgs) {
             // cmd will take care of the damage
             Damage::Intact
         }
+        ImmediateOp::Replace(c) => replace(ctx, c, args.cmd.reps.unwrap_or(1)),
     };
 
     let (session, _) = active_session!(ctx);
@@ -128,7 +131,8 @@ fn updates_registers(op: ImmediateOp) -> bool {
         ImmediateOp::Join
         | ImmediateOp::Paste
         | ImmediateOp::PasteBefore
-        | ImmediateOp::RepeatLast => false,
+        | ImmediateOp::RepeatLast
+        | ImmediateOp::Replace(_) => false,
         _ => true,
     }
 }
