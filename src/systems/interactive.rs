@@ -72,7 +72,7 @@ fn exec_interactive(ctx: &mut EditorCtx, args: InteractiveArgs) {
     let txn = prelude_txn(&args);
     let insert_point = insert_point(args.op);
     dispatch_txn(ctx, &txn);
-    enter_insert(ctx, insert_point, args.cmd);
+    enter_insert(ctx, insert_point);
 }
 
 fn exec_batch(ctx: &mut EditorCtx, args: InteractiveArgs) {

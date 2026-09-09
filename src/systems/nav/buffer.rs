@@ -146,7 +146,8 @@ pub fn next_sub_word(config: &Config, rope: &Rope, buf_view: &mut BufferView, re
     let coords = char_idx_to_coords(config, rope, buf_view, char_idx);
     snap_coords(config, rope, buf_view, coords);
 
-    prev_idx == char_idx || char_idx + 1 == rope.len_chars()
+    prev_idx == char_idx
+        || (char_idx + 1 == rope.len_chars() && rope::is_sub_word_char(rope.char(char_idx)))
 }
 
 pub fn prev_big_word(config: &Config, rope: &Rope, buf_view: &mut BufferView, reps: usize) {

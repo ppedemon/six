@@ -304,7 +304,7 @@ mod find_tests {
     }
 }
 
-fn is_sub_word_char(c: char) -> bool {
+pub fn is_sub_word_char(c: char) -> bool {
     c == '_' || (!c.is_whitespace() && !c.is_ascii_punctuation() && !c.is_control())
 }
 
@@ -318,12 +318,16 @@ pub fn next_big_word(rope: &Rope, char_idx: usize) -> usize {
         return 0;
     }
 
-    let mut char_idx = char_idx.clamp(0, max_idx);
+    let mut char_idx = char_idx.min(max_idx);
     let mut c = rope.char(char_idx);
 
     while char_idx < max_idx && !c.is_whitespace() {
         char_idx += 1;
         c = rope.char(char_idx);
+    }
+
+    if char_idx < max_idx && c == '\n' && rope.char(char_idx + 1) == '\n' {
+        return char_idx + 1;
     }
 
     while char_idx < max_idx && c.is_whitespace() {
@@ -344,7 +348,7 @@ pub fn next_sub_word(rope: &Rope, char_idx: usize) -> usize {
         return 0;
     }
 
-    let mut char_idx = char_idx.clamp(0, max_idx);
+    let mut char_idx = char_idx.min(max_idx);
     let mut c = rope.char(char_idx);
 
     if is_sub_word_char(c) {
@@ -357,6 +361,10 @@ pub fn next_sub_word(rope: &Rope, char_idx: usize) -> usize {
             char_idx += 1;
             c = rope.char(char_idx);
         }
+    }
+
+    if char_idx < max_idx && c == '\n' && rope.char(char_idx + 1) == '\n' {
+        return char_idx + 1;
     }
 
     while char_idx < max_idx && c.is_whitespace() {
@@ -377,8 +385,16 @@ pub fn prev_big_word(rope: &Rope, char_idx: usize) -> usize {
         return 0;
     }
 
-    let mut char_idx = char_idx.clamp(0, max_idx);
+    if char_idx > max_idx {
+        return max_idx;
+    }
+
+    let mut char_idx = char_idx;
     let mut c = rope.char(char_idx.saturating_sub(1));
+
+    if char_idx > 1 && c == '\n' && rope.char(char_idx - 2) == '\n' {
+        return char_idx - 1;
+    }
 
     while char_idx != 0 && c.is_whitespace() {
         char_idx -= 1;
@@ -399,8 +415,16 @@ pub fn prev_sub_word(rope: &Rope, char_idx: usize) -> usize {
         return 0;
     }
 
-    let mut char_idx = char_idx.clamp(0, max_idx);
+    if char_idx > max_idx {
+        return max_idx;
+    }
+
+    let mut char_idx = char_idx;
     let mut c = rope.char(char_idx.saturating_sub(1));
+
+    if char_idx > 1 && c == '\n' && rope.char(char_idx - 2) == '\n' {
+        return char_idx - 1;
+    }
 
     while char_idx != 0 && c.is_whitespace() {
         char_idx -= 1;
@@ -529,9 +553,9 @@ mod word_ws_tests {
         let text = "first\nsecond";
         check_jump!(next_big_word, text, 0, Expected => 6);
 
-        // From a blank line, it should jump to the first word below it
+        // Following vi behaviour, next word jumps between empty lines
         let blank_line_text = "first\n\n\n  second";
-        check_jump!(next_big_word, blank_line_text, 5, Expected => 10);
+        check_jump!(next_big_word, blank_line_text, 5, Expected => 6);
     }
 
     #[test]

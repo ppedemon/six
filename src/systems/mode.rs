@@ -2,7 +2,7 @@ use ropey::Rope;
 
 use crate::{
     active_session, active_session_and_buffer,
-    cmd::{Cmd, ExMode, InsertPoint},
+    cmd::{ExMode, InsertPoint},
     components::{BufferView, Config, EditorCtx, Focus, Level, Mode, TextStyle},
     systems::{
         commons,
@@ -10,7 +10,7 @@ use crate::{
     },
 };
 
-pub fn enter_insert(ctx: &mut EditorCtx, insert_point: InsertPoint, cmd: Cmd) {
+pub fn enter_insert(ctx: &mut EditorCtx, insert_point: InsertPoint) {
     clear_ex(ctx);
 
     ctx.status.clear_cmd();
