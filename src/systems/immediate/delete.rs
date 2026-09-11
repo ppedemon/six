@@ -18,10 +18,11 @@ pub fn delete(ctx: &mut EditorCtx, cmd: Cmd) -> Damage {
             let arg_reps = reps.unwrap_or(1);
             match motion_yank(ctx, motion, cmd_reps, arg_reps, mode) {
                 None => Damage::Intact,
-                Some(reg_data) => {
+                Some((reg_data, yank_shape)) => {
                     let damage = delete_data(ctx, &reg_data);
                     notify_delete(ctx, &reg_data);
                     ctx.registers.record_delete(cmd.reg, reg_data);
+                    ctx.repbuf.save_last_yank_shape(yank_shape);
                     damage
                 }
             }

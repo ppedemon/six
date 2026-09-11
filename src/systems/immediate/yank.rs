@@ -1,11 +1,11 @@
 use crate::{
     active_session,
     cmd::{Arg, Cmd, Motion, MotionMode},
-    components::{EditorCtx, RegisterData},
+    components::{EditorCtx, RegisterData, YankShape},
     systems::{
         event,
         nav::{
-            charwise, exec_motion, inclusive, select_blockwise, select_charwise,
+            MotionExtent, charwise, exec_motion, inclusive, select_blockwise, select_charwise,
             select_charwise_nl, select_linewise,
         },
     },
@@ -18,9 +18,10 @@ pub fn yank(ctx: &mut EditorCtx, cmd: Cmd) {
             let arg_reps = reps.unwrap_or(1);
             match motion_yank(ctx, motion, cmd_reps, arg_reps, mode) {
                 None => {}
-                Some(reg_data) => {
+                Some((reg_data, yank_shape)) => {
                     event::on_yank(&mut ctx.status, &reg_data);
                     ctx.registers.record_yank(cmd.reg, reg_data);
+                    ctx.repbuf.save_last_yank_shape(yank_shape);
                 }
             }
         }
@@ -36,12 +37,10 @@ pub fn motion_yank(
     cmd_reps: usize,
     args_reps: usize,
     forced_mode: Option<MotionMode>,
-) -> Option<RegisterData> {
+) -> Option<(RegisterData, YankShape)> {
     let (orig_cursor, orig_target_col) = {
         let (_, buf_view) = active_session!(ctx);
-        let orig_cursor = buf_view.cursor;
-        let orig_target_col = buf_view.target_col;
-        (orig_cursor, orig_target_col)
+        (buf_view.cursor, buf_view.target_col)
     };
 
     let extent = exec_motion(ctx, m, cmd_reps, args_reps)?;
@@ -57,6 +56,23 @@ pub fn motion_yank(
         inclusive = !inclusive;
     }
 
+    if extent.start < extent.end {
+        let (_, buf_view) = active_session!(mut ctx);
+        buf_view.cursor = orig_cursor;
+        buf_view.target_col = orig_target_col;
+    }
+
+    let yank_result = extent_yank(ctx, extent, orig_mode, forced_mode, inclusive);
+    Some(yank_result)
+}
+
+pub fn extent_yank(
+    ctx: &mut EditorCtx,
+    extent: MotionExtent,
+    orig_mode: MotionMode,
+    forced_mode: Option<MotionMode>,
+    inclusive: bool,
+) -> (RegisterData, YankShape) {
     let span = (extent.start, extent.end);
     let reg_data = match forced_mode.unwrap_or(orig_mode) {
         MotionMode::Charwise => {
@@ -73,11 +89,30 @@ pub fn motion_yank(
         MotionMode::Blockwise => select_blockwise(ctx, span),
     };
 
-    if extent.start < extent.end {
-        let (_, buf_view) = active_session!(mut ctx);
-        buf_view.cursor = orig_cursor;
-        buf_view.target_col = orig_target_col;
-    }
+    let yank_shape = yank_shape(forced_mode.unwrap_or(orig_mode), extent);
+    (reg_data, yank_shape)
+}
 
-    Some(reg_data)
+fn yank_shape(mode: MotionMode, extent: MotionExtent) -> YankShape {
+    let mut start = extent.start;
+    let mut end = extent.end;
+    if start > end {
+        std::mem::swap(&mut start, &mut end);
+    }
+    let num_lines = end.row - start.row + 1;
+
+    match mode {
+        MotionMode::Charwise => YankShape::Char {
+            num_lines,
+            end_col: end.col,
+        },
+        MotionMode::Linewise => YankShape::Line { num_lines },
+        MotionMode::Blockwise => {
+            let cols = start.col.max(end.col) - start.col.min(end.col) + 1;
+            YankShape::Block {
+                rows: num_lines,
+                cols,
+            }
+        }
+    }
 }
