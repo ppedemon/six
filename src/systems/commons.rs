@@ -33,6 +33,14 @@ pub fn coords_to_char_idx(
     line_idx + col_idx
 }
 
+// Turn a rope index into the right column on the screen. Notes:
+//
+// For a tab, this function will leave us at the rightmost on-screen column for the tab.
+// This matches exactly the snapping done in normal mode. Still, in general, it's always
+// safe and desirable to snap_coords after calling this function.
+//
+// For anything rendered wide (emojis, control, or zero-width chars), this function will
+// leave us at the initial column of the char. Again, what's expected in nav mode.
 pub fn char_idx_to_coords(
     config: &Config,
     rope: &Rope,
@@ -80,5 +88,33 @@ mod test {
 
         let new_coords = char_idx_to_coords(&config, &rope, &mut buf_view, char_idx);
         assert_eq!(new_coords, coords);
+    }
+
+    #[test]
+    fn test_col_rope_conversions() {
+        let config = Config::default();
+        let rope = Rope::from_str("foo\t🏳️‍🌈 \tbar\n");
+        let mut buf_view = BufferView::empty();
+
+        for (orig_col, expected_col) in vec![
+            (3, 7),
+            (5, 7),
+            (7, 7),
+            (8, 8),
+            (9, 8),
+            (10, 10),
+            (11, 15),
+            (13, 15),
+            (15, 15),
+            (16, 16),
+            (17, 17),
+            (18, 18),
+            (19, 19),
+        ] {
+            let orig_coords = Coords::new(0, orig_col);
+            let char_idx = coords_to_char_idx(&config, &rope, &mut buf_view, orig_coords);
+            let expected_coords = char_idx_to_coords(&config, &rope, &mut buf_view, char_idx);
+            assert_eq!(expected_col, expected_coords.col);
+        }
     }
 }
