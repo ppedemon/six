@@ -54,10 +54,11 @@ pub fn char_idx_to_coords(
     let start_idx = rope.line_to_char(line_idx);
     let line = buf_view.display_buf.ensure_line(config, rope, line_idx);
     let col_idx = line.char_idx_to_col(char_idx - start_idx);
+    let snapped_col = line.snap_col(col_idx);
 
     Coords {
         row: line_idx,
-        col: col_idx,
+        col: snapped_col,
     }
 }
 

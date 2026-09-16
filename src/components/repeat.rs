@@ -2,9 +2,18 @@ use crate::cmd::Cmd;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum YankShape {
-    Char { num_lines: usize, end_col: usize },
-    Line { num_lines: usize },
-    Block { rows: usize, cols: usize },
+    Char {
+        num_lines: usize,
+        end_col: usize,
+        inclusive: bool,
+    },
+    Line {
+        num_lines: usize,
+    },
+    Block {
+        rows: usize,
+        cols: usize,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -1,8 +1,9 @@
 use crate::{
-    active_session,
+    active_session, active_session_and_buffer,
     cmd::{Arg, Cmd, Motion, MotionMode},
     components::{EditorCtx, RegisterData, YankShape},
     systems::{
+        commons::{char_idx_to_coords, coords_to_char_idx},
         event,
         nav::{
             MotionExtent, charwise, exec_motion, inclusive, select_blockwise, select_charwise,
@@ -73,7 +74,7 @@ pub fn extent_yank(
     forced_mode: Option<MotionMode>,
     inclusive: bool,
 ) -> (RegisterData, YankShape) {
-    let span = (extent.start, extent.end);
+    let span = extent.to_ordered_span();
     let reg_data = match forced_mode.unwrap_or(orig_mode) {
         MotionMode::Charwise => {
             // We keep trailing '\n' in a charwise selection only if charwise is forced
@@ -89,22 +90,54 @@ pub fn extent_yank(
         MotionMode::Blockwise => select_blockwise(ctx, span),
     };
 
-    let yank_shape = yank_shape(forced_mode.unwrap_or(orig_mode), extent);
+    let yank_shape = yank_shape(forced_mode.unwrap_or(orig_mode), extent, inclusive);
     (reg_data, yank_shape)
 }
 
-fn yank_shape(mode: MotionMode, extent: MotionExtent) -> YankShape {
-    let mut start = extent.start;
-    let mut end = extent.end;
-    if start > end {
-        std::mem::swap(&mut start, &mut end);
+// Adjust the given register data and motion extent to make is suitable for the 'c' command:
+//
+//    - charwise selection: give back trailing whitespace
+//    - blockwise selection: give back trailing whitespace for each row
+//    - linewise selection: do nothing
+//
+// We modify the given extent and register data accordingly.
+pub fn adjust_for_c_cmd(ctx: &mut EditorCtx, extent: &mut MotionExtent, data: &mut RegisterData) {
+    let (start, end) = extent.to_ordered_span();
+    let (_, buf_view, buffer) = active_session_and_buffer!(mut ctx);
+
+    match data {
+        RegisterData::Char { data } => {
+            let trimmed = data.trim_end();
+            if !trimmed.is_empty() {
+                data.truncate(trimmed.len());
+                let start_idx = coords_to_char_idx(&ctx.config, buffer.rope(), buf_view, start);
+                let end_idx = start_idx + data.chars().count();
+                extent.end = char_idx_to_coords(&ctx.config, buffer.rope(), buf_view, end_idx);
+            }
+        }
+        RegisterData::Block { data, idxs } => {
+            for (row, (start, end)) in data.iter_mut().zip(idxs) {
+                let orig_len = row.len();
+                let trimmed = row.trim_end();
+                if !trimmed.is_empty() {
+                    row.truncate(trimmed.len());
+                    *end = *start + row.len();
+                }
+            }
+        }
+        RegisterData::Line { .. } => {}
     }
+}
+
+fn yank_shape(mode: MotionMode, extent: MotionExtent, inclusive: bool) -> YankShape {
+    let (start, end) = extent.to_ordered_span();
     let num_lines = end.row - start.row + 1;
 
     match mode {
         MotionMode::Charwise => YankShape::Char {
             num_lines,
             end_col: end.col,
+            inclusive,
         },
         MotionMode::Linewise => YankShape::Line { num_lines },
         MotionMode::Blockwise => {

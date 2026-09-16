@@ -35,6 +35,7 @@ pub enum InteractiveOp {
     EnterInsert(InsertPoint),
     OpenAbove,
     OpenBelow,
+    Change,
 }
 
 // Immediate commands: just mutate the text or registers.
@@ -93,6 +94,7 @@ impl Operator {
         match self {
             Operator::Immediate(ImmediateOp::Yank) => Some('y'),
             Operator::Immediate(ImmediateOp::Delete) => Some('d'),
+            Operator::Interactive(InteractiveOp::Change) => Some('c'),
             _ => None,
         }
     }
