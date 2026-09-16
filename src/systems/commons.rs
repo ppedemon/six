@@ -33,14 +33,13 @@ pub fn coords_to_char_idx(
     line_idx + col_idx
 }
 
-// Turn a rope index into the right column on the screen. Notes:
+// Turn a rope index into the right column on the screen. Note: this function will
+// return the "appropriate" column for normal mode navigation. That is:
 //
-// For a tab, this function will leave us at the rightmost on-screen column for the tab.
-// This matches exactly the snapping done in normal mode. Still, in general, it's always
-// safe and desirable to snap_coords after calling this function.
+//    - For a tab, this function will leave us at the rightmost on-screen column for the tab.
+//    - For anything rendered wide (emojis, ctrl, zwj), this function will return the initial
+//      column of the char. Again, what's expected in nav mode.
 //
-// For anything rendered wide (emojis, control, or zero-width chars), this function will
-// leave us at the initial column of the char. Again, what's expected in nav mode.
 pub fn char_idx_to_coords(
     config: &Config,
     rope: &Rope,
@@ -62,6 +61,14 @@ pub fn char_idx_to_coords(
     }
 }
 
+// Move the buf_view cursor to the given coords. This function will take care of adjusting
+// the column to ensure that in doesn't end up in the middle of a wide char. The snapping
+// happens according to Normal mode nav rules. That is:
+//
+//    - Tabs: put cursor in the tab's last screen column
+//    - Wide chars (emoji, ctrl, zwj), go to first column of the char
+//
+// This function will leave the given buf_view cursor and taget_col properly set
 pub fn snap_coords(config: &Config, rope: &Rope, buf_view: &mut BufferView, coords: Coords) {
     let line = buf_view.display_buf.ensure_line(config, rope, coords.row);
     let col = line.snap_col(coords.col);

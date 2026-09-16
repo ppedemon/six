@@ -278,7 +278,6 @@ fn paste_blockwise(
         _ => panic!("Impossible damage: {damage:?}"),
     }
 
-    buf_view.display_buf.destroy_from(cursor.row);
     let coords = Coords::new(cursor.row, anchor_col);
     snap_coords(config, buffer.rope(), buf_view, coords);
 
