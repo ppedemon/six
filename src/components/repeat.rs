@@ -1,3 +1,5 @@
+use std::matches;
+
 use crate::cmd::Cmd;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -44,5 +46,10 @@ impl RepeatBuffer {
 
     pub fn save_last_yank_shape(&mut self, yank_shape: YankShape) {
         self.last_yank_shape = Some(yank_shape)
+    }
+
+    pub fn yanked_block(&self) -> bool {
+        self.last_yank_shape
+            .is_some_and(|shape| matches!(shape, YankShape::Block { .. }))
     }
 }

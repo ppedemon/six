@@ -12,6 +12,7 @@ use crate::{
     },
 };
 
+// This is the implementation is the yank command (y)
 pub fn yank(ctx: &mut EditorCtx, cmd: Cmd) {
     match cmd.arg {
         Arg::Motion { reps, mode, motion } => {
@@ -32,6 +33,7 @@ pub fn yank(ctx: &mut EditorCtx, cmd: Cmd) {
     };
 }
 
+// Do a yank for the given motion and reps
 pub fn motion_yank(
     ctx: &mut EditorCtx,
     m: Motion,
@@ -39,23 +41,49 @@ pub fn motion_yank(
     args_reps: usize,
     forced_mode: Option<MotionMode>,
 ) -> Option<(RegisterData, YankShape)> {
+    let (register_data, _, yank_shape) = gen_motion_yank(ctx, m, cmd_reps, args_reps, forced_mode)?;
+    Some((register_data, yank_shape))
+}
+
+// Do a yank for the given motion and reps, but adapted for the 'c' command.
+// See adjust_for_c_cmd for details about the adapt procedure.
+pub fn motion_yank_for_c_cmd(
+    ctx: &mut EditorCtx,
+    m: Motion,
+    cmd_reps: usize,
+    args_reps: usize,
+    forced_mode: Option<MotionMode>,
+) -> Option<(RegisterData, YankShape)> {
+    let (mut register_data, mut extent, shape) =
+        gen_motion_yank(ctx, m, cmd_reps, args_reps, forced_mode)?;
+
+    if m == Motion::NextBigWord || m == Motion::NextSubWord {
+        adjust_for_c_cmd(ctx, &mut extent, &mut register_data);
+        let orig_mode = motion_mode(m);
+        let inclusive = is_inclusive(ctx, m, extent.overshot, orig_mode, forced_mode);
+        let shape = yank_shape(forced_mode.unwrap_or(orig_mode), extent, inclusive);
+        Some((register_data, shape))
+    } else {
+        Some((register_data, shape))
+    }
+}
+
+// Generic motion-based yank
+fn gen_motion_yank(
+    ctx: &mut EditorCtx,
+    m: Motion,
+    cmd_reps: usize,
+    args_reps: usize,
+    forced_mode: Option<MotionMode>,
+) -> Option<(RegisterData, MotionExtent, YankShape)> {
     let (orig_cursor, orig_target_col) = {
         let (_, buf_view) = active_session!(ctx);
         (buf_view.cursor, buf_view.target_col)
     };
 
     let extent = exec_motion(ctx, m, cmd_reps, args_reps)?;
-
-    let orig_mode = if charwise(m) {
-        MotionMode::Charwise
-    } else {
-        MotionMode::Linewise
-    };
-
-    let mut inclusive = inclusive(ctx, m) || (orig_mode == MotionMode::Charwise && extent.overshot);
-    if forced_mode.is_some_and(|mode| mode == MotionMode::Charwise) {
-        inclusive = !inclusive;
-    }
+    let orig_mode = motion_mode(m);
+    let inclusive = is_inclusive(ctx, m, extent.overshot, orig_mode, forced_mode);
 
     if extent.start < extent.end {
         let (_, buf_view) = active_session!(mut ctx);
@@ -63,10 +91,11 @@ pub fn motion_yank(
         buf_view.target_col = orig_target_col;
     }
 
-    let yank_result = extent_yank(ctx, extent, orig_mode, forced_mode, inclusive);
-    Some(yank_result)
+    let (register_data, yank_shape) = extent_yank(ctx, extent, orig_mode, forced_mode, inclusive);
+    Some((register_data, extent, yank_shape))
 }
 
+// Yank text based on the given extent and mode
 pub fn extent_yank(
     ctx: &mut EditorCtx,
     extent: MotionExtent,
@@ -101,7 +130,7 @@ pub fn extent_yank(
 //    - linewise selection: do nothing
 //
 // We modify the given extent and register data accordingly.
-pub fn adjust_for_c_cmd(ctx: &mut EditorCtx, extent: &mut MotionExtent, data: &mut RegisterData) {
+fn adjust_for_c_cmd(ctx: &mut EditorCtx, extent: &mut MotionExtent, data: &mut RegisterData) {
     let (start, end) = extent.to_ordered_span();
     let (_, buf_view, buffer) = active_session_and_buffer!(mut ctx);
 
@@ -117,7 +146,6 @@ pub fn adjust_for_c_cmd(ctx: &mut EditorCtx, extent: &mut MotionExtent, data: &m
         }
         RegisterData::Block { data, idxs } => {
             for (row, (start, end)) in data.iter_mut().zip(idxs) {
-                let orig_len = row.len();
                 let trimmed = row.trim_end();
                 if !trimmed.is_empty() {
                     row.truncate(trimmed.len());
@@ -148,4 +176,26 @@ fn yank_shape(mode: MotionMode, extent: MotionExtent, inclusive: bool) -> YankSh
             }
         }
     }
+}
+
+fn motion_mode(m: Motion) -> MotionMode {
+    if charwise(m) {
+        MotionMode::Charwise
+    } else {
+        MotionMode::Linewise
+    }
+}
+
+fn is_inclusive(
+    ctx: &EditorCtx,
+    m: Motion,
+    overshot: bool,
+    orig_mode: MotionMode,
+    forced_mode: Option<MotionMode>,
+) -> bool {
+    let mut inclusive = inclusive(ctx, m) || (orig_mode == MotionMode::Charwise && overshot);
+    if forced_mode.is_some_and(|mode| mode == MotionMode::Charwise) {
+        inclusive = !inclusive;
+    }
+    inclusive
 }

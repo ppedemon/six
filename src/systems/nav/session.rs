@@ -108,6 +108,9 @@ fn session_nav<R: NavRules>(
             buffer::page_down::<R>(config, rope, buf_view, reps, pg_size);
             viewport.scroll_to_row(buf_view.cursor.row);
         }
+        Motion::GotoCol(col) => {
+            buffer::goto_col::<R>(config, rope, buf_view, col.saturating_sub(1))
+        }
         Motion::NextBigWord => {
             let overshot = buffer::next_big_word(config, rope, buf_view, reps);
             buf_view.overshot = overshot;

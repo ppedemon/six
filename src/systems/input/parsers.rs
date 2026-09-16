@@ -136,6 +136,10 @@ static MOTION_TRIE: LazyLock<Trie<KeyEvent, ParseResult<Motion>>> = LazyLock::ne
     t.insert(&[pg_down()], ok(Motion::PageDown));
     t.insert(&[char('u').ctrl()], ok(Motion::PageUp));
     t.insert(&[pg_up()], ok(Motion::PageUp));
+    t.insert(
+        &[char('|')],
+        wants_reps(|col_num| Motion::GotoCol(col_num.unwrap_or(1))),
+    );
 
     t.insert(&[char('W')], ok(Motion::NextBigWord));
     t.insert(&[char('w')], ok(Motion::NextSubWord));

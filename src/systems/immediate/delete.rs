@@ -1,22 +1,38 @@
 use crate::{
     active_session_and_buffer,
-    cmd::{Arg, Cmd},
-    components::{EditorCtx, MutBuffer, RegisterData},
+    cmd::{Arg, Cmd, Motion, MotionMode},
+    components::{EditorCtx, MutBuffer, RegisterData, YankShape},
     systems::{
         commons::cursor_to_char_idx,
         event,
-        immediate::yank::motion_yank,
+        immediate::yank::{motion_yank, motion_yank_for_c_cmd},
         insert::Damage,
         nav::{self, NormalNav, utils::ensure_cursor_inside_line},
     },
 };
 
 pub fn delete(ctx: &mut EditorCtx, cmd: Cmd) -> Damage {
+    gen_delete(ctx, cmd, motion_yank)
+}
+
+pub fn delete_for_c_cmd(ctx: &mut EditorCtx, cmd: Cmd) -> Damage {
+    gen_delete(ctx, cmd, motion_yank_for_c_cmd)
+}
+
+type YankFn = fn(
+    &mut EditorCtx,
+    Motion,
+    usize,
+    usize,
+    Option<MotionMode>,
+) -> Option<(RegisterData, YankShape)>;
+
+pub fn gen_delete(ctx: &mut EditorCtx, cmd: Cmd, yank_fn: YankFn) -> Damage {
     match cmd.arg {
         Arg::Motion { reps, mode, motion } => {
             let cmd_reps = cmd.reps.unwrap_or(1);
             let arg_reps = reps.unwrap_or(1);
-            match motion_yank(ctx, motion, cmd_reps, arg_reps, mode) {
+            match yank_fn(ctx, motion, cmd_reps, arg_reps, mode) {
                 None => Damage::Intact,
                 Some((reg_data, yank_shape)) => {
                     let damage = delete_data(ctx, &reg_data);
