@@ -33,6 +33,13 @@ pub fn coords_to_char_idx(
     line_idx + col_idx
 }
 
+// Turn a rope index into the right column on the screen. Note: this function will
+// return the "appropriate" column for normal mode navigation. That is:
+//
+//    - For a tab, this function will leave us at the rightmost on-screen column for the tab.
+//    - For anything rendered wide (emojis, ctrl, zwj), this function will return the initial
+//      column of the char. Again, what's expected in nav mode.
+//
 pub fn char_idx_to_coords(
     config: &Config,
     rope: &Rope,
@@ -54,6 +61,14 @@ pub fn char_idx_to_coords(
     }
 }
 
+// Move the buf_view cursor to the given coords. This function will take care of adjusting
+// the column to ensure that in doesn't end up in the middle of a wide char. The snapping
+// happens according to Normal mode nav rules. That is:
+//
+//    - Tabs: put cursor in the tab's last screen column
+//    - Wide chars (emoji, ctrl, zwj), go to first column of the char
+//
+// This function will leave the given buf_view cursor and taget_col properly set
 pub fn snap_coords(config: &Config, rope: &Rope, buf_view: &mut BufferView, coords: Coords) {
     let line = buf_view.display_buf.ensure_line(config, rope, coords.row);
     let col = line.snap_col(coords.col);
@@ -80,5 +95,33 @@ mod test {
 
         let new_coords = char_idx_to_coords(&config, &rope, &mut buf_view, char_idx);
         assert_eq!(new_coords, coords);
+    }
+
+    #[test]
+    fn test_col_rope_conversions() {
+        let config = Config::default();
+        let rope = Rope::from_str("foo\t🏳️‍🌈 \tbar\n");
+        let mut buf_view = BufferView::empty();
+
+        for (orig_col, expected_col) in vec![
+            (3, 7),
+            (5, 7),
+            (7, 7),
+            (8, 8),
+            (9, 8),
+            (10, 10),
+            (11, 15),
+            (13, 15),
+            (15, 15),
+            (16, 16),
+            (17, 17),
+            (18, 18),
+            (19, 19),
+        ] {
+            let orig_coords = Coords::new(0, orig_col);
+            let char_idx = coords_to_char_idx(&config, &rope, &mut buf_view, orig_coords);
+            let expected_coords = char_idx_to_coords(&config, &rope, &mut buf_view, char_idx);
+            assert_eq!(expected_col, expected_coords.col);
+        }
     }
 }
