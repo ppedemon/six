@@ -130,7 +130,7 @@ fn finish_interactive_change(ctx: &mut EditorCtx) {
             let (_, buf_view) = active_session!(ctx);
             let cursor = buf_view.cursor;
 
-            if cursor.row > start.row {
+            if cursor.row != start.row {
                 return;
             }
 
