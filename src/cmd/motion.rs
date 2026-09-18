@@ -7,6 +7,7 @@ pub enum Motion {
     Right,
     PageDown,
     PageUp,
+    GotoCol(usize),
 
     // Jump between words
     NextBigWord,

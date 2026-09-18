@@ -1,16 +1,20 @@
-use std::{borrow::Cow, sync::LazyLock};
+use std::sync::LazyLock;
 
 use crate::{
-    active_session_and_buffer,
-    cmd::{Cmd, EditOp, InsertPoint, InteractiveOp, Motion, Operator::Move, TxnItem},
-    components::EditorCtx,
+    active_session, active_session_and_buffer,
+    cmd::{
+        Cmd, EditOp, InsertPoint, InteractiveOp, Motion,
+        Operator::{self, Move},
+        TxnItem,
+    },
+    components::{EditorCtx, YankData, YankShape},
     systems::{
-        commons,
-        input::dispatch_txn,
+        commons::curr_line,
+        immediate::delete_for_c_cmd,
+        input::{dispatch_cmd, dispatch_txn},
         insert::apply_insert_log,
         interactive::ExecMode::{Batch, Interactive},
         mode::{enter_insert, goto_insert_point},
-        nav::{NormalNav, move_left},
     },
 };
 
@@ -61,54 +65,114 @@ impl InteractiveArgs {
 }
 
 pub fn handle_interactive(ctx: &mut EditorCtx, args: InteractiveArgs) {
+    prelude(ctx, &args);
     ctx.repbuf.save_last_cmd(args.cmd);
+    let insert_point = insert_point(ctx, args.op);
+
     match args.exec_mode {
-        ExecMode::Interactive => exec_interactive(ctx, args),
-        ExecMode::Batch => exec_batch(ctx, args),
+        ExecMode::Interactive => enter_insert(ctx, insert_point),
+        ExecMode::Batch => {
+            let reps = args.cmd.reps.unwrap_or(1);
+            goto_insert_point(ctx, insert_point);
+            apply_last_insert(ctx, args.op, reps, true);
+        }
     }
 }
 
-fn exec_interactive(ctx: &mut EditorCtx, args: InteractiveArgs) {
-    let txn = prelude_txn(&args);
-    let insert_point = insert_point(args.op);
-    dispatch_txn(ctx, &txn);
-    enter_insert(ctx, insert_point);
+fn prelude(ctx: &mut EditorCtx, args: &InteractiveArgs) {
+    match args.op {
+        InteractiveOp::EnterInsert(insert_point) => {}
+        InteractiveOp::OpenAbove => dispatch_txn(ctx, &OPEN_ABOVE),
+        InteractiveOp::OpenBelow => dispatch_txn(ctx, &OPEN_BELOW),
+        InteractiveOp::Change => change_prelude(ctx, args),
+    }
 }
 
-fn exec_batch(ctx: &mut EditorCtx, args: InteractiveArgs) {
-    let reps = args.cmd.reps.unwrap_or(1);
-    let txn = prelude_txn(&args);
-    let insert_point = insert_point(args.op);
-    dispatch_txn(ctx, &txn);
-    goto_insert_point(ctx, insert_point);
-    apply_last_insert(ctx, args.op, reps, true);
+fn change_prelude<'a>(ctx: &mut EditorCtx, args: &'a InteractiveArgs) {
+    let (row, num_rows) = {
+        let (_, buf_view, buffer) = active_session_and_buffer!(ctx);
+        (buf_view.cursor.row, buffer.rope().len_lines())
+    };
+
+    delete_for_c_cmd(ctx, args.cmd);
+
+    if let Some(shape) = ctx.repbuf.last_yank() {
+        match shape {
+            YankData {
+                shape: YankShape::Line { num_lines },
+                ..
+            } if num_lines < num_rows => {
+                if row + num_lines >= num_rows {
+                    dispatch_txn(ctx, &OPEN_BELOW)
+                } else {
+                    dispatch_txn(ctx, &OPEN_ABOVE)
+                }
+            }
+            _ => {}
+        }
+    }
 }
 
 pub fn finish_interactive(ctx: &mut EditorCtx, op: InteractiveOp, reps: usize) {
-    apply_last_insert(ctx, op, reps, false);
-}
-
-fn prelude_txn<'a>(args: &'a InteractiveArgs) -> Cow<'a, [TxnItem]> {
-    match args.op {
-        InteractiveOp::EnterInsert(_) => Cow::Borrowed(&[]),
-        InteractiveOp::OpenAbove => Cow::Borrowed(OPEN_ABOVE.as_slice()),
-        InteractiveOp::OpenBelow => Cow::Borrowed(OPEN_BELOW.as_slice()),
+    if op == InteractiveOp::Change {
+        finish_interactive_change(ctx);
+    } else {
+        apply_last_insert(ctx, op, reps, false);
     }
 }
 
-fn insert_point(op: InteractiveOp) -> InsertPoint {
+fn finish_interactive_change(ctx: &mut EditorCtx) {
+    match ctx.repbuf.last_yank() {
+        Some(YankData {
+            shape: YankShape::Block { rows, .. },
+            start,
+        }) => {
+            let (_, buf_view) = active_session!(ctx);
+            let cursor = buf_view.cursor;
+
+            if cursor.row != start.row {
+                return;
+            }
+
+            let ops = ctx.registers.last_insert().to_vec();
+            for _ in 0..rows.saturating_sub(1) {
+                dispatch_txn(
+                    ctx,
+                    &[
+                        Cmd::new(Operator::Move(Motion::Down)).into(),
+                        Cmd::new(Operator::Move(Motion::GotoCol(start.col + 1))).into(),
+                    ],
+                );
+                apply_insert_log(ctx, &ops, 1);
+            }
+
+            dispatch_txn(
+                ctx,
+                &[
+                    Cmd::new(Operator::Move(Motion::GotoLine(cursor.row + 1))).into(),
+                    Cmd::new(Operator::Move(Motion::GotoCol(cursor.col + 1))).into(),
+                ],
+            );
+        }
+        _ => {}
+    }
+}
+
+fn insert_point(ctx: &mut EditorCtx, op: InteractiveOp) -> InsertPoint {
     match op {
         InteractiveOp::EnterInsert(insert_point) => insert_point,
+        InteractiveOp::Change => {
+            let (_, buf_view, buffer) = active_session_and_buffer!(mut ctx);
+            let cursor = buf_view.cursor;
+            let line = curr_line(&ctx.config, buffer.rope(), buf_view);
+            if line.next_col(cursor.col) == cursor.col {
+                InsertPoint::Last
+            } else {
+                InsertPoint::Curr
+            }
+        }
         _ => InsertPoint::Curr,
     }
-}
-
-fn restore_cursor(ctx: &mut EditorCtx) {
-    let (session, buf_view, buffer) = active_session_and_buffer!(mut ctx);
-    let cursor = buf_view.cursor;
-    let line = commons::curr_line(&ctx.config, buffer.rope(), buf_view);
-    buf_view.cursor.col = line.snap_col(cursor.col);
-    move_left::<NormalNav>(&ctx.config, buffer.rope(), buf_view, 1);
 }
 
 fn apply_last_insert(ctx: &mut EditorCtx, op: InteractiveOp, reps: usize, from_batch: bool) {
@@ -116,6 +180,27 @@ fn apply_last_insert(ctx: &mut EditorCtx, op: InteractiveOp, reps: usize, from_b
         InteractiveOp::EnterInsert(_) => {
             let ops = ctx.registers.last_insert().to_vec();
             apply_insert_log(ctx, &ops, reps);
+        }
+        InteractiveOp::Change => {
+            if let Some(yank_data) = ctx.repbuf.last_yank() {
+                match yank_data {
+                    YankData {
+                        shape: YankShape::Block { rows, .. },
+                        ..
+                    } => {
+                        let ops = ctx.registers.last_insert().to_vec();
+                        apply_insert_log(ctx, &ops, 1);
+                        for _ in 0..rows.saturating_sub(1) {
+                            dispatch_cmd(ctx, Cmd::new(Operator::Move(Motion::Down)));
+                            apply_insert_log(ctx, &ops, 1);
+                        }
+                    }
+                    _ => {
+                        let ops = ctx.registers.last_insert().to_vec();
+                        apply_insert_log(ctx, &ops, reps);
+                    }
+                }
+            }
         }
         InteractiveOp::OpenAbove | InteractiveOp::OpenBelow => {
             let len = ctx.registers.last_insert().len();
@@ -130,5 +215,4 @@ fn apply_last_insert(ctx: &mut EditorCtx, op: InteractiveOp, reps: usize, from_b
             apply_insert_log(ctx, &new_ops, n);
         }
     }
-    restore_cursor(ctx);
 }

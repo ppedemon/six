@@ -1,5 +1,5 @@
 use crate::{
-    cmd::{Cmd, Motion},
+    cmd::{Cmd, Motion, Operator},
     components::{Buffer, EditorCtx, Level},
     ex::{BuiltIn, ExError, ExRange},
     systems::{
@@ -7,8 +7,8 @@ use crate::{
             args::{validate_no_args, validate_opt_append_filename, validate_opt_filename},
             fs,
         },
+        input::dispatch_cmd,
         lifecycle,
-        nav::{NavArgs, handle_nav},
     },
 };
 
@@ -56,9 +56,7 @@ pub fn exec_builtin(
             fs::save_active(ctx, name, append, false, range)?;
         }
         BuiltIn::GotoLine(line) => {
-            let motion = Motion::GotoLine(line);
-            let cmd = Cmd::new(motion.into());
-            handle_nav(ctx, NavArgs::new(motion, cmd));
+            dispatch_cmd(ctx, Cmd::new(Operator::Move(Motion::GotoLine(line))));
             ctx.status.set_msg(Level::Info, &format!(":{}", line));
         }
         _ => unreachable!("Unimplemented builtin: {builtin:?}"),
