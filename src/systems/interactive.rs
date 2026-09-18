@@ -128,27 +128,29 @@ fn finish_interactive_change(ctx: &mut EditorCtx) {
             start,
         }) => {
             let (_, buf_view) = active_session!(ctx);
-            let col = start.col;
-            let ops = ctx.registers.last_insert().to_vec();
+            let cursor = buf_view.cursor;
 
+            if cursor.row > start.row {
+                return;
+            }
+
+            let ops = ctx.registers.last_insert().to_vec();
             for _ in 0..rows.saturating_sub(1) {
                 dispatch_txn(
                     ctx,
                     &[
                         Cmd::new(Operator::Move(Motion::Down)).into(),
-                        Cmd::new(Operator::Move(Motion::GotoCol(col + 1))).into(),
+                        Cmd::new(Operator::Move(Motion::GotoCol(start.col + 1))).into(),
                     ],
                 );
                 apply_insert_log(ctx, &ops, 1);
             }
 
-            let (_, buf_view) = active_session!(ctx);
-            let cursor_col = buf_view.cursor.col;
             dispatch_txn(
                 ctx,
                 &[
-                    Cmd::new(Operator::Move(Motion::GotoLine(start.row + 1))).into(),
-                    Cmd::new(Operator::Move(Motion::GotoCol(cursor_col + 1))).into(),
+                    Cmd::new(Operator::Move(Motion::GotoLine(cursor.row + 1))).into(),
+                    Cmd::new(Operator::Move(Motion::GotoCol(cursor.col + 1))).into(),
                 ],
             );
         }
