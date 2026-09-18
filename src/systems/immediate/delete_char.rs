@@ -43,7 +43,7 @@ fn small_delete(
         .patch_range(&ctx.config, buffer.rope(), row..row + 1);
 
     let cursor = char_idx_to_coords(&ctx.config, buffer.rope(), buf_view, rng.start);
-    goto_col::<NormalNav>(&ctx.config, buffer.rope(), buf_view, cursor.col);
+    goto_col::<NormalNav>(&ctx.config, buffer.rope(), buf_view, cursor.col + 1);
 
     Damage::Line(buf_view.cursor.row)
 }

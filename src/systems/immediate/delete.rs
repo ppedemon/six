@@ -1,7 +1,7 @@
 use crate::{
     active_session_and_buffer,
     cmd::{Arg, Cmd, Motion, MotionMode},
-    components::{EditorCtx, MutBuffer, RegisterData, YankShape},
+    components::{EditorCtx, MutBuffer, RegisterData, YankData},
     systems::{
         commons::cursor_to_char_idx,
         event,
@@ -25,7 +25,7 @@ type YankFn = fn(
     usize,
     usize,
     Option<MotionMode>,
-) -> Option<(RegisterData, YankShape)>;
+) -> Option<(RegisterData, YankData)>;
 
 pub fn gen_delete(ctx: &mut EditorCtx, cmd: Cmd, yank_fn: YankFn) -> Damage {
     match cmd.arg {
@@ -34,11 +34,11 @@ pub fn gen_delete(ctx: &mut EditorCtx, cmd: Cmd, yank_fn: YankFn) -> Damage {
             let arg_reps = reps.unwrap_or(1);
             match yank_fn(ctx, motion, cmd_reps, arg_reps, mode) {
                 None => Damage::Intact,
-                Some((reg_data, yank_shape)) => {
+                Some((reg_data, yank_data)) => {
                     let damage = delete_data(ctx, &reg_data);
                     notify_delete(ctx, &reg_data);
                     ctx.registers.record_delete(cmd.reg, reg_data);
-                    ctx.repbuf.save_last_yank_shape(yank_shape);
+                    ctx.repbuf.save_last_yank(yank_data);
                     damage
                 }
             }

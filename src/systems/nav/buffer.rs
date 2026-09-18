@@ -305,6 +305,7 @@ pub fn end_of_file<R: NavRules>(config: &Config, rope: &Rope, buf_view: &mut Buf
     buf_view.target_col = col;
 }
 
+// Line is zero-based
 pub fn goto_line<R: NavRules>(
     config: &Config,
     rope: &Rope,
@@ -320,11 +321,8 @@ pub fn goto_line<R: NavRules>(
 }
 
 pub fn goto_col<R: NavRules>(config: &Config, rope: &Rope, buf_view: &mut BufferView, col: usize) {
-    let line = buf_view
-        .display_buf
-        .ensure_line(config, rope, buf_view.cursor.row);
-
-    let norm_col = col.min(R::max_allowed_width(&line));
+    let line = curr_line(config, rope, buf_view);
+    let norm_col = col.saturating_sub(1).min(R::max_allowed_width(&line));
     buf_view.cursor.col = R::snap_col(&line, norm_col);
     buf_view.target_col = buf_view.cursor.col;
 }

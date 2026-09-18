@@ -26,7 +26,7 @@ pub fn insert_char(
 
     let new_col = char_idx_to_coords(config, text.rope(), buf_view, char_idx + 1).col;
     if new_col > buf_view.cursor.col {
-        goto_col::<InsertNav>(config, text.rope(), buf_view, new_col);
+        goto_col::<InsertNav>(config, text.rope(), buf_view, new_col + 1);
     }
 
     Damage::Line(buf_view.cursor.row)

@@ -1,7 +1,7 @@
 use crate::{
     active_session, active_session_and_buffer,
     cmd::{Arg, Cmd, Motion, MotionMode},
-    components::{Coords, EditorCtx, RegisterData, YankShape},
+    components::{Coords, EditorCtx, RegisterData, YankData, YankShape},
     systems::{
         commons::{char_idx_to_coords, coords_to_char_idx},
         event,
@@ -20,10 +20,10 @@ pub fn yank(ctx: &mut EditorCtx, cmd: Cmd) {
             let arg_reps = reps.unwrap_or(1);
             match motion_yank(ctx, motion, cmd_reps, arg_reps, mode) {
                 None => {}
-                Some((reg_data, yank_shape)) => {
+                Some((reg_data, yank_data)) => {
                     event::on_yank(&mut ctx.status, &reg_data);
                     ctx.registers.record_yank(cmd.reg, reg_data);
-                    ctx.repbuf.save_last_yank_shape(yank_shape);
+                    ctx.repbuf.save_last_yank(yank_data);
                 }
             }
         }
@@ -40,9 +40,9 @@ pub fn motion_yank(
     cmd_reps: usize,
     args_reps: usize,
     forced_mode: Option<MotionMode>,
-) -> Option<(RegisterData, YankShape)> {
-    let (register_data, _, yank_shape) = gen_motion_yank(ctx, m, cmd_reps, args_reps, forced_mode)?;
-    Some((register_data, yank_shape))
+) -> Option<(RegisterData, YankData)> {
+    let (register_data, _, yank_data) = gen_motion_yank(ctx, m, cmd_reps, args_reps, forced_mode)?;
+    Some((register_data, yank_data))
 }
 
 // Do a yank for the given motion and reps, but adapted for the 'c' command.
@@ -55,23 +55,24 @@ pub fn motion_yank_for_c_cmd(
     cmd_reps: usize,
     args_reps: usize,
     forced_mode: Option<MotionMode>,
-) -> Option<(RegisterData, YankShape)> {
+) -> Option<(RegisterData, YankData)> {
     let cursor = {
         let (_, buf_view) = active_session!(ctx);
         buf_view.cursor
     };
 
-    let (mut register_data, mut extent, shape) =
+    let (mut register_data, mut extent, yank_data) =
         gen_motion_yank(ctx, m, cmd_reps, args_reps, forced_mode)?;
 
     if m == Motion::NextBigWord || m == Motion::NextSubWord {
         adjust_for_c_cmd(ctx, cursor, &mut extent, &mut register_data);
         let orig_mode = motion_mode(m);
         let inclusive = is_inclusive(ctx, m, extent.overshot, orig_mode, forced_mode);
-        let shape = yank_shape(forced_mode.unwrap_or(orig_mode), extent, inclusive);
-        Some((register_data, shape))
+        let yank_shape = yank_shape(forced_mode.unwrap_or(orig_mode), extent, inclusive);
+        let yank_data = YankData::new(extent.start, yank_shape);
+        Some((register_data, yank_data))
     } else {
-        Some((register_data, shape))
+        Some((register_data, yank_data))
     }
 }
 
@@ -82,7 +83,7 @@ fn gen_motion_yank(
     cmd_reps: usize,
     args_reps: usize,
     forced_mode: Option<MotionMode>,
-) -> Option<(RegisterData, MotionExtent, YankShape)> {
+) -> Option<(RegisterData, MotionExtent, YankData)> {
     let (orig_cursor, orig_target_col) = {
         let (_, buf_view) = active_session!(ctx);
         (buf_view.cursor, buf_view.target_col)
@@ -99,7 +100,8 @@ fn gen_motion_yank(
     }
 
     let (register_data, yank_shape) = extent_yank(ctx, extent, orig_mode, forced_mode, inclusive);
-    Some((register_data, extent, yank_shape))
+    let yank_data = YankData::new(extent.start, yank_shape);
+    Some((register_data, extent, yank_data))
 }
 
 // Yank text based on the given extent and mode

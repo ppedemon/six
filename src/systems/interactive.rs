@@ -7,7 +7,7 @@ use crate::{
         Operator::{self, Move},
         TxnItem,
     },
-    components::{EditorCtx, YankShape},
+    components::{EditorCtx, YankData, YankShape},
     systems::{
         commons::curr_line,
         immediate::delete_for_c_cmd,
@@ -96,9 +96,12 @@ fn change_prelude<'a>(ctx: &mut EditorCtx, args: &'a InteractiveArgs) {
 
     delete_for_c_cmd(ctx, args.cmd);
 
-    if let Some(shape) = ctx.repbuf.last_yank_shape() {
+    if let Some(shape) = ctx.repbuf.last_yank() {
         match shape {
-            YankShape::Line { num_lines } if num_lines < num_rows => {
+            YankData {
+                shape: YankShape::Line { num_lines },
+                ..
+            } if num_lines < num_rows => {
                 if row + num_lines >= num_rows {
                     dispatch_txn(ctx, &OPEN_BELOW)
                 } else {
@@ -119,22 +122,35 @@ pub fn finish_interactive(ctx: &mut EditorCtx, op: InteractiveOp, reps: usize) {
 }
 
 fn finish_interactive_change(ctx: &mut EditorCtx) {
-    match ctx.repbuf.last_yank_shape() {
-        Some(YankShape::Block { rows, .. }) => {
+    match ctx.repbuf.last_yank() {
+        Some(YankData {
+            shape: YankShape::Block { rows, .. },
+            start,
+        }) => {
             let (_, buf_view) = active_session!(ctx);
-            let col = buf_view.cursor.col;
+            let col = start.col;
             let ops = ctx.registers.last_insert().to_vec();
 
             for _ in 0..rows.saturating_sub(1) {
                 dispatch_txn(
                     ctx,
                     &[
-                        TxnItem::Cmd(Cmd::new(Operator::Move(Motion::Down))),
-                        TxnItem::Cmd(Cmd::new(Operator::Move(Motion::GotoCol(col + 1)))),
+                        Cmd::new(Operator::Move(Motion::Down)).into(),
+                        Cmd::new(Operator::Move(Motion::GotoCol(col + 1))).into(),
                     ],
                 );
                 apply_insert_log(ctx, &ops, 1);
             }
+
+            let (_, buf_view) = active_session!(ctx);
+            let cursor_col = buf_view.cursor.col;
+            dispatch_txn(
+                ctx,
+                &[
+                    Cmd::new(Operator::Move(Motion::GotoLine(start.row + 1))).into(),
+                    Cmd::new(Operator::Move(Motion::GotoCol(cursor_col + 1))).into(),
+                ],
+            );
         }
         _ => {}
     }
@@ -164,9 +180,12 @@ fn apply_last_insert(ctx: &mut EditorCtx, op: InteractiveOp, reps: usize, from_b
             apply_insert_log(ctx, &ops, reps);
         }
         InteractiveOp::Change => {
-            if let Some(shape) = ctx.repbuf.last_yank_shape() {
-                match shape {
-                    YankShape::Block { rows, .. } => {
+            if let Some(yank_data) = ctx.repbuf.last_yank() {
+                match yank_data {
+                    YankData {
+                        shape: YankShape::Block { rows, .. },
+                        ..
+                    } => {
                         let ops = ctx.registers.last_insert().to_vec();
                         apply_insert_log(ctx, &ops, 1);
                         for _ in 0..rows.saturating_sub(1) {
