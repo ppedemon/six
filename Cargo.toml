@@ -14,12 +14,14 @@ ropey = { version = "1.6.1", default-features = false, features = ["cr_lines", "
 shellexpand = "3.1.2"
 tempfile = "3.27.0"
 thiserror = "2.0.18"
+tracing = { version = "0.1.44", optional = true }
+tracing-subscriber = { version = "0.3.23", optional = true }
 unescape = "0.1.0"
 unicode-segmentation = "1.13.2"
 unicode-width = "0.2.2"
 
 [features]
-color-eyre = ["dep:color-eyre"]
+dev = ["dep:color-eyre", "dep:tracing", "dep:tracing-subscriber"]
 
 [dev-dependencies]
 dirs = "6.0.0"

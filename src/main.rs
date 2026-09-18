@@ -6,6 +6,10 @@ use crossterm::{
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
 use ratatui::{Terminal, backend::CrosstermBackend};
+
+#[cfg(feature = "dev")]
+use std::fs::File;
+
 use std::{
     io::{self, Stdout},
     time::Duration,
@@ -22,7 +26,7 @@ mod rope;
 mod systems;
 
 fn main() -> Result<()> {
-    #[cfg(feature = "color-eyre")]
+    #[cfg(feature = "dev")]
     {
         let (panic_hook, eyre_hook) = color_eyre::config::HookBuilder::default().into_hooks();
 
@@ -36,6 +40,15 @@ fn main() -> Result<()> {
         }));
 
         eyre_hook.install()?;
+    }
+
+    #[cfg(feature = "dev")]
+    {
+        tracing_subscriber::fmt()
+            .with_writer(File::create("six.log").unwrap())
+            .with_ansi(false)
+            .with_max_level(tracing::Level::DEBUG)
+            .init();
     }
 
     digraphs::load_digraphs();

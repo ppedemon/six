@@ -1,8 +1,10 @@
 use ropey::Rope;
 
 use crate::components::{BufferView, Config, Coords, MutBuffer};
-use crate::systems::commons::{coords_to_char_idx, curr_line, cursor_to_char_idx};
-use crate::systems::nav::{InsertNav, move_down, move_right, move_up};
+use crate::systems::commons::{
+    char_idx_to_coords, coords_to_char_idx, curr_line, cursor_to_char_idx,
+};
+use crate::systems::nav::{InsertNav, goto_col, move_down, move_up};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Damage {
@@ -21,7 +23,12 @@ pub fn insert_char(
     let char_idx = cursor_to_char_idx(config, buf_view, text.rope());
     text.insert_char(char_idx, c);
     patch_curr_line(config, text.rope(), buf_view);
-    move_right::<InsertNav>(config, text.rope(), buf_view, 1);
+
+    let new_col = char_idx_to_coords(config, text.rope(), buf_view, char_idx + 1).col;
+    if new_col > buf_view.cursor.col {
+        goto_col::<InsertNav>(config, text.rope(), buf_view, new_col);
+    }
+
     Damage::Line(buf_view.cursor.row)
 }
 
@@ -34,7 +41,7 @@ pub fn enter(config: &Config, buf_view: &mut BufferView, text: &mut impl MutBuff
     buf_view.target_col = 0;
     move_down::<InsertNav>(config, text.rope(), buf_view, 1);
 
-    Damage::From(buf_view.cursor.row)
+    Damage::From(buf_view.cursor.row.saturating_sub(1))
 }
 
 pub fn backspace(config: &Config, buf_view: &mut BufferView, text: &mut impl MutBuffer) -> Damage {

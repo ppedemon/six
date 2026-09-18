@@ -324,7 +324,7 @@ pub fn goto_col<R: NavRules>(config: &Config, rope: &Rope, buf_view: &mut Buffer
         .display_buf
         .ensure_line(config, rope, buf_view.cursor.row);
 
-    let norm_col = col.min(line.display_width.saturating_sub(1));
+    let norm_col = col.min(R::max_allowed_width(&line));
     buf_view.cursor.col = R::snap_col(&line, norm_col);
     buf_view.target_col = buf_view.cursor.col;
 }

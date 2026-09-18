@@ -1,7 +1,7 @@
 use crate::{
     active_session, active_session_and_buffer,
     cmd::{Arg, Cmd, Motion, MotionMode},
-    components::{EditorCtx, RegisterData, YankShape},
+    components::{Coords, EditorCtx, RegisterData, YankShape},
     systems::{
         commons::{char_idx_to_coords, coords_to_char_idx},
         event,
@@ -46,6 +46,8 @@ pub fn motion_yank(
 }
 
 // Do a yank for the given motion and reps, but adapted for the 'c' command.
+// We will need to adapt if the extent was covered by the 'w' or 'W' commands,
+// since those will, in general, leave us at the beginning of the next word.
 // See adjust_for_c_cmd for details about the adapt procedure.
 pub fn motion_yank_for_c_cmd(
     ctx: &mut EditorCtx,
@@ -54,11 +56,16 @@ pub fn motion_yank_for_c_cmd(
     args_reps: usize,
     forced_mode: Option<MotionMode>,
 ) -> Option<(RegisterData, YankShape)> {
+    let cursor = {
+        let (_, buf_view) = active_session!(ctx);
+        buf_view.cursor
+    };
+
     let (mut register_data, mut extent, shape) =
         gen_motion_yank(ctx, m, cmd_reps, args_reps, forced_mode)?;
 
     if m == Motion::NextBigWord || m == Motion::NextSubWord {
-        adjust_for_c_cmd(ctx, &mut extent, &mut register_data);
+        adjust_for_c_cmd(ctx, cursor, &mut extent, &mut register_data);
         let orig_mode = motion_mode(m);
         let inclusive = is_inclusive(ctx, m, extent.overshot, orig_mode, forced_mode);
         let shape = yank_shape(forced_mode.unwrap_or(orig_mode), extent, inclusive);
@@ -130,7 +137,12 @@ pub fn extent_yank(
 //    - linewise selection: do nothing
 //
 // We modify the given extent and register data accordingly.
-fn adjust_for_c_cmd(ctx: &mut EditorCtx, extent: &mut MotionExtent, data: &mut RegisterData) {
+fn adjust_for_c_cmd(
+    ctx: &mut EditorCtx,
+    cursor: Coords,
+    extent: &mut MotionExtent,
+    data: &mut RegisterData,
+) {
     let (start, end) = extent.to_ordered_span();
     let (_, buf_view, buffer) = active_session_and_buffer!(mut ctx);
 
@@ -145,15 +157,62 @@ fn adjust_for_c_cmd(ctx: &mut EditorCtx, extent: &mut MotionExtent, data: &mut R
             }
         }
         RegisterData::Block { data, idxs } => {
-            for (row, (start, end)) in data.iter_mut().zip(idxs) {
-                let trimmed = row.trim_end();
-                if !trimmed.is_empty() {
-                    row.truncate(trimmed.len());
-                    *end = *start + row.len();
+            let start_row = start.row;
+            for (i, (row, (start, end))) in data.iter_mut().zip(idxs).enumerate() {
+                if row.chars().all(|c| c.is_whitespace()) {
+                    continue;
                 }
+                adjust_row_for_c_cmd(ctx, start_row + i, row, *start, end);
             }
         }
         RegisterData::Line { .. } => {}
+    }
+}
+
+fn adjust_row_for_c_cmd(
+    ctx: &mut EditorCtx,
+    row_num: usize,
+    row_data: &mut String,
+    start: usize,
+    end: &mut usize,
+) {
+    let (_, buf_view, buffer) = active_session_and_buffer!(mut ctx);
+    let line = buf_view
+        .display_buf
+        .ensure_line(&ctx.config, buffer.rope(), row_num);
+
+    let line_idx = buffer.rope().line_to_char(row_num);
+    let start_col = line.char_idx_to_col(start - line_idx);
+    let mut end_col = line.char_idx_to_col(*end - line_idx);
+
+    if let Some((_, span)) = line.grapheme_at(end_col.saturating_sub(1)) {
+        let mut should_trim = false;
+        let curr_col = span.start;
+        let curr_idx = line_idx + line.col_to_char_idx(curr_col);
+
+        if buffer.rope().char(curr_idx).is_whitespace() {
+            should_trim = true;
+            end_col = span.start;
+        } else if span.start > start_col
+            && line.grapheme_at(span.start - 1).is_some_and(|(g, span)| {
+                let curr_col = span.start;
+                let curr_idx = line_idx + line.col_to_char_idx(curr_col);
+                buffer.rope().char(curr_idx).is_whitespace()
+            })
+        {
+            should_trim = true;
+            end_col = span.start;
+        }
+
+        if should_trim {
+            let start_idx = line.col_to_char_idx(start_col);
+            let end_idx = line.col_to_char_idx(end_col);
+            row_data.truncate(end_idx - start_idx);
+
+            let trimmed = row_data.trim_end();
+            row_data.truncate(trimmed.len());
+            *end = start + row_data.len();
+        }
     }
 }
 
@@ -199,3 +258,6 @@ fn is_inclusive(
     }
     inclusive
 }
+
+#[cfg(test)]
+mod test {}
