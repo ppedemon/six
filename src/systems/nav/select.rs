@@ -2,7 +2,7 @@ use ropey::Rope;
 
 use crate::{
     active_session, active_session_and_buffer,
-    cmd::{Cmd, Motion, Operator},
+    cmd::{Cmd, Motion, MotionMeta, Operator},
     components::{Coords, DisplayLineRef, EditorCtx, RegisterData},
     systems::{
         commons::coords_to_char_idx,
@@ -42,7 +42,7 @@ pub fn exec_motion(
     cmd_reps: usize,
     arg_reps: usize,
 ) -> Option<MotionExtent> {
-    if uses_viewport(m) {
+    if m.meta() == MotionMeta::Viewport {
         return None;
     }
 
@@ -209,59 +209,6 @@ fn safe_slice(rope: &Rope, start_idx: usize, end_idx: usize) -> String {
         String::new()
     } else {
         rope.slice(start_idx..end_idx).to_string()
-    }
-}
-
-// -----------------------------------------------------------------------
-// Movement properties
-// We do out best to follow what the vim reference manual says.
-// See (in vim) :help motions
-// -----------------------------------------------------------------------
-fn uses_viewport(m: Motion) -> bool {
-    match m {
-        Motion::PageDown | Motion::PageUp => true,
-        _ => false,
-    }
-}
-
-pub fn linewise(m: Motion) -> bool {
-    match m {
-        Motion::Down => true,
-        Motion::Up => true,
-        Motion::Line => true,
-        Motion::GotoLine(_) => true,
-        Motion::FirstNonBlankInFile => true,
-        Motion::StartOfFile => true,
-        Motion::EndOfFile => true,
-        Motion::GotoMark(_) => true,
-
-        _ => false,
-    }
-}
-
-pub fn charwise(m: Motion) -> bool {
-    !linewise(m)
-}
-
-pub fn inclusive(ctx: &EditorCtx, m: Motion) -> bool {
-    match m {
-        _ if linewise(m) => true,
-
-        Motion::EndOfLine => true,
-        Motion::FindNextChar(_) => true,
-        Motion::TillNextChar(_) => true,
-        Motion::EndSubWord => true,
-        Motion::EndBigWord => true,
-        Motion::RepeatBackward => ctx
-            .last_search
-            .last_char_search()
-            .is_some_and(|m| !inclusive(ctx, m)),
-        Motion::RepeatForward => ctx
-            .last_search
-            .last_char_search()
-            .is_some_and(|m| inclusive(ctx, m)),
-
-        _ => false,
     }
 }
 

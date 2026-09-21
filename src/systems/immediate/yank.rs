@@ -1,13 +1,13 @@
 use crate::{
     active_session, active_session_and_buffer,
-    cmd::{Arg, Cmd, Motion, MotionMode},
+    cmd::{Arg, Cmd, Motion, MotionMeta, MotionMode},
     components::{Coords, EditorCtx, RegisterData, YankData, YankShape},
     systems::{
         commons::{char_idx_to_coords, coords_to_char_idx},
         event,
         nav::{
-            MotionExtent, charwise, exec_motion, inclusive, select_blockwise, select_charwise,
-            select_charwise_nl, select_linewise,
+            MotionExtent, exec_motion, select_blockwise, select_charwise, select_charwise_nl,
+            select_linewise,
         },
     },
 };
@@ -56,16 +56,17 @@ pub fn motion_yank_for_c_cmd(
     args_reps: usize,
     forced_mode: Option<MotionMode>,
 ) -> Option<(RegisterData, YankData)> {
-    let cursor = {
-        let (_, buf_view) = active_session!(ctx);
-        buf_view.cursor
-    };
-
     let (mut register_data, mut extent, yank_data) =
         gen_motion_yank(ctx, m, cmd_reps, args_reps, forced_mode)?;
 
     if m == Motion::NextBigWord || m == Motion::NextSubWord {
+        let cursor = {
+            let (_, buf_view) = active_session!(ctx);
+            buf_view.cursor
+        };
+
         adjust_for_c_cmd(ctx, cursor, &mut extent, &mut register_data);
+
         let orig_mode = motion_mode(m);
         let inclusive = is_inclusive(ctx, m, extent.overshot, orig_mode, forced_mode);
         let yank_shape = yank_shape(forced_mode.unwrap_or(orig_mode), extent, inclusive);
@@ -240,7 +241,7 @@ fn yank_shape(mode: MotionMode, extent: MotionExtent, inclusive: bool) -> YankSh
 }
 
 fn motion_mode(m: Motion) -> MotionMode {
-    if charwise(m) {
+    if m.meta() == MotionMeta::Charwise {
         MotionMode::Charwise
     } else {
         MotionMode::Linewise
@@ -259,6 +260,28 @@ fn is_inclusive(
         inclusive = !inclusive;
     }
     inclusive
+}
+
+fn inclusive(ctx: &EditorCtx, m: Motion) -> bool {
+    match m {
+        _ if m.meta() == MotionMeta::Linewise => true,
+
+        Motion::EndOfLine => true,
+        Motion::FindNextChar(_) => true,
+        Motion::TillNextChar(_) => true,
+        Motion::EndSubWord => true,
+        Motion::EndBigWord => true,
+        Motion::RepeatBackward => ctx
+            .last_search
+            .last_char_search()
+            .is_some_and(|m| !inclusive(ctx, m)),
+        Motion::RepeatForward => ctx
+            .last_search
+            .last_char_search()
+            .is_some_and(|m| inclusive(ctx, m)),
+
+        _ => false,
+    }
 }
 
 #[cfg(test)]

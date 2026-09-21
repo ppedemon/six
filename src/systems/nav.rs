@@ -7,7 +7,7 @@ pub mod utils;
 pub use buffer::{goto_col, line_first_non_blank, move_down, move_left, move_right, move_up};
 pub use rules::{InsertNav, NormalNav};
 pub use select::{
-    MotionExtent, charwise, exec_motion, inclusive, select_blockwise, select_charwise,
-    select_charwise_nl, select_linewise,
+    MotionExtent, exec_motion, select_blockwise, select_charwise, select_charwise_nl,
+    select_linewise,
 };
 pub use session::{NavArgs, handle_nav, handle_session_nav, init_cursor_pos};
