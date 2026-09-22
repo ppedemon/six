@@ -18,6 +18,7 @@ mod paste;
 mod replace;
 mod yank;
 
+pub use delete::delete_for_c_cmd;
 use delete_char::{backspace, delete_char};
 use join::join;
 use paste::{PasteMode, paste};

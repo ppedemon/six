@@ -4,7 +4,7 @@ mod operator;
 mod text_object;
 
 pub use insert::{EditOp, InsertOp};
-pub use motion::Motion;
+pub use motion::{Motion, MotionMeta};
 pub use operator::{ExMode, ImmediateOp, InsertPoint, InteractiveOp, Operator, SysOp};
 pub use text_object::{TextObject, TextObjectKind, TextObjectScope};
 

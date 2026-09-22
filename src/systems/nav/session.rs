@@ -46,7 +46,7 @@ fn handle_ex_nav(ctx: &mut EditorCtx, args: NavArgs) {
     }
 }
 
-pub fn handle_session_nav(ctx: &mut EditorCtx, args: NavArgs) {
+fn handle_session_nav(ctx: &mut EditorCtx, args: NavArgs) {
     let config = &ctx.config;
     let (session, buf_view, buffer) = active_session_and_buffer!(mut ctx);
 
@@ -108,6 +108,7 @@ fn session_nav<R: NavRules>(
             buffer::page_down::<R>(config, rope, buf_view, reps, pg_size);
             viewport.scroll_to_row(buf_view.cursor.row);
         }
+        Motion::GotoCol(col) => buffer::goto_col::<R>(config, rope, buf_view, col),
         Motion::NextBigWord => {
             let overshot = buffer::next_big_word(config, rope, buf_view, reps);
             buf_view.overshot = overshot;
@@ -218,6 +219,7 @@ pub fn line<R: NavRules>(buffer: &Buffer, buf_view: &mut BufferView, reps: usize
     buf_view.cursor.row = (buf_view.cursor.row + reps.saturating_sub(1)).min(max_row);
 }
 
+// Line is zero-based
 pub fn goto_line<R: NavRules>(
     config: &Config,
     rope: &Rope,
@@ -265,6 +267,6 @@ pub fn exact_goto_mark<R: NavRules>(
     if let Some(char_idx) = buffer.marks().read(mark) {
         let coord = char_idx_to_coords(config, buffer.rope(), buf_view, char_idx);
         goto_line::<R>(config, buffer.rope(), viewport, buf_view, coord.row + 1); // goto_line counts from 1
-        buffer::goto_col::<R>(config, buffer.rope(), buf_view, coord.col);
+        buffer::goto_col::<R>(config, buffer.rope(), buf_view, coord.col + 1); // Ditto columns
     }
 }

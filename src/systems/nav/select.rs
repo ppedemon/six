@@ -2,12 +2,9 @@ use ropey::Rope;
 
 use crate::{
     active_session, active_session_and_buffer,
-    cmd::{Cmd, Motion, Operator},
+    cmd::{Cmd, Motion, MotionMeta, Operator},
     components::{Coords, DisplayLineRef, EditorCtx, RegisterData},
-    systems::{
-        commons::coords_to_char_idx,
-        nav::{NavArgs, handle_session_nav},
-    },
+    systems::{commons::coords_to_char_idx, input::dispatch_cmd},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -25,6 +22,15 @@ impl MotionExtent {
             overshot,
         }
     }
+
+    pub fn to_ordered_span(&self) -> (Coords, Coords) {
+        let mut start = self.start;
+        let mut end = self.end;
+        if start > end {
+            std::mem::swap(&mut start, &mut end);
+        }
+        (start, end)
+    }
 }
 
 pub fn exec_motion(
@@ -33,7 +39,7 @@ pub fn exec_motion(
     cmd_reps: usize,
     arg_reps: usize,
 ) -> Option<MotionExtent> {
-    if uses_viewport(m) {
+    if m.meta() == MotionMeta::Viewport {
         return None;
     }
 
@@ -53,8 +59,7 @@ pub fn exec_motion(
 
     for _ in 0..cmd_reps {
         let cmd = Cmd::new(Operator::Move(m)).reps(Some(arg_reps));
-        let args = NavArgs::new(m, cmd);
-        handle_session_nav(ctx, args);
+        dispatch_cmd(ctx, cmd);
     }
 
     let (_, buf_view) = active_session!(ctx);
@@ -92,13 +97,11 @@ pub fn select_charwise_nl(
 }
 
 fn basic_charwise_select(ctx: &mut EditorCtx, span: (Coords, Coords), inclusive: bool) -> String {
-    let (mut start, mut end) = span;
+    let (start, mut end) = span;
+    assert!(start <= end, "invalid span");
+
     let (_, buf_view, buffer) = active_session_and_buffer!(mut ctx);
     let rope = buffer.rope();
-
-    if start > end {
-        std::mem::swap(&mut start, &mut end);
-    }
 
     if inclusive {
         let line = buf_view.display_buf.ensure_line(&ctx.config, rope, end.row);
@@ -113,15 +116,13 @@ fn basic_charwise_select(ctx: &mut EditorCtx, span: (Coords, Coords), inclusive:
 
 pub fn select_linewise(ctx: &mut EditorCtx, span: (Coords, Coords)) -> RegisterData {
     let (start, end) = span;
+    assert!(start <= end, "invalid span");
+
     let (_, buf_view, buffer) = active_session_and_buffer!(mut ctx);
     let rope = buffer.rope();
 
-    let mut start_idx = coords_to_char_idx(&ctx.config, rope, buf_view, start);
-    let mut end_idx = coords_to_char_idx(&ctx.config, rope, buf_view, end);
-
-    if start_idx > end_idx {
-        std::mem::swap(&mut start_idx, &mut end_idx);
-    }
+    let start_idx = coords_to_char_idx(&ctx.config, rope, buf_view, start);
+    let end_idx = coords_to_char_idx(&ctx.config, rope, buf_view, end);
 
     let start_line = rope.char_to_line(start_idx);
     let start_line_idx = rope.line_to_char(start_line);
@@ -204,59 +205,6 @@ fn safe_slice(rope: &Rope, start_idx: usize, end_idx: usize) -> String {
         String::new()
     } else {
         rope.slice(start_idx..end_idx).to_string()
-    }
-}
-
-// -----------------------------------------------------------------------
-// Movement properties
-// We do out best to follow what the vim reference manual says.
-// See (in vim) :help motions
-// -----------------------------------------------------------------------
-fn uses_viewport(m: Motion) -> bool {
-    match m {
-        Motion::PageDown | Motion::PageUp => true,
-        _ => false,
-    }
-}
-
-pub fn linewise(m: Motion) -> bool {
-    match m {
-        Motion::Down => true,
-        Motion::Up => true,
-        Motion::Line => true,
-        Motion::GotoLine(_) => true,
-        Motion::FirstNonBlankInFile => true,
-        Motion::StartOfFile => true,
-        Motion::EndOfFile => true,
-        Motion::GotoMark(_) => true,
-
-        _ => false,
-    }
-}
-
-pub fn charwise(m: Motion) -> bool {
-    !linewise(m)
-}
-
-pub fn inclusive(ctx: &EditorCtx, m: Motion) -> bool {
-    match m {
-        _ if linewise(m) => true,
-
-        Motion::EndOfLine => true,
-        Motion::FindNextChar(_) => true,
-        Motion::TillNextChar(_) => true,
-        Motion::EndSubWord => true,
-        Motion::EndBigWord => true,
-        Motion::RepeatBackward => ctx
-            .last_search
-            .last_char_search()
-            .is_some_and(|m| !inclusive(ctx, m)),
-        Motion::RepeatForward => ctx
-            .last_search
-            .last_char_search()
-            .is_some_and(|m| inclusive(ctx, m)),
-
-        _ => false,
     }
 }
 
@@ -490,19 +438,6 @@ mod test_select_charwise {
     }
 
     #[test]
-    fn test_bwd() {
-        let mut ctx = setup("foo bar\nbaz baz", Coords::default());
-        let span = (Coords::new(0, 4), Coords::default());
-        let data = select_charwise(&mut ctx, span, false);
-        assert_eq!(data, RegisterData::char("foo ".into()));
-
-        let mut ctx = setup("foo bar\nbaz baz", Coords::default());
-        let span = (Coords::new(0, 4), Coords::default());
-        let data = select_charwise(&mut ctx, span, true);
-        assert_eq!(data, RegisterData::char("foo b".into()));
-    }
-
-    #[test]
     fn test_funny_chars() {
         let mut ctx = setup("foo\t🧑‍🧑‍🧒‍🧒\nbaz baz", Coords::default());
         let span = (Coords::default(), Coords::new(0, 7));
@@ -580,14 +515,6 @@ mod test_select_linewise {
     fn test_multi_line() {
         let mut ctx = setup("foo bar\nbaz baz\nword1 word2", Coords::default());
         let span = (Coords::new(0, 3), Coords::new(1, 3));
-        let data = select_linewise(&mut ctx, span);
-        assert_eq!(data, RegisterData::line("foo bar\nbaz baz\n".into()));
-    }
-
-    #[test]
-    fn test_backwards() {
-        let mut ctx = setup("foo bar\nbaz baz\nword1 word2", Coords::default());
-        let span = (Coords::new(1, 3), Coords::new(0, 3));
         let data = select_linewise(&mut ctx, span);
         assert_eq!(data, RegisterData::line("foo bar\nbaz baz\n".into()));
     }

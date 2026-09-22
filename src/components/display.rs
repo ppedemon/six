@@ -13,6 +13,12 @@ pub struct Span {
     pub end: usize,
 }
 
+impl Span {
+    pub fn width(&self) -> usize {
+        self.end - self.start
+    }
+}
+
 impl Default for Span {
     fn default() -> Self {
         Self { start: 0, end: 0 }
@@ -90,14 +96,6 @@ impl DisplayLine {
         rope_indices.push(rope_idx);
         display_cols.push(display_width);
 
-        // panic!(
-        //     "{:?}\n{:?}\n{:?}\n{:?}",
-        //     text.bytes().collect::<Vec<_>>(),
-        //     byte_offsets,
-        //     rope_indices,
-        //     display_cols
-        // );
-
         Self {
             text,
             byte_offsets,
@@ -105,6 +103,17 @@ impl DisplayLine {
             display_cols,
             display_width,
         }
+    }
+
+    pub fn debug(&self) {
+        #[cfg(feature = "dev")]
+        tracing::debug!(
+            "DisplayLine:\n\t{:?}\n\t{:?}\n\t{:?}\n\t{:?}",
+            self.text.bytes().collect::<Vec<_>>(),
+            self.byte_offsets,
+            self.rope_indices,
+            self.display_cols,
+        );
     }
 
     fn is_ctrl(g: &str) -> bool {
