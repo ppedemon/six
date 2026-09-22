@@ -69,7 +69,8 @@ pub fn motion_yank_for_c_cmd(
 
         let orig_mode = motion_mode(m);
         let inclusive = is_inclusive(ctx, m, extent.overshot, orig_mode, forced_mode);
-        let yank_shape = yank_shape(forced_mode.unwrap_or(orig_mode), extent, inclusive);
+        //let yank_shape = yank_shape(forced_mode.unwrap_or(orig_mode), extent, inclusive);
+        let yank_shape = yank_shape(ctx, extent, &register_data, inclusive);
         let yank_data = YankData::new(extent.start, yank_shape);
         Some((register_data, yank_data))
     } else {
@@ -116,7 +117,7 @@ pub fn extent_yank(
     let span = extent.to_ordered_span();
     let reg_data = match forced_mode.unwrap_or(orig_mode) {
         MotionMode::Charwise => {
-            // We keep trailing '\n' in a charwise selection only if charwise is forced
+            //We keep trailing '\n' in a charwise selection only if charwise is forced
             if forced_mode.is_some_and(|mode| mode == MotionMode::Charwise)
                 && orig_mode != MotionMode::Charwise
             {
@@ -129,7 +130,7 @@ pub fn extent_yank(
         MotionMode::Blockwise => select_blockwise(ctx, span),
     };
 
-    let yank_shape = yank_shape(forced_mode.unwrap_or(orig_mode), extent, inclusive);
+    let yank_shape = yank_shape(ctx, extent, &reg_data, inclusive);
     (reg_data, yank_shape)
 }
 
@@ -219,18 +220,29 @@ fn adjust_row_for_c_cmd(
     }
 }
 
-fn yank_shape(mode: MotionMode, extent: MotionExtent, inclusive: bool) -> YankShape {
+fn yank_shape(
+    ctx: &mut EditorCtx,
+    extent: MotionExtent,
+    reg_data: &RegisterData,
+    inclusive: bool,
+) -> YankShape {
     let (start, end) = extent.to_ordered_span();
     let num_lines = end.row - start.row + 1;
 
-    match mode {
-        MotionMode::Charwise => YankShape::Char {
-            num_lines,
-            end_col: end.col,
-            inclusive,
-        },
-        MotionMode::Linewise => YankShape::Line { num_lines },
-        MotionMode::Blockwise => {
+    match reg_data {
+        RegisterData::Char { data } => {
+            let (_, buf_view, buffer) = active_session_and_buffer!(mut ctx);
+            let start_idx = coords_to_char_idx(&ctx.config, buffer.rope(), buf_view, start);
+            let end_idx = start_idx + data.chars().count();
+            let end = char_idx_to_coords(&ctx.config, buffer.rope(), buf_view, end_idx);
+            YankShape::Char {
+                num_lines: end.row - start.row + 1,
+                end_col: end.col,
+                inclusive,
+            }
+        }
+        RegisterData::Line { .. } => YankShape::Line { num_lines },
+        RegisterData::Block { .. } => {
             let cols = start.col.max(end.col) - start.col.min(end.col) + 1;
             YankShape::Block {
                 rows: num_lines,

@@ -96,14 +96,6 @@ impl DisplayLine {
         rope_indices.push(rope_idx);
         display_cols.push(display_width);
 
-        // panic!(
-        //     "{:?}\n{:?}\n{:?}\n{:?}",
-        //     text.bytes().collect::<Vec<_>>(),
-        //     byte_offsets,
-        //     rope_indices,
-        //     display_cols
-        // );
-
         Self {
             text,
             byte_offsets,

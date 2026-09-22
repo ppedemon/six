@@ -46,7 +46,7 @@ fn handle_ex_nav(ctx: &mut EditorCtx, args: NavArgs) {
     }
 }
 
-pub fn handle_session_nav(ctx: &mut EditorCtx, args: NavArgs) {
+fn handle_session_nav(ctx: &mut EditorCtx, args: NavArgs) {
     let config = &ctx.config;
     let (session, buf_view, buffer) = active_session_and_buffer!(mut ctx);
 

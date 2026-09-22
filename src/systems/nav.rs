@@ -10,4 +10,4 @@ pub use select::{
     MotionExtent, exec_motion, select_blockwise, select_charwise, select_charwise_nl,
     select_linewise,
 };
-pub use session::{NavArgs, handle_nav, handle_session_nav, init_cursor_pos};
+pub use session::{NavArgs, handle_nav, init_cursor_pos};

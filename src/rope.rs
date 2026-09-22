@@ -313,11 +313,11 @@ fn is_punct_char(c: char) -> bool {
 }
 
 pub fn next_big_word(rope: &Rope, char_idx: usize) -> usize {
-    let max_idx = rope.len_chars().saturating_sub(1);
-    if max_idx == 0 {
+    if rope.len_chars() == 0 {
         return 0;
     }
 
+    let max_idx = rope.len_chars().saturating_sub(1);
     let mut char_idx = char_idx.min(max_idx);
     let mut c = rope.char(char_idx);
 
@@ -343,11 +343,11 @@ pub fn next_big_word(rope: &Rope, char_idx: usize) -> usize {
 }
 
 pub fn next_sub_word(rope: &Rope, char_idx: usize) -> usize {
-    let max_idx = rope.len_chars().saturating_sub(1);
-    if max_idx == 0 {
+    if rope.len_chars() == 0 {
         return 0;
     }
 
+    let max_idx = rope.len_chars().saturating_sub(1);
     let mut char_idx = char_idx.min(max_idx);
     let mut c = rope.char(char_idx);
 

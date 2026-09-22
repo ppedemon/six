@@ -1,9 +1,9 @@
 use crate::{
     active_session_and_buffer,
     cmd::{Arg, Cmd, Motion, MotionMode},
-    components::{EditorCtx, MutBuffer, RegisterData, YankData},
+    components::{Coords, EditorCtx, MutBuffer, RegisterData, YankData, YankShape},
     systems::{
-        commons::cursor_to_char_idx,
+        commons::{char_idx_to_coords, coords_to_char_idx, cursor_to_char_idx},
         event,
         immediate::yank::{motion_yank, motion_yank_for_c_cmd},
         insert::Damage,
@@ -35,8 +35,7 @@ pub fn gen_delete(ctx: &mut EditorCtx, cmd: Cmd, yank_fn: YankFn) -> Damage {
             match yank_fn(ctx, motion, cmd_reps, arg_reps, mode) {
                 None => Damage::Intact,
                 Some((reg_data, yank_data)) => {
-                    let damage = delete_data(ctx, &reg_data);
-                    notify_delete(ctx, &reg_data);
+                    let damage = delete_data(ctx, &reg_data, yank_data.shape);
                     ctx.registers.record_delete(cmd.reg, reg_data);
                     ctx.repbuf.save_last_yank(yank_data);
                     damage
@@ -49,25 +48,39 @@ pub fn gen_delete(ctx: &mut EditorCtx, cmd: Cmd, yank_fn: YankFn) -> Damage {
     }
 }
 
-fn delete_data(ctx: &mut EditorCtx, reg_data: &RegisterData) -> Damage {
+// TODO When implemented, use block selection based on shape, not contents
+fn delete_data(ctx: &mut EditorCtx, reg_data: &RegisterData, shape: YankShape) -> Damage {
     let (_, buf_view, buffer) = active_session_and_buffer!(mut ctx);
-    match reg_data {
-        RegisterData::Char { data } => delete_charwise(ctx, data),
-        RegisterData::Line { data } => delete_linewise(ctx, data),
-        RegisterData::Block { data, idxs } => delete_blockwise(ctx, data, idxs),
+    match shape {
+        YankShape::Char {
+            num_lines, end_col, ..
+        } => delete_charwise(ctx, num_lines, end_col),
+        YankShape::Line { num_lines } => delete_linewise(ctx, num_lines),
+        _ => match reg_data {
+            RegisterData::Char { .. } => Damage::Intact,
+            RegisterData::Line { data } => Damage::Intact,
+            RegisterData::Block { data, idxs } => delete_blockwise(ctx, data, idxs),
+        },
     }
+    // match reg_data {
+    //     RegisterData::Char { data } => delete_charwise(ctx, data),
+    //     RegisterData::Line { data } => delete_linewise(ctx, data),
+    //     RegisterData::Block { data, idxs } => delete_blockwise(ctx, data, idxs),
+    // }
 }
 
-fn delete_charwise(ctx: &mut EditorCtx, data: &str) -> Damage {
+fn delete_charwise(ctx: &mut EditorCtx, lines: usize, end_col: usize) -> Damage {
     let (_, buf_view, buffer) = active_session_and_buffer!(mut ctx);
 
     let cursor = buf_view.cursor;
     let start_idx = cursor_to_char_idx(&ctx.config, buf_view, buffer.rope());
-    let len_chars = data.chars().count();
+    let end_coords = Coords::new(cursor.row + lines - 1, end_col);
+    let end_idx = coords_to_char_idx(&ctx.config, buffer.rope(), buf_view, end_coords);
+    let is_empty = start_idx == 0 && end_idx == buffer.rope().len_chars();
 
-    buffer.edit().remove(start_idx..start_idx + len_chars);
+    buffer.edit().remove(start_idx..end_idx);
 
-    let damage = if data.lines().count() <= 1 {
+    let damage = if lines <= 1 {
         buf_view
             .display_buf
             .patch_range(&ctx.config, buffer.rope(), cursor.row..cursor.row + 1);
@@ -77,32 +90,81 @@ fn delete_charwise(ctx: &mut EditorCtx, data: &str) -> Damage {
         Damage::From(cursor.row)
     };
 
+    if start_idx < buffer.rope().len_chars() {
+        buf_view.cursor = char_idx_to_coords(&ctx.config, buffer.rope(), buf_view, start_idx);
+    }
     ensure_cursor_inside_line(ctx);
+
+    event::on_delete(&mut ctx.status, lines, is_empty);
     damage
 }
 
-fn delete_linewise(ctx: &mut EditorCtx, data: &str) -> Damage {
+fn delete_linewise(ctx: &mut EditorCtx, num_lines: usize) -> Damage {
     let (_, buf_view, buffer) = active_session_and_buffer!(mut ctx);
 
-    let data_len = data.chars().count();
+    let is_empty = buf_view.cursor.row == 0 && num_lines >= buffer.rope().len_lines();
+    let start_idx = buffer.rope().line_to_char(buf_view.cursor.row);
 
-    let cursor = buf_view.cursor;
-    let len = buffer.rope().len_chars();
-    let start_idx = buffer.rope().line_to_char(cursor.row);
-    let mut row = cursor.row;
+    let row = if buf_view.cursor.row + 1 == buffer.rope().len_lines() {
+        let end_idx = buffer.rope().len_chars();
 
-    if start_idx + data_len >= len {
-        buffer.edit().remove(start_idx.saturating_sub(1)..len);
+        // NOTE: we don't want docs to end with a trailing '\n'. So if we are
+        // deleting the last line, remove the '\n' of the line above --which
+        // will turn into a trailing '\n' after deleting the last line.
+        buffer.edit().remove(start_idx.saturating_sub(1)..end_idx);
+
         nav::move_up::<NormalNav>(&ctx.config, buffer.rope(), buf_view, 1);
-        row = row.saturating_sub(1);
+        buf_view.cursor.row.saturating_sub(1)
     } else {
-        buffer.edit().remove(start_idx..start_idx + data_len);
-    }
+        let end_idx = buffer.rope().line_to_char(buf_view.cursor.row + num_lines);
+        buffer.edit().remove(start_idx..end_idx);
+        buf_view.cursor.row
+    };
 
     buf_view.display_buf.destroy_from(row);
 
     nav::line_first_non_blank::<NormalNav>(&ctx.config, buffer.rope(), buf_view);
+    event::on_delete(&mut ctx.status, num_lines, is_empty);
+
     Damage::From(row)
+}
+
+// fn delete_linewise(ctx: &mut EditorCtx, data: &str) -> Damage {
+//     let (_, buf_view, buffer) = active_session_and_buffer!(mut ctx);
+
+//     let data_len = data.chars().count();
+
+//     let cursor = buf_view.cursor;
+//     let len = buffer.rope().len_chars();
+//     let start_idx = buffer.rope().line_to_char(cursor.row);
+//     let mut row = cursor.row;
+
+//     if start_idx + data_len >= len {
+//         buffer.edit().remove(start_idx.saturating_sub(1)..len);
+//         nav::move_up::<NormalNav>(&ctx.config, buffer.rope(), buf_view, 1);
+//         row = row.saturating_sub(1);
+//     } else {
+//         buffer.edit().remove(start_idx..start_idx + data_len);
+//     }
+
+//     buf_view.display_buf.destroy_from(row);
+
+//     nav::line_first_non_blank::<NormalNav>(&ctx.config, buffer.rope(), buf_view);
+//     Damage::From(row)
+// }
+
+// TODO Implement block selection based on shape
+fn delete_blockwise_simpler(
+    ctx: &mut EditorCtx,
+    data: &[String],
+    idxs: &[(usize, usize)],
+) -> Damage {
+    let (_, buf_view, buffer) = active_session_and_buffer!(mut ctx);
+    let cursor = buf_view.cursor;
+
+    for (i, line) in data.iter().enumerate() {}
+
+    Damage::Range(cursor.row, cursor.row + data.len())
 }
 
 // This ended up being SUPER complicated... is it possible to simplify via an alternative approach?
@@ -194,9 +256,4 @@ fn delete_blockwise(ctx: &mut EditorCtx, data: &[String], idxs: &[(usize, usize)
 
     ensure_cursor_inside_line(ctx);
     Damage::Range(cursor.row, cursor.row + data.len())
-}
-
-fn notify_delete(ctx: &mut EditorCtx, reg_data: &RegisterData) {
-    let (_, _, buffer) = active_session_and_buffer!(ctx);
-    event::on_delete(&mut ctx.status, reg_data, buffer.rope().len_chars() == 0);
 }

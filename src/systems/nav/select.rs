@@ -4,10 +4,7 @@ use crate::{
     active_session, active_session_and_buffer,
     cmd::{Cmd, Motion, MotionMeta, Operator},
     components::{Coords, DisplayLineRef, EditorCtx, RegisterData},
-    systems::{
-        commons::coords_to_char_idx,
-        nav::{NavArgs, handle_session_nav},
-    },
+    systems::{commons::coords_to_char_idx, input::dispatch_cmd},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -62,8 +59,7 @@ pub fn exec_motion(
 
     for _ in 0..cmd_reps {
         let cmd = Cmd::new(Operator::Move(m)).reps(Some(arg_reps));
-        let args = NavArgs::new(m, cmd);
-        handle_session_nav(ctx, args);
+        dispatch_cmd(ctx, cmd);
     }
 
     let (_, buf_view) = active_session!(ctx);
