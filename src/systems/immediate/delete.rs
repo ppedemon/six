@@ -56,17 +56,8 @@ fn delete_data(ctx: &mut EditorCtx, reg_data: &RegisterData, shape: YankShape) -
             num_lines, end_col, ..
         } => delete_charwise(ctx, num_lines, end_col),
         YankShape::Line { num_lines } => delete_linewise(ctx, num_lines),
-        _ => match reg_data {
-            RegisterData::Char { .. } => Damage::Intact,
-            RegisterData::Line { data } => Damage::Intact,
-            RegisterData::Block { data, idxs } => delete_blockwise(ctx, data, idxs),
-        },
+        YankShape::Block { rows, cols } => delete_blockwise(ctx, rows, cols),
     }
-    // match reg_data {
-    //     RegisterData::Char { data } => delete_charwise(ctx, data),
-    //     RegisterData::Line { data } => delete_linewise(ctx, data),
-    //     RegisterData::Block { data, idxs } => delete_blockwise(ctx, data, idxs),
-    // }
 }
 
 fn delete_charwise(ctx: &mut EditorCtx, lines: usize, end_col: usize) -> Damage {
@@ -108,9 +99,9 @@ fn delete_linewise(ctx: &mut EditorCtx, num_lines: usize) -> Damage {
     let row = if buf_view.cursor.row + 1 == buffer.rope().len_lines() {
         let end_idx = buffer.rope().len_chars();
 
-        // NOTE: we don't want docs to end with a trailing '\n'. So if we are
-        // deleting the last line, remove the '\n' of the line above --which
-        // will turn into a trailing '\n' after deleting the last line.
+        // NOTE: we don't want the text to end with a trailing '\n'. So if we are
+        // deleting the last line, remove the '\n' of the line above --which will
+        // become a trailing '\n' after deleting the last line.
         buffer.edit().remove(start_idx.saturating_sub(1)..end_idx);
 
         nav::move_up::<NormalNav>(&ctx.config, buffer.rope(), buf_view, 1);
@@ -129,131 +120,66 @@ fn delete_linewise(ctx: &mut EditorCtx, num_lines: usize) -> Damage {
     Damage::From(row)
 }
 
-// fn delete_linewise(ctx: &mut EditorCtx, data: &str) -> Damage {
-//     let (_, buf_view, buffer) = active_session_and_buffer!(mut ctx);
-
-//     let data_len = data.chars().count();
-
-//     let cursor = buf_view.cursor;
-//     let len = buffer.rope().len_chars();
-//     let start_idx = buffer.rope().line_to_char(cursor.row);
-//     let mut row = cursor.row;
-
-//     if start_idx + data_len >= len {
-//         buffer.edit().remove(start_idx.saturating_sub(1)..len);
-//         nav::move_up::<NormalNav>(&ctx.config, buffer.rope(), buf_view, 1);
-//         row = row.saturating_sub(1);
-//     } else {
-//         buffer.edit().remove(start_idx..start_idx + data_len);
-//     }
-
-//     buf_view.display_buf.destroy_from(row);
-
-//     nav::line_first_non_blank::<NormalNav>(&ctx.config, buffer.rope(), buf_view);
-//     Damage::From(row)
-// }
-
-// TODO Implement block selection based on shape
-fn delete_blockwise_simpler(
-    ctx: &mut EditorCtx,
-    data: &[String],
-    idxs: &[(usize, usize)],
-) -> Damage {
+fn delete_blockwise(ctx: &mut EditorCtx, rows: usize, cols: usize) -> Damage {
     let (_, buf_view, buffer) = active_session_and_buffer!(mut ctx);
     let cursor = buf_view.cursor;
 
-    for (i, line) in data.iter().enumerate() {}
+    let start_col = cursor.col;
+    let end_col = start_col + cols;
 
-    Damage::Range(cursor.row, cursor.row + data.len())
-}
+    for i in 0..rows {
+        let line_idx = buffer.rope().line_to_char(cursor.row + i);
+        let line = buf_view
+            .display_buf
+            .ensure_line(&ctx.config, buffer.rope(), cursor.row + i);
 
-// This ended up being SUPER complicated... is it possible to simplify via an alternative approach?
-// All options I tried ended up being a bug farm because of off-by-ones and incorrect assumptions.
-// As complex as it is, this implementation seems to work.
-fn delete_blockwise(ctx: &mut EditorCtx, data: &[String], idxs: &[(usize, usize)]) -> Damage {
-    let (_, buf_view, buffer) = active_session_and_buffer!(mut ctx);
-    let cursor = buf_view.cursor;
-
-    let mut deleted_chars = 0;
-    let mut padding = 0;
-
-    for (i, line) in data.iter().enumerate() {
-        if line.is_empty() {
+        let Some((lg, lspan)) = line.grapheme_at(start_col) else {
             continue;
-        }
-
-        let first_c = line.chars().next().unwrap();
-        let last_c = line.chars().last().unwrap();
-
-        let (start_idx, end_idx) = {
-            let (start_idx, end_idx) = idxs[i];
-            (
-                start_idx - deleted_chars + padding,
-                end_idx - deleted_chars + padding,
-            )
+        };
+        let Some((rg, rspan)) = line.grapheme_at(end_col.saturating_sub(1)) else {
+            continue;
         };
 
-        // Trivial case: line matches exactly the slice to be deleted
-        if buffer.rope().char(start_idx) == first_c && buffer.rope().char(end_idx - 1) == last_c {
+        // Special case: the columns to delete fit into a single grapheme
+        if lspan.start < start_col && lspan.end > end_col {
+            let start_idx = line_idx + line.col_to_char_idx(lspan.start);
+            let end_idx = line_idx + line.col_to_char_idx(lspan.end);
             buffer.edit().remove(start_idx..end_idx);
-            deleted_chars += end_idx - start_idx;
+            if lg.chars().all(|c| c == ' ') {
+                buffer.edit().insert(
+                    start_idx,
+                    &" ".repeat((lspan.end - lspan.start) - (end_col - start_col)),
+                );
+            }
             continue;
         }
 
-        // Oh my, initial and/or final chars don't match because of wide chars: must compute padding
-        let line_len = line.chars().count();
-
-        let curr_row = cursor.row + i;
-        let line_idx = buffer.rope().line_to_char(curr_row);
-        let buf_line = buf_view
-            .display_buf
-            .ensure_line(&ctx.config, buffer.rope(), curr_row);
-
-        let (_, lspan) = buf_line.grapheme_at(cursor.col).unwrap();
-        let (_, rspan) = buf_line
-            .grapheme_at(buf_line.char_idx_to_col(end_idx - line_idx - 1))
-            .unwrap();
-
-        let mut pad = 0;
-
-        if lspan == rspan {
-            // Line to delete is included in a single wide grapheme. If it's a tag, padding is whatever overflows the line
-            let char_idx = line_idx + buf_line.col_to_char_idx(lspan.start);
-            if buffer.rope().char(char_idx) == '\t' {
-                pad = lspan.end - lspan.start - line.chars().count();
-            }
+        let lspaces = if lspan.start < start_col && lg.chars().all(|c| c == ' ') {
+            start_col - lspan.start
         } else {
-            let mut lspaces = line.chars().take_while(|c| *c == ' ').count();
-            let mut rspaces = line.chars().rev().take_while(|c| *c == ' ').count();
-            if lspaces == line_len && rspaces == line_len {
-                lspaces = lspan.end - cursor.col;
-                rspaces = line_len - lspaces;
-            }
+            0
+        };
 
-            let char_idx = line_idx + buf_line.col_to_char_idx(lspan.start);
-            if buffer.rope().char(char_idx) == '\t' {
-                pad += lspan.end - lspan.start - lspaces;
-            }
+        let rspaces = if rspan.end > end_col && rg.chars().all(|c| c == ' ') {
+            rspan.end - end_col
+        } else {
+            0
+        };
 
-            let char_idx = line_idx + buf_line.col_to_char_idx(rspan.start);
-            if buffer.rope().char(char_idx) == '\t' {
-                pad += rspan.end - rspan.start - rspaces;
-            }
-        }
-
+        let start_idx = line_idx + line.col_to_char_idx(lspan.start);
+        let end_idx = line_idx + line.col_to_char_idx(rspan.end);
         buffer.edit().remove(start_idx..end_idx);
-        buffer.edit().insert(start_idx, &" ".repeat(pad));
 
-        deleted_chars += end_idx - start_idx;
-        padding += pad;
+        let total = lspaces + rspaces;
+        if total > 0 {
+            buffer.edit().insert(start_idx, &" ".repeat(total));
+        }
     }
 
-    buf_view.display_buf.patch_range(
-        &ctx.config,
-        buffer.rope(),
-        cursor.row..cursor.row + data.len(),
-    );
+    buf_view
+        .display_buf
+        .patch_range(&ctx.config, buffer.rope(), cursor.row..cursor.row + rows);
 
     ensure_cursor_inside_line(ctx);
-    Damage::Range(cursor.row, cursor.row + data.len())
+    Damage::Range(cursor.row, cursor.row + rows)
 }
