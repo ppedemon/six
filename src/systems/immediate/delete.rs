@@ -35,7 +35,7 @@ pub fn gen_delete(ctx: &mut EditorCtx, cmd: Cmd, yank_fn: YankFn) -> Damage {
             match yank_fn(ctx, motion, cmd_reps, arg_reps, mode) {
                 None => Damage::Intact,
                 Some((reg_data, yank_data)) => {
-                    let damage = delete_data(ctx, &reg_data, yank_data.shape);
+                    let damage = delete_data(ctx, yank_data.shape);
                     ctx.registers.record_delete(cmd.reg, reg_data);
                     ctx.repbuf.save_last_yank(yank_data);
                     damage
@@ -48,8 +48,7 @@ pub fn gen_delete(ctx: &mut EditorCtx, cmd: Cmd, yank_fn: YankFn) -> Damage {
     }
 }
 
-// TODO When implemented, use block selection based on shape, not contents
-fn delete_data(ctx: &mut EditorCtx, reg_data: &RegisterData, shape: YankShape) -> Damage {
+fn delete_data(ctx: &mut EditorCtx, shape: YankShape) -> Damage {
     let (_, buf_view, buffer) = active_session_and_buffer!(mut ctx);
     match shape {
         YankShape::Char {
