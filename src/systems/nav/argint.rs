@@ -274,8 +274,13 @@ fn apply_exceptions(ctx: &mut EditorCtx, yank_data: &mut YankData) {
 //
 // `ctx` provides the active buffer and display configuration, while
 // `yank_data` describes and receives the delete range.
+
+// TODO another fix for 'd': if yank_data.mode is charwise but motion is Motion::Line:
+//   - Move end of selection to end of previous line (or 0 if on the top line)
+//   - Normalize yank area if end < start, otherwise make selection inclusive.
+
 fn fix_d(ctx: &mut EditorCtx, yank_data: &mut YankData) {
-    if yank_data.start.row < yank_data.end.row {
+    if yank_data.mode == MotionMode::Charwise && yank_data.start.row < yank_data.end.row {
         let (_, buf_view, buffer) = active_session_and_buffer!(mut ctx);
 
         let start_idx = coords_to_char_idx(&ctx.config, buffer.rope(), buf_view, yank_data.start);
