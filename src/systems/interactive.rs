@@ -3,15 +3,15 @@ use std::sync::LazyLock;
 use crate::{
     active_session, active_session_and_buffer,
     cmd::{
-        Cmd, EditOp, InsertPoint, InteractiveOp, Motion,
+        Cmd, EditOp, InsertPoint, InteractiveOp, Motion, MotionMode,
         Operator::{self, Move},
         TxnItem,
     },
-    components::{EditorCtx, YankData, YankShape},
+    components::{EditorCtx, YankData},
     systems::{
-        commons::curr_line,
+        commons::is_last_col,
         immediate::delete_for_c_cmd,
-        input::{dispatch_cmd, dispatch_txn},
+        input::dispatch_txn,
         insert::apply_insert_log,
         interactive::ExecMode::{Batch, Interactive},
         mode::{enter_insert, goto_insert_point},
@@ -96,16 +96,16 @@ fn change_prelude<'a>(ctx: &mut EditorCtx, args: &'a InteractiveArgs) {
 
     delete_for_c_cmd(ctx, args.cmd);
 
-    if let Some(shape) = ctx.repbuf.last_yank() {
-        match shape {
-            YankData {
-                shape: YankShape::Line { num_lines },
-                ..
-            } if num_lines < num_rows => {
-                if row + num_lines >= num_rows {
-                    dispatch_txn(ctx, &OPEN_BELOW)
-                } else {
-                    dispatch_txn(ctx, &OPEN_ABOVE)
+    if let Some(yank_data) = ctx.repbuf.last_yank() {
+        match yank_data.mode {
+            MotionMode::Linewise => {
+                let num_lines = yank_data.num_lines();
+                if num_lines < num_rows {
+                    if row + num_lines >= num_rows {
+                        dispatch_txn(ctx, &OPEN_BELOW)
+                    } else {
+                        dispatch_txn(ctx, &OPEN_ABOVE)
+                    }
                 }
             }
             _ => {}
@@ -123,12 +123,16 @@ pub fn finish_interactive(ctx: &mut EditorCtx, op: InteractiveOp, reps: usize) {
 
 fn finish_interactive_change(ctx: &mut EditorCtx) {
     match ctx.repbuf.last_yank() {
-        Some(YankData {
-            shape: YankShape::Block { rows, .. },
-            start,
-        }) => {
+        Some(
+            yank_data @ YankData {
+                mode: MotionMode::Blockwise,
+                start,
+                ..
+            },
+        ) => {
             let (_, buf_view) = active_session!(ctx);
             let cursor = buf_view.cursor;
+            let rows = yank_data.num_lines();
 
             if cursor.row != start.row {
                 return;
@@ -164,8 +168,7 @@ fn insert_point(ctx: &mut EditorCtx, op: InteractiveOp) -> InsertPoint {
         InteractiveOp::Change => {
             let (_, buf_view, buffer) = active_session_and_buffer!(mut ctx);
             let cursor = buf_view.cursor;
-            let line = curr_line(&ctx.config, buffer.rope(), buf_view);
-            if line.next_col(cursor.col) == cursor.col {
+            if is_last_col(&ctx.config, buffer.rope(), buf_view, buf_view.cursor) {
                 InsertPoint::Last
             } else {
                 InsertPoint::Curr
@@ -182,25 +185,7 @@ fn apply_last_insert(ctx: &mut EditorCtx, op: InteractiveOp, reps: usize, from_b
             apply_insert_log(ctx, &ops, reps);
         }
         InteractiveOp::Change => {
-            if let Some(yank_data) = ctx.repbuf.last_yank() {
-                match yank_data {
-                    YankData {
-                        shape: YankShape::Block { rows, .. },
-                        ..
-                    } => {
-                        let ops = ctx.registers.last_insert().to_vec();
-                        apply_insert_log(ctx, &ops, 1);
-                        for _ in 0..rows.saturating_sub(1) {
-                            dispatch_cmd(ctx, Cmd::new(Operator::Move(Motion::Down)));
-                            apply_insert_log(ctx, &ops, 1);
-                        }
-                    }
-                    _ => {
-                        let ops = ctx.registers.last_insert().to_vec();
-                        apply_insert_log(ctx, &ops, reps);
-                    }
-                }
-            }
+            // TODO Implement
         }
         InteractiveOp::OpenAbove | InteractiveOp::OpenBelow => {
             let len = ctx.registers.last_insert().len();

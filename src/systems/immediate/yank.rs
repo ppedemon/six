@@ -1,36 +1,40 @@
 use crate::{
     active_session, active_session_and_buffer,
-    cmd::{Arg, Cmd, Motion, MotionMeta, MotionMode},
-    components::{Coords, EditorCtx, RegisterData, YankData, YankShape},
+    cmd::{Cmd, Motion, MotionMeta, MotionMode},
+    components::{Coords, EditorCtx, RegisterData, YankData},
     systems::{
-        commons::{char_idx_to_coords, coords_to_char_idx},
+        commons::{char_idx_to_coords, coords_to_char_idx, display_line},
         event,
         nav::{
-            MotionExtent, exec_motion, select_blockwise, select_charwise, select_charwise_nl,
-            select_linewise,
+            MotionExtent, exec_motion, interpret, select_blockwise, select_charwise,
+            select_charwise_nl, select_linewise,
         },
     },
 };
 
 // This is the implementation is the yank command (y)
 pub fn yank(ctx: &mut EditorCtx, cmd: Cmd) {
-    match cmd.arg {
-        Arg::Motion { reps, mode, motion } => {
-            let cmd_reps = cmd.reps.unwrap_or(1);
-            let arg_reps = reps.unwrap_or(1);
-            match motion_yank(ctx, motion, cmd_reps, arg_reps, mode) {
-                None => {}
-                Some((reg_data, yank_data)) => {
-                    event::on_yank(&mut ctx.status, &reg_data);
-                    ctx.registers.record_yank(cmd.reg, reg_data);
-                    ctx.repbuf.save_last_yank(yank_data);
-                }
-            }
-        }
-        // TODO Implement text-object movement and selection
-        Arg::TextObject { .. } => {}
-        Arg::None => {}
-    };
+    let (yank_data, reg_data) = interpret(ctx, cmd);
+    event::on_yank(&mut ctx.status, &reg_data);
+    ctx.registers.record_yank(cmd.reg, reg_data);
+    ctx.repbuf.save_last_yank(yank_data);
+    // match cmd.arg {
+    //     Arg::Motion { reps, mode, motion } => {
+    //         let cmd_reps = cmd.reps.unwrap_or(1);
+    //         let arg_reps = reps.unwrap_or(1);
+    //         match motion_yank(ctx, motion, cmd_reps, arg_reps, mode) {
+    //             None => {}
+    //             Some((reg_data, yank_data)) => {
+    //                 event::on_yank(&mut ctx.status, &reg_data);
+    //                 ctx.registers.record_yank(cmd.reg, reg_data);
+    //                 ctx.repbuf.save_last_yank(yank_data);
+    //             }
+    //         }
+    //     }
+    //     // TODO Implement text-object movement and selection
+    //     Arg::TextObject { .. } => {}
+    //     Arg::None => {}
+    // };
 }
 
 // Do a yank for the given motion and reps
@@ -69,9 +73,7 @@ pub fn motion_yank_for_c_cmd(
 
         let orig_mode = motion_mode(m);
         let inclusive = is_inclusive(ctx, m, extent.overshot, orig_mode, forced_mode);
-        //let yank_shape = yank_shape(forced_mode.unwrap_or(orig_mode), extent, inclusive);
-        let yank_shape = yank_shape(ctx, extent, &register_data, inclusive);
-        let yank_data = YankData::new(extent.start, yank_shape);
+        let yank_data = self::yank_data(extent, forced_mode.unwrap_or(orig_mode), inclusive);
         Some((register_data, yank_data))
     } else {
         Some((register_data, yank_data))
@@ -101,8 +103,8 @@ fn gen_motion_yank(
         buf_view.target_col = orig_target_col;
     }
 
-    let (register_data, yank_shape) = extent_yank(ctx, extent, orig_mode, forced_mode, inclusive);
-    let yank_data = YankData::new(extent.start, yank_shape);
+    let register_data = extent_yank(ctx, extent, orig_mode, forced_mode, inclusive);
+    let yank_data = self::yank_data(extent, forced_mode.unwrap_or(orig_mode), inclusive);
     Some((register_data, extent, yank_data))
 }
 
@@ -113,7 +115,7 @@ pub fn extent_yank(
     orig_mode: MotionMode,
     forced_mode: Option<MotionMode>,
     inclusive: bool,
-) -> (RegisterData, YankShape) {
+) -> RegisterData {
     let span = extent.to_ordered_span();
     let reg_data = match forced_mode.unwrap_or(orig_mode) {
         MotionMode::Charwise => {
@@ -130,8 +132,7 @@ pub fn extent_yank(
         MotionMode::Blockwise => select_blockwise(ctx, span),
     };
 
-    let yank_shape = yank_shape(ctx, extent, &reg_data, inclusive);
-    (reg_data, yank_shape)
+    reg_data
 }
 
 // Adjust the given register data and motion extent to make is suitable for the 'c' command:
@@ -160,15 +161,7 @@ fn adjust_for_c_cmd(
                 extent.end = char_idx_to_coords(&ctx.config, buffer.rope(), buf_view, end_idx);
             }
         }
-        RegisterData::Block { data, idxs } => {
-            let start_row = start.row;
-            for (i, (row, (start, end))) in data.iter_mut().zip(idxs).enumerate() {
-                if row.chars().all(|c| c.is_whitespace()) {
-                    continue;
-                }
-                adjust_row_for_c_cmd(ctx, start_row + i, row, *start, end);
-            }
-        }
+        RegisterData::Block { data } => {}
         RegisterData::Line { .. } => {}
     }
 }
@@ -181,9 +174,7 @@ fn adjust_row_for_c_cmd(
     end: &mut usize,
 ) {
     let (_, buf_view, buffer) = active_session_and_buffer!(mut ctx);
-    let line = buf_view
-        .display_buf
-        .ensure_line(&ctx.config, buffer.rope(), row_num);
+    let line = display_line(&ctx.config, buffer.rope(), buf_view, row_num);
 
     let line_idx = buffer.rope().line_to_char(row_num);
     let start_col = line.char_idx_to_col(start - line_idx);
@@ -220,35 +211,12 @@ fn adjust_row_for_c_cmd(
     }
 }
 
-fn yank_shape(
-    ctx: &mut EditorCtx,
-    extent: MotionExtent,
-    reg_data: &RegisterData,
-    inclusive: bool,
-) -> YankShape {
+fn yank_data(extent: MotionExtent, mode: MotionMode, inclusive: bool) -> YankData {
     let (start, end) = extent.to_ordered_span();
-    let num_lines = end.row - start.row + 1;
-
-    match reg_data {
-        RegisterData::Char { data } => {
-            let (_, buf_view, buffer) = active_session_and_buffer!(mut ctx);
-            let start_idx = coords_to_char_idx(&ctx.config, buffer.rope(), buf_view, start);
-            let end_idx = start_idx + data.chars().count();
-            let end = char_idx_to_coords(&ctx.config, buffer.rope(), buf_view, end_idx);
-            YankShape::Char {
-                num_lines: end.row - start.row + 1,
-                end_col: end.col,
-                inclusive,
-            }
-        }
-        RegisterData::Line { .. } => YankShape::Line { num_lines },
-        RegisterData::Block { .. } => {
-            let cols = start.col.max(end.col) - start.col.min(end.col) + 1;
-            YankShape::Block {
-                rows: num_lines,
-                cols,
-            }
-        }
+    if mode == MotionMode::Blockwise {
+        YankData::new(start, Coords::new(end.row, end.col + 1), mode, inclusive)
+    } else {
+        YankData::new(start, end, mode, inclusive)
     }
 }
 

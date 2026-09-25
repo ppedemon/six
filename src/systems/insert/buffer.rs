@@ -2,7 +2,7 @@ use ropey::Rope;
 
 use crate::components::{BufferView, Config, Coords, MutBuffer};
 use crate::systems::commons::{
-    char_idx_to_coords, coords_to_char_idx, curr_line, cursor_to_char_idx,
+    char_idx_to_coords, coords_to_char_idx, curr_line, cursor_to_char_idx, display_line,
 };
 use crate::systems::nav::{InsertNav, goto_col, move_down, move_up};
 
@@ -117,9 +117,7 @@ fn join_above(config: &Config, buf_view: &mut BufferView, text: &mut impl MutBuf
         prev_idx -= 1;
     }
 
-    let line = buf_view
-        .display_buf
-        .ensure_line(config, text.rope(), row_above);
+    let line = display_line(config, text.rope(), buf_view, row_above);
     buf_view.cursor.col = line.display_width;
     buf_view.target_col = buf_view.cursor.col;
 

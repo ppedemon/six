@@ -10,6 +10,7 @@ pub trait MutBuffer {
     fn insert_char(&mut self, char_idx: usize, ch: char);
     fn insert(&mut self, char_idx: usize, text: &str);
     fn insert_rope(&mut self, char_idx: usize, rope: &Rope);
+    fn insert_iter(&mut self, char_idx: usize, iter: impl IntoIterator<Item = char>);
     fn remove(&mut self, char_range: Range<usize>);
 }
 
@@ -87,6 +88,17 @@ impl<'a> MutBuffer for SessionMutableBuffer<'a> {
             .marks
             .adjust(Change::insert(char_idx, text.chars().count()));
         self.buffer.dirty = true;
+    }
+
+    fn insert_iter(&mut self, char_idx: usize, iter: impl IntoIterator<Item = char>) {
+        let mut len = 0;
+
+        for (i, c) in iter.into_iter().enumerate() {
+            self.buffer.rope.insert_char(char_idx + i, c);
+            len += 1;
+        }
+
+        self.buffer.marks.adjust(Change::insert(char_idx, len));
     }
 
     fn remove(&mut self, char_range: Range<usize>) {

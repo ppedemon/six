@@ -82,6 +82,13 @@ impl Cmd {
         self.arg = arg;
         self
     }
+
+    pub fn has_viewport_motion(&self) -> bool {
+        match self.arg {
+            Arg::Motion { motion, .. } => motion.meta() == MotionMeta::Viewport,
+            _ => false,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
