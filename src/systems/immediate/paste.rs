@@ -9,7 +9,8 @@ use crate::{
     },
     systems::{
         commons::{
-            char_idx_to_coords, coords_to_char_idx, curr_line, cursor_to_char_idx, snap_coords,
+            char_idx_to_coords, coords_to_char_idx, curr_line, cursor_to_char_idx, display_line,
+            snap_coords,
         },
         event,
         insert::{self, Damage},
@@ -102,7 +103,7 @@ fn paste_charwise(
     let anchor_idx = coords_to_char_idx(config, buffer.rope(), buf_view, anchor_coords);
 
     let mut agg_data = String::with_capacity(reps * data.len());
-    agg_data.extend(std::iter::repeat(data).take(reps));
+    agg_data.extend(std::iter::repeat_n(data, reps));
     let rope = Rope::from(agg_data);
 
     buffer.edit().insert_rope(anchor_idx, &rope);
@@ -148,7 +149,7 @@ fn paste_linewise(
     let norm = norm_data(data);
     let norm_ref = norm.as_ref();
     let mut agg_data = String::with_capacity(reps * norm_ref.len());
-    agg_data.extend(std::iter::repeat(norm_ref).take(reps));
+    agg_data.extend(std::iter::repeat_n(norm_ref, reps));
 
     let anchor_idx = if mode == PasteMode::Before {
         buffer.rope().line_to_char(line_idx)
@@ -227,18 +228,17 @@ fn paste_blockwise(
 
     for (i, line) in data.iter().enumerate() {
         let curr_row = cursor.row + i;
-        let buf_line = buf_view
-            .display_buf
-            .ensure_line(config, buffer.rope(), curr_row);
+        let buf_line = display_line(config, buffer.rope(), buf_view, curr_row);
 
         let line_idx = buffer.rope().line_to_char(curr_row);
         let last_idx = line_idx + buf_line.display_width;
 
         // buf_line too short, pad until anchor_col with spaces
         if buf_line.display_width <= anchor_col {
-            buffer
-                .edit()
-                .insert(last_idx, &" ".repeat(anchor_col - buf_line.display_width));
+            buffer.edit().insert_iter(
+                last_idx,
+                std::iter::repeat_n(' ', anchor_col - buf_line.display_width),
+            );
             buffer
                 .edit()
                 .insert(last_idx + anchor_col - buf_line.display_width, &line);
@@ -254,14 +254,18 @@ fn paste_blockwise(
 
                 if buffer.rope().char(g_idx) == '\t' {
                     buffer.edit().remove(g_idx..g_idx + 1);
-                    buffer.edit().insert(g_idx, &" ".repeat(len_before));
+                    buffer
+                        .edit()
+                        .insert_iter(g_idx, std::iter::repeat_n(' ', len_before));
                     buffer.edit().insert(g_idx + len_before, &line);
-                    buffer.edit().insert(
+                    buffer.edit().insert_iter(
                         g_idx + len_before + line.len(),
-                        &" ".repeat(span.end - anchor_col),
+                        std::iter::repeat_n(' ', span.end - anchor_col),
                     );
                 } else {
-                    buffer.edit().insert(g_idx, &" ".repeat(len_before));
+                    buffer
+                        .edit()
+                        .insert_iter(g_idx, std::iter::repeat_n(' ', len_before));
                     buffer.edit().insert(g_idx + len_before, &line);
                 }
             } else {

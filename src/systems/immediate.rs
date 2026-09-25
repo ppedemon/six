@@ -48,6 +48,10 @@ impl ImmediateArgs {
 // -----------------------------------------------------------------------
 
 pub fn handle_immediate(ctx: &mut EditorCtx, args: ImmediateArgs) {
+    if args.cmd.has_viewport_motion() {
+        return;
+    }
+
     if updates_registers(args.op) && is_readonly(args.cmd.reg) {
         return;
     }
