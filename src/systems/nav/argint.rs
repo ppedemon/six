@@ -1,3 +1,4 @@
+use anyhow::{Result, bail};
 use std::{assert_ne, unimplemented};
 
 use ropey::Rope;
@@ -26,7 +27,7 @@ struct Extent {
 
 /// Interprets `cmd` as an argument-taking navigation command and applies its
 /// effect to the editor state in `ctx`, which contains the active session.
-pub fn interpret(ctx: &mut EditorCtx, cmd: Cmd) -> (YankData, RegisterData) {
+pub fn interpret(ctx: &mut EditorCtx, cmd: Cmd) -> Result<(YankData, RegisterData)> {
     match cmd.arg {
         Arg::None => {
             // TODO None could be used for motions in visual mode. In this case,
@@ -36,10 +37,12 @@ pub fn interpret(ctx: &mut EditorCtx, cmd: Cmd) -> (YankData, RegisterData) {
         }
         Arg::Motion { reps, mode, motion } => {
             // Viewport motion change the viewport rather than moving the cursor
-            assert!(motion.meta() != MotionMeta::Viewport);
+            if motion.meta() == MotionMeta::Viewport {
+                bail!("Invalid viewport motion: {motion:?}");
+            }
 
             let arg_reps = cmd.reps.unwrap_or(1).saturating_mul(reps.unwrap_or(1));
-            interpret_motion(ctx, cmd.op, motion, mode, arg_reps)
+            Ok(interpret_motion(ctx, cmd.op, motion, mode, arg_reps))
         }
         Arg::TextObject {
             reps,
@@ -98,7 +101,11 @@ fn interpret_motion(
     }
 
     apply_exceptions(ctx, &mut yank_data);
+
     if op == Operator::Immediate(ImmediateOp::Delete) && mode == MotionMode::Charwise {
+        if m == Motion::Line {
+            fix_line_charwise_d(ctx, &mut yank_data);
+        }
         fix_d(ctx, &mut yank_data);
     }
 
@@ -146,8 +153,6 @@ fn fix_c(
 // `ctx` is updated with the resulting cursor position. Viewport-only motions
 // do not select text and therefore return `None`.
 fn exec_motion(ctx: &mut EditorCtx, m: Motion, arg_reps: usize) -> Extent {
-    assert!(m.meta() != MotionMeta::Viewport);
-
     let (_, buf_view) = active_session!(ctx);
     let start = buf_view.cursor;
 
@@ -170,17 +175,18 @@ fn exec_motion(ctx: &mut EditorCtx, m: Motion, arg_reps: usize) -> Extent {
 // the original motion, and `yank_data` receives the corrected range.
 fn fix_w(ctx: &mut EditorCtx, m: Motion, yank_data: &mut YankData) {
     let (_, buf_view, buffer) = active_session_and_buffer!(mut ctx);
-    let end_idx = coords_to_char_idx(&ctx.config, buffer.rope(), buf_view, yank_data.end);
-    let line_idx = buffer.rope().line_to_char(yank_data.end.row);
+    let rope = buffer.rope();
 
-    if buffer
-        .rope()
+    let end_idx = coords_to_char_idx(&ctx.config, rope, buf_view, yank_data.end);
+    let line_idx = rope.line_to_char(yank_data.end.row);
+
+    if rope
         .slice(line_idx..end_idx)
         .chars()
         .all(|c| c.is_whitespace())
     {
         let end_idx = line_idx.saturating_sub(2);
-        yank_data.end = char_idx_to_coords(&ctx.config, buffer.rope(), buf_view, end_idx);
+        yank_data.end = char_idx_to_coords(&ctx.config, rope, buf_view, end_idx);
         yank_data.inclusive = true;
     }
 }
@@ -245,20 +251,21 @@ fn motion_mode(m: Motion) -> MotionMode {
 fn apply_exceptions(ctx: &mut EditorCtx, yank_data: &mut YankData) {
     if !yank_data.inclusive && yank_data.end.col == 0 && yank_data.start.row < yank_data.end.row {
         let (_, buf_view, buffer) = active_session_and_buffer!(mut ctx);
-        let char_idx = coords_to_char_idx(&ctx.config, buffer.rope(), buf_view, yank_data.start);
-        let start_idx = buffer.rope().line_to_char(yank_data.start.row);
+        let rope = buffer.rope();
+
+        let char_idx = coords_to_char_idx(&ctx.config, rope, buf_view, yank_data.start);
+        let start_idx = rope.line_to_char(yank_data.start.row);
 
         // Move yank_data end to end of upper line and make yank_data inclusive.
         // This is the exclusive/inclusive exception.
-        let mut end_idx = coords_to_char_idx(&ctx.config, buffer.rope(), buf_view, yank_data.end);
-        if buffer.rope().char(end_idx - 1) == '\n' {
+        let mut end_idx = coords_to_char_idx(&ctx.config, rope, buf_view, yank_data.end);
+        if rope.char(end_idx - 1) == '\n' {
             end_idx = end_idx.saturating_sub(2);
         }
-        yank_data.end = char_idx_to_coords(&ctx.config, buffer.rope(), buf_view, end_idx);
+        yank_data.end = char_idx_to_coords(&ctx.config, rope, buf_view, end_idx);
         yank_data.inclusive = true;
 
-        if buffer
-            .rope()
+        if rope
             .slice(start_idx..char_idx)
             .chars()
             .all(|c| c.is_whitespace())
@@ -269,48 +276,67 @@ fn apply_exceptions(ctx: &mut EditorCtx, yank_data: &mut YankData) {
     }
 }
 
+// Applied for delete where motion is line and forced mode is charwise.
+//
+//   - Move end of selection to end of previous line (or 0 if on the top line)
+//   - Normalize yank area if end < start, otherwise make selection inclusive.
+fn fix_line_charwise_d(ctx: &mut EditorCtx, yank_data: &mut YankData) {
+    // Only apply this fix if line motion is forced to charwise via 'v'
+    let (_, buf_view, buffer) = active_session_and_buffer!(mut ctx);
+    let rope = buffer.rope();
+
+    let mut end_idx = coords_to_char_idx(&ctx.config, rope, buf_view, yank_data.end);
+    while end_idx > 0 && rope.char(end_idx - 1) != '\n' {
+        end_idx -= 1;
+    }
+
+    if end_idx > 0 {
+        yank_data.end = char_idx_to_coords(&ctx.config, rope, buf_view, end_idx - 1);
+        yank_data.inclusive = true;
+    } else {
+        yank_data.end = yank_data.start;
+        yank_data.start = Coords::default();
+        buf_view.cursor = yank_data.start;
+        buf_view.target_col = buf_view.cursor.col;
+    }
+}
+
 // Promotes eligible characterwise delete ranges spanning multiple lines to
 // linewise ranges.
 //
 // `ctx` provides the active buffer and display configuration, while
 // `yank_data` describes and receives the delete range.
-
-// TODO another fix for 'd': if yank_data.mode is charwise but motion is Motion::Line:
-//   - Move end of selection to end of previous line (or 0 if on the top line)
-//   - Normalize yank area if end < start, otherwise make selection inclusive.
-
 fn fix_d(ctx: &mut EditorCtx, yank_data: &mut YankData) {
     if yank_data.mode == MotionMode::Charwise && yank_data.start.row < yank_data.end.row {
         let (_, buf_view, buffer) = active_session_and_buffer!(mut ctx);
+        let rope = buffer.rope();
 
-        let start_idx = coords_to_char_idx(&ctx.config, buffer.rope(), buf_view, yank_data.start);
-        let end_idx = coords_to_char_idx(&ctx.config, buffer.rope(), buf_view, yank_data.end);
+        let start_idx = coords_to_char_idx(&ctx.config, rope, buf_view, yank_data.start);
+        let end_idx = coords_to_char_idx(&ctx.config, rope, buf_view, yank_data.end);
 
-        let before_idx = buffer.rope().line_to_char(yank_data.start.row);
-        let all_blanks_before = buffer
-            .rope()
+        let before_idx = rope.line_to_char(yank_data.start.row);
+        let all_blanks_before = rope
             .slice(before_idx..start_idx)
             .chars()
             .all(|c| c.is_whitespace());
 
         if all_blanks_before {
-            let after_idx = if yank_data.end.row + 1 >= buffer.rope().len_lines() {
-                buffer.rope().len_chars()
+            let after_idx = if yank_data.end.row + 1 >= rope.len_lines() {
+                rope.len_chars()
             } else {
-                buffer.rope().line_to_char(yank_data.end.row + 1)
+                rope.line_to_char(yank_data.end.row + 1)
             };
 
             let past_end_col =
-                next_col_or_display_width(&ctx.config, buffer.rope(), buf_view, yank_data.end);
+                next_col_or_display_width(&ctx.config, rope, buf_view, yank_data.end);
             let past_end_idx = coords_to_char_idx(
                 &ctx.config,
-                buffer.rope(),
+                rope,
                 buf_view,
                 Coords::new(yank_data.end.row, past_end_col),
             );
 
-            if buffer
-                .rope()
+            if rope
                 .slice(past_end_idx..after_idx)
                 .chars()
                 .all(|c| c.is_whitespace())
@@ -328,15 +354,14 @@ fn yank_charwise(ctx: &mut EditorCtx, yank_data: YankData) -> RegisterData {
     let rope = buffer.rope();
 
     let end = if yank_data.inclusive {
-        let end_col =
-            next_col_or_display_width(&ctx.config, buffer.rope(), buf_view, yank_data.end);
+        let end_col = next_col_or_display_width(&ctx.config, rope, buf_view, yank_data.end);
         Coords::new(yank_data.end.row, end_col)
     } else {
         yank_data.end
     };
 
-    let start_idx = coords_to_char_idx(&ctx.config, buffer.rope(), buf_view, yank_data.start);
-    let end_idx = coords_to_char_idx(&ctx.config, buffer.rope(), buf_view, end);
+    let start_idx = coords_to_char_idx(&ctx.config, rope, buf_view, yank_data.start);
+    let end_idx = coords_to_char_idx(&ctx.config, rope, buf_view, end);
 
     assert!(start_idx <= end_idx);
     let data = rope.slice(start_idx..end_idx).to_string();
@@ -390,7 +415,7 @@ fn yank_blockwise(ctx: &mut EditorCtx, yank_data: YankData) -> RegisterData {
             } else if span.end > br.col {
                 curr_row.extend(std::iter::repeat_n(' ', br.col - span.start));
             } else {
-                let line_idx = buffer.rope().line_to_char(row);
+                let line_idx = rope.line_to_char(row);
                 if rope.char(line_idx + line.col_to_char_idx(span.start)) == '\t' {
                     curr_row.push('\t');
                 } else {
