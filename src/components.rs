@@ -8,6 +8,7 @@ mod marks;
 mod registers;
 mod repeat;
 mod session;
+mod yank;
 
 use std::collections::HashMap;
 
@@ -19,8 +20,9 @@ pub use insert_log::InsertLog;
 pub use last_search::LastSearch;
 pub use marks::{Change, Marks};
 pub use registers::{Register, RegisterData, Registers};
-pub use repeat::{RepeatBuffer, YankData, YankShape};
+pub use repeat::RepeatBuffer;
 pub use session::{BufferName, BufferView, Coords, ExSession, ExState, Mode, Session, Viewport};
+pub use yank::YankData;
 
 pub type SessionId = usize;
 pub type BufferId = usize;

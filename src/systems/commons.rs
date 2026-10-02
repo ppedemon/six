@@ -2,20 +2,31 @@ use ropey::Rope;
 
 use crate::components::{BufferView, Config, Coords, DisplayLineRef};
 
+// Get the display line for the given row.
+pub fn display_line<'a>(
+    config: &Config,
+    rope: &Rope,
+    buf_view: &'a mut BufferView,
+    row: usize,
+) -> DisplayLineRef<'a> {
+    buf_view.display_buf.ensure_line(config, rope, row)
+}
+
+// Get the current display line (that, the display line for the cursor row).
 pub fn curr_line<'a>(
     config: &Config,
     rope: &Rope,
     buf_view: &'a mut BufferView,
 ) -> DisplayLineRef<'a> {
-    buf_view
-        .display_buf
-        .ensure_line(config, rope, buf_view.cursor.row)
+    display_line(config, rope, buf_view, buf_view.cursor.row)
 }
 
 pub fn cursor_to_char_idx(config: &Config, buf_view: &mut BufferView, rope: &Rope) -> usize {
     coords_to_char_idx(config, rope, buf_view, buf_view.cursor)
 }
 
+// Convert the given coords to a rope index, taking into account wide characters like
+// control, non-visible, and wide chars (like emojis or tabs).
 pub fn coords_to_char_idx(
     config: &Config,
     rope: &Rope,
@@ -60,6 +71,44 @@ pub fn char_idx_to_coords(
         row: line_idx,
         col: snapped_col,
     }
+}
+
+// Get the column number of the next grapheme for the given coords, or the line's
+// display width if no next grapheme. That would correspond to the line's carriage
+// return (if the line is the the text's last).
+pub fn next_col_or_display_width(
+    config: &Config,
+    rope: &Rope,
+    buf_view: &mut BufferView,
+    coords: Coords,
+) -> usize {
+    let line = buf_view.display_buf.ensure_line(config, rope, coords.row);
+    line.grapheme_at(coords.col)
+        .map(|(_, span)| span.end)
+        .unwrap_or(line.display_width)
+}
+
+// Are the given coords at the last column of their line?
+pub fn is_last_col(
+    config: &Config,
+    rope: &Rope,
+    buf_view: &mut BufferView,
+    coords: Coords,
+) -> bool {
+    let line = buf_view.display_buf.ensure_line(config, rope, coords.row);
+    line.grapheme_at(coords.col).is_none()
+}
+
+// Get the display width of the row for the given coords. The display width is defined
+// as one past the last display column.
+pub fn display_width(
+    config: &Config,
+    rope: &Rope,
+    buf_view: &mut BufferView,
+    coords: Coords,
+) -> usize {
+    let line = buf_view.display_buf.ensure_line(config, rope, coords.row);
+    line.display_width
 }
 
 // Move the buf_view cursor to the given coords. This function will take care of adjusting

@@ -3,7 +3,8 @@ use std::format;
 use ropey::{Rope, RopeSlice};
 
 use crate::{
-    components::{BufferName, Level, RegisterData, Status},
+    cmd::MotionMode,
+    components::{BufferName, Level, Status, YankData},
     rope,
 };
 
@@ -29,61 +30,26 @@ pub fn on_buffer_saved(status: &mut Status, name: &BufferName, rope: RopeSlice<'
     status.set_msg(Level::Info, msg);
 }
 
-pub fn on_yank(status: &mut Status, reg_data: &RegisterData) {
-    match reg_data {
-        RegisterData::Char { data } | RegisterData::Line { data } => {
-            let lines = data.lines().count();
-            if lines > 2 {
-                let msg = format!("{lines} lines yanked");
-                status.set_msg(Level::Info, &msg);
-            } else {
-                status.clear_msg();
-            }
-        }
-        RegisterData::Block { data, .. } => {
-            if data.len() > 2 {
-                let mut lens = data.iter().map(String::len);
-                let perfect = match lens.next() {
-                    Some(n) => lens.all(|x| x == n),
-                    None => true,
-                };
-
-                let msg = if perfect {
-                    let cols = data.iter().next().map_or(0, String::len);
-                    format!("{}x{cols} block yanked", data.len())
-                } else {
-                    format!("Block of {} rows yanked", data.len())
-                };
-                status.set_msg(Level::Info, &msg);
-            } else {
-                status.clear_msg();
-            }
-        }
-    };
+pub fn on_yank(status: &mut Status, yank_data: YankData) {
+    let num_lines = yank_data.num_lines();
+    if num_lines > 2 {
+        let msg = if yank_data.mode == MotionMode::Blockwise {
+            format!("Block of {num_lines} lines yanked")
+        } else {
+            format!("{num_lines} lines yanked")
+        };
+        status.set_msg(Level::Info, &msg);
+    } else {
+        status.clear_msg();
+    }
 }
 
-pub fn on_paste(status: &mut Status, reg_data: &RegisterData, reps: usize) {
-    match reg_data {
-        RegisterData::Char { data } => {
-            let lines = data.lines().count();
-            let pasted_lines = if lines == 1 { lines } else { lines * reps };
-            if pasted_lines > 2 {
-                let msg = format!("{pasted_lines} lines pasted");
-                status.set_msg(Level::Info, &msg);
-            } else {
-                status.clear_msg();
-            }
-        }
-        RegisterData::Line { data } => {
-            let pasted_lines = data.lines().count() * reps;
-            if pasted_lines > 2 {
-                let msg = format!("{pasted_lines} lines pasted");
-                status.set_msg(Level::Info, &msg);
-            } else {
-                status.clear_msg();
-            }
-        }
-        RegisterData::Block { .. } => status.clear_msg(),
+pub fn on_paste(status: &mut Status, num_lines: usize) {
+    if num_lines > 2 {
+        let msg = format!("{num_lines} pasted");
+        status.set_msg(Level::Info, &msg);
+    } else {
+        status.clear_msg();
     }
 }
 

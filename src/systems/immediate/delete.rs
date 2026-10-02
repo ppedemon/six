@@ -1,74 +1,53 @@
 use crate::{
     active_session_and_buffer,
-    cmd::{Arg, Cmd, Motion, MotionMode},
-    components::{Coords, EditorCtx, MutBuffer, RegisterData, YankData, YankShape},
+    cmd::{Cmd, MotionMode},
+    components::{Coords, EditorCtx, MutBuffer, YankData},
     systems::{
-        commons::{char_idx_to_coords, coords_to_char_idx, cursor_to_char_idx},
+        commons::{
+            char_idx_to_coords, coords_to_char_idx, cursor_to_char_idx, display_line,
+            next_col_or_display_width,
+        },
         event,
-        immediate::yank::{motion_yank, motion_yank_for_c_cmd},
         insert::Damage,
-        nav::{self, NormalNav, utils::ensure_cursor_inside_line},
+        nav::{self, NormalNav, interpret, utils::ensure_cursor_inside_line},
     },
 };
 
 pub fn delete(ctx: &mut EditorCtx, cmd: Cmd) -> Damage {
-    gen_delete(ctx, cmd, motion_yank)
+    let Ok((yank_data, reg_data)) = interpret(ctx, cmd) else {
+        // TODO Maybe show an error here?
+        return Damage::Intact;
+    };
+
+    let damage = match yank_data.mode {
+        MotionMode::Charwise => delete_charwise(ctx, yank_data),
+        MotionMode::Linewise => delete_linewise(ctx, yank_data),
+        MotionMode::Blockwise => delete_blockwise(ctx, yank_data),
+    };
+
+    ctx.registers.record_delete(cmd.reg, reg_data);
+    ctx.repbuf.save_last_yank(yank_data);
+
+    damage
 }
 
-pub fn delete_for_c_cmd(ctx: &mut EditorCtx, cmd: Cmd) -> Damage {
-    gen_delete(ctx, cmd, motion_yank_for_c_cmd)
-}
-
-type YankFn = fn(
-    &mut EditorCtx,
-    Motion,
-    usize,
-    usize,
-    Option<MotionMode>,
-) -> Option<(RegisterData, YankData)>;
-
-pub fn gen_delete(ctx: &mut EditorCtx, cmd: Cmd, yank_fn: YankFn) -> Damage {
-    match cmd.arg {
-        Arg::Motion { reps, mode, motion } => {
-            let cmd_reps = cmd.reps.unwrap_or(1);
-            let arg_reps = reps.unwrap_or(1);
-            match yank_fn(ctx, motion, cmd_reps, arg_reps, mode) {
-                None => Damage::Intact,
-                Some((reg_data, yank_data)) => {
-                    let damage = delete_data(ctx, &reg_data, yank_data.shape);
-                    ctx.registers.record_delete(cmd.reg, reg_data);
-                    ctx.repbuf.save_last_yank(yank_data);
-                    damage
-                }
-            }
-        }
-        // TODO Implement text-object movement and deletion
-        Arg::TextObject { .. } => Damage::Intact,
-        Arg::None => Damage::Intact,
-    }
-}
-
-// TODO When implemented, use block selection based on shape, not contents
-fn delete_data(ctx: &mut EditorCtx, reg_data: &RegisterData, shape: YankShape) -> Damage {
+fn delete_charwise(ctx: &mut EditorCtx, yank_data: YankData) -> Damage {
     let (_, buf_view, buffer) = active_session_and_buffer!(mut ctx);
-    match shape {
-        YankShape::Char {
-            num_lines, end_col, ..
-        } => delete_charwise(ctx, num_lines, end_col),
-        YankShape::Line { num_lines } => delete_linewise(ctx, num_lines),
-        YankShape::Block { rows, cols } => delete_blockwise(ctx, rows, cols),
-    }
-}
-
-fn delete_charwise(ctx: &mut EditorCtx, lines: usize, end_col: usize) -> Damage {
-    let (_, buf_view, buffer) = active_session_and_buffer!(mut ctx);
+    let lines = yank_data.num_lines();
+    let end_col = yank_data.end_col();
 
     let cursor = buf_view.cursor;
     let start_idx = cursor_to_char_idx(&ctx.config, buf_view, buffer.rope());
-    let end_coords = Coords::new(cursor.row + lines - 1, end_col);
-    let end_idx = coords_to_char_idx(&ctx.config, buffer.rope(), buf_view, end_coords);
-    let is_empty = start_idx == 0 && end_idx == buffer.rope().len_chars();
 
+    let mut end_coords = Coords::new(cursor.row + lines - 1, end_col);
+    if yank_data.inclusive {
+        let new_end_col =
+            next_col_or_display_width(&ctx.config, buffer.rope(), buf_view, end_coords);
+        end_coords.col = new_end_col;
+    }
+    let end_idx = coords_to_char_idx(&ctx.config, buffer.rope(), buf_view, end_coords);
+
+    let is_empty = start_idx == 0 && end_idx == buffer.rope().len_chars();
     buffer.edit().remove(start_idx..end_idx);
 
     let damage = if lines <= 1 {
@@ -90,9 +69,10 @@ fn delete_charwise(ctx: &mut EditorCtx, lines: usize, end_col: usize) -> Damage 
     damage
 }
 
-fn delete_linewise(ctx: &mut EditorCtx, num_lines: usize) -> Damage {
+fn delete_linewise(ctx: &mut EditorCtx, yank_data: YankData) -> Damage {
     let (_, buf_view, buffer) = active_session_and_buffer!(mut ctx);
 
+    let num_lines = yank_data.num_lines();
     let is_empty = buf_view.cursor.row == 0 && num_lines >= buffer.rope().len_lines();
     let start_idx = buffer.rope().line_to_char(buf_view.cursor.row);
 
@@ -100,7 +80,7 @@ fn delete_linewise(ctx: &mut EditorCtx, num_lines: usize) -> Damage {
         let end_idx = buffer.rope().len_chars();
 
         // NOTE: we don't want the text to end with a trailing '\n'. So if we are
-        // deleting the last line, remove the '\n' of the line above --which will
+        // deleting the last line, remove the '\n' of the line above --which would
         // become a trailing '\n' after deleting the last line.
         buffer.edit().remove(start_idx.saturating_sub(1)..end_idx);
 
@@ -120,7 +100,8 @@ fn delete_linewise(ctx: &mut EditorCtx, num_lines: usize) -> Damage {
     Damage::From(row)
 }
 
-fn delete_blockwise(ctx: &mut EditorCtx, rows: usize, cols: usize) -> Damage {
+fn delete_blockwise(ctx: &mut EditorCtx, yank_data: YankData) -> Damage {
+    let (rows, cols) = yank_data.block();
     let (_, buf_view, buffer) = active_session_and_buffer!(mut ctx);
     let cursor = buf_view.cursor;
 
@@ -129,9 +110,7 @@ fn delete_blockwise(ctx: &mut EditorCtx, rows: usize, cols: usize) -> Damage {
 
     for i in 0..rows {
         let line_idx = buffer.rope().line_to_char(cursor.row + i);
-        let line = buf_view
-            .display_buf
-            .ensure_line(&ctx.config, buffer.rope(), cursor.row + i);
+        let line = display_line(&ctx.config, buffer.rope(), buf_view, cursor.row + i);
 
         let Some((lg, lspan)) = line.grapheme_at(start_col) else {
             continue;
@@ -146,10 +125,10 @@ fn delete_blockwise(ctx: &mut EditorCtx, rows: usize, cols: usize) -> Damage {
             let end_idx = line_idx + line.col_to_char_idx(lspan.end);
             buffer.edit().remove(start_idx..end_idx);
             if lg.chars().all(|c| c == ' ') {
-                buffer.edit().insert(
-                    start_idx,
-                    &" ".repeat((lspan.end - lspan.start) - (end_col - start_col)),
-                );
+                let n = (lspan.end - lspan.start) - (end_col - start_col);
+                buffer
+                    .edit()
+                    .insert_iter(start_idx, std::iter::repeat_n(' ', n));
             }
             continue;
         }
@@ -172,7 +151,9 @@ fn delete_blockwise(ctx: &mut EditorCtx, rows: usize, cols: usize) -> Damage {
 
         let total = lspaces + rspaces;
         if total > 0 {
-            buffer.edit().insert(start_idx, &" ".repeat(total));
+            buffer
+                .edit()
+                .insert_iter(start_idx, std::iter::repeat_n(' ', total));
         }
     }
 

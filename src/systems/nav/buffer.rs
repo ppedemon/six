@@ -3,7 +3,9 @@ use ropey::Rope;
 use super::rules::NavRules;
 use crate::components::{BufferView, Config};
 use crate::rope;
-use crate::systems::commons::{char_idx_to_coords, curr_line, cursor_to_char_idx, snap_coords};
+use crate::systems::commons::{
+    char_idx_to_coords, curr_line, cursor_to_char_idx, display_line, snap_coords,
+};
 
 fn apply_target_col<R: NavRules>(config: &Config, rope: &Rope, buf_view: &mut BufferView) {
     let target_col = buf_view.target_col;
@@ -189,7 +191,7 @@ pub fn end_big_word(config: &Config, rope: &Rope, buf_view: &mut BufferView, rep
         // Solution: after invoking [rope::end_big_word], check if we are at the end of the initial
         // grapheme. If so, move past the multichar grapheme and call [rope::end_big_word] again.
         let coords = char_idx_to_coords(config, rope, buf_view, char_idx);
-        let line = buf_view.display_buf.ensure_line(config, rope, coords.row);
+        let line = display_line(config, rope, buf_view, coords.row);
         match line.grapheme_at(coords.col) {
             Some((g, _)) => {
                 if char_idx - prev_idx + 1 == g.chars().count() {
@@ -221,7 +223,7 @@ pub fn end_sub_word(config: &Config, rope: &Rope, buf_view: &mut BufferView, rep
 
         // See command about multichar graphemes in [end_big_word]
         let coords = char_idx_to_coords(config, rope, buf_view, char_idx);
-        let line = buf_view.display_buf.ensure_line(config, rope, coords.row);
+        let line = display_line(config, rope, buf_view, coords.row);
         match line.grapheme_at(coords.col) {
             Some((g, _)) => {
                 if char_idx - prev_idx + 1 == g.chars().count() {
@@ -253,7 +255,7 @@ pub fn line_first_non_blank<R: NavRules>(config: &Config, rope: &Rope, buf_view:
 pub fn file_first_non_blank<R: NavRules>(config: &Config, rope: &Rope, buf_view: &mut BufferView) {
     let char_idx = rope::first_non_blank_char_idx(rope);
     let coords = char_idx_to_coords(config, rope, buf_view, char_idx);
-    let line = buf_view.display_buf.ensure_line(config, rope, coords.row);
+    let line = display_line(config, rope, buf_view, coords.row);
     let col = R::first_non_blank(&line);
 
     buf_view.cursor.row = coords.row;
@@ -286,7 +288,7 @@ pub fn end_of_line<R: NavRules>(
 }
 
 pub fn start_of_file<R: NavRules>(config: &Config, rope: &Rope, buf_view: &mut BufferView) {
-    let line = buf_view.display_buf.ensure_line(config, rope, 0);
+    let line = display_line(config, rope, buf_view, 0);
     let col = R::snap_col(&line, 0);
 
     buf_view.cursor.row = 0;
@@ -296,7 +298,7 @@ pub fn start_of_file<R: NavRules>(config: &Config, rope: &Rope, buf_view: &mut B
 
 pub fn end_of_file<R: NavRules>(config: &Config, rope: &Rope, buf_view: &mut BufferView) {
     let row = rope.len_lines().saturating_sub(1);
-    let line = buf_view.display_buf.ensure_line(config, rope, row);
+    let line = display_line(config, rope, buf_view, row);
     let col = R::max_allowed_width(&line);
     let col = R::snap_col(&line, col);
 
@@ -305,7 +307,7 @@ pub fn end_of_file<R: NavRules>(config: &Config, rope: &Rope, buf_view: &mut Buf
     buf_view.target_col = col;
 }
 
-// Line is zero-based
+// Note: line is 1-based
 pub fn goto_line<R: NavRules>(
     config: &Config,
     rope: &Rope,
@@ -313,13 +315,14 @@ pub fn goto_line<R: NavRules>(
     line: usize,
 ) {
     let norm_line = line.min(rope.len_lines()).saturating_sub(1);
-    let line = buf_view.display_buf.ensure_line(config, rope, norm_line);
-
     buf_view.cursor.row = norm_line;
+
+    let line = display_line(config, rope, buf_view, norm_line);
     buf_view.cursor.col = R::first_non_blank(&line);
     buf_view.target_col = buf_view.cursor.col;
 }
 
+// Note: col is 1-based
 pub fn goto_col<R: NavRules>(config: &Config, rope: &Rope, buf_view: &mut BufferView, col: usize) {
     let line = curr_line(config, rope, buf_view);
     let norm_col = col.saturating_sub(1).min(R::max_allowed_width(&line));

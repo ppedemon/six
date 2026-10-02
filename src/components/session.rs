@@ -197,6 +197,12 @@ impl MutBuffer for ExMutableBuffer<'_> {
         self.rope.insert(char_idx, text);
     }
 
+    fn insert_iter(&mut self, char_idx: usize, iter: impl IntoIterator<Item = char>) {
+        for (i, c) in iter.into_iter().enumerate() {
+            self.rope.insert_char(char_idx + i, c);
+        }
+    }
+
     fn remove(&mut self, char_range: Range<usize>) {
         self.rope.remove(char_range);
     }

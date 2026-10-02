@@ -1,32 +1,4 @@
-use crate::{cmd::Cmd, components::Coords};
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum YankShape {
-    Char {
-        num_lines: usize,
-        end_col: usize,
-        inclusive: bool,
-    },
-    Line {
-        num_lines: usize,
-    },
-    Block {
-        rows: usize,
-        cols: usize,
-    },
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct YankData {
-    pub start: Coords,
-    pub shape: YankShape,
-}
-
-impl YankData {
-    pub fn new(start: Coords, shape: YankShape) -> Self {
-        Self { start, shape }
-    }
-}
+use crate::{cmd::Cmd, components::YankData};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RepeatBuffer {
