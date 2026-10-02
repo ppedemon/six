@@ -343,7 +343,8 @@ fn fix_d(ctx: &mut EditorCtx, yank_data: &mut YankData) {
                 .chars()
                 .all(|c| c.is_whitespace())
             {
-                yank_data.mode = MotionMode::Linewise
+                yank_data.mode = MotionMode::Linewise;
+                yank_data.inclusive = true;
             }
         }
     }
