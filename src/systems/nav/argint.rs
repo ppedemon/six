@@ -102,10 +102,8 @@ fn interpret_motion(
 
     apply_exceptions(ctx, &mut yank_data);
 
-    if op == Operator::Immediate(ImmediateOp::Delete) && mode == MotionMode::Charwise {
-        if m == Motion::Line {
-            fix_line_charwise_d(ctx, &mut yank_data);
-        }
+    if op == Operator::Immediate(ImmediateOp::Delete) {
+        fix_line_charwise_d(ctx, m, &mut yank_data);
         fix_d(ctx, &mut yank_data);
     }
 
@@ -280,24 +278,28 @@ fn apply_exceptions(ctx: &mut EditorCtx, yank_data: &mut YankData) {
 //
 //   - Move end of selection to end of previous line (or 0 if on the top line)
 //   - Normalize yank area if end < start, otherwise make selection inclusive.
-fn fix_line_charwise_d(ctx: &mut EditorCtx, yank_data: &mut YankData) {
-    // Only apply this fix if line motion is forced to charwise via 'v'
-    let (_, buf_view, buffer) = active_session_and_buffer!(mut ctx);
-    let rope = buffer.rope();
+fn fix_line_charwise_d(ctx: &mut EditorCtx, m: Motion, yank_data: &mut YankData) {
+    if m == Motion::Line && yank_data.mode == MotionMode::Charwise {
+        let (_, buf_view, buffer) = active_session_and_buffer!(mut ctx);
+        let rope = buffer.rope();
 
-    let mut end_idx = coords_to_char_idx(&ctx.config, rope, buf_view, yank_data.end);
-    while end_idx > 0 && rope.char(end_idx - 1) != '\n' {
-        end_idx -= 1;
-    }
+        let start_idx = coords_to_char_idx(&ctx.config, rope, buf_view, yank_data.start);
+        let line_idx = rope.line_to_char(yank_data.start.row);
 
-    if end_idx > 0 {
-        yank_data.end = char_idx_to_coords(&ctx.config, rope, buf_view, end_idx - 1);
-        yank_data.inclusive = true;
-    } else {
-        yank_data.end = yank_data.start;
-        yank_data.start = Coords::default();
-        buf_view.cursor = yank_data.start;
-        buf_view.target_col = buf_view.cursor.col;
+        let mut end_idx = coords_to_char_idx(&ctx.config, rope, buf_view, yank_data.end);
+        while end_idx > start_idx && rope.char(end_idx) != '\n' {
+            end_idx -= 1;
+        }
+
+        if end_idx > start_idx {
+            yank_data.end = char_idx_to_coords(&ctx.config, rope, buf_view, end_idx - 1);
+            yank_data.inclusive = true;
+        } else {
+            yank_data.end = yank_data.start;
+            yank_data.start = char_idx_to_coords(&ctx.config, rope, buf_view, line_idx);
+            buf_view.cursor = yank_data.start;
+            buf_view.target_col = buf_view.cursor.col;
+        }
     }
 }
 
@@ -350,6 +352,8 @@ fn fix_d(ctx: &mut EditorCtx, yank_data: &mut YankData) {
 // --- Yank text based on precomputed YankData ---
 
 fn yank_charwise(ctx: &mut EditorCtx, yank_data: YankData) -> RegisterData {
+    assert!(yank_data.start <= yank_data.end);
+
     let (_, buf_view, buffer) = active_session_and_buffer!(mut ctx);
     let rope = buffer.rope();
 
@@ -369,6 +373,8 @@ fn yank_charwise(ctx: &mut EditorCtx, yank_data: YankData) -> RegisterData {
 }
 
 fn yank_linewise(ctx: &mut EditorCtx, yank_data: YankData) -> RegisterData {
+    assert!(yank_data.start <= yank_data.end);
+
     let (_, buf_view, buffer) = active_session_and_buffer!(mut ctx);
     let rope = buffer.rope();
 
@@ -429,3 +435,6 @@ fn yank_blockwise(ctx: &mut EditorCtx, yank_data: YankData) -> RegisterData {
 
     RegisterData::block(rows)
 }
+
+#[cfg(test)]
+mod tests;

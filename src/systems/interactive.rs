@@ -10,7 +10,6 @@ use crate::{
     components::{EditorCtx, YankData},
     systems::{
         commons::is_last_col,
-        immediate::delete_for_c_cmd,
         input::dispatch_txn,
         insert::apply_insert_log,
         interactive::ExecMode::{Batch, Interactive},
@@ -94,7 +93,7 @@ fn change_prelude<'a>(ctx: &mut EditorCtx, args: &'a InteractiveArgs) {
         (buf_view.cursor.row, buffer.rope().len_lines())
     };
 
-    delete_for_c_cmd(ctx, args.cmd);
+    //delete_for_c_cmd(ctx, args.cmd);
 
     if let Some(yank_data) = ctx.repbuf.last_yank() {
         match yank_data.mode {

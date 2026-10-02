@@ -45,6 +45,7 @@ pub fn paste(ctx: &mut EditorCtx, cmd: Cmd, mode: PasteMode) -> Damage {
             Damage::Intact
         }
         Some(reg_data) => {
+            let old_lines = buffer.rope().len_lines();
             let damage = match reg_data {
                 RegisterData::Char { data } => {
                     paste_charwise(&ctx.config, buf_view, buffer, reps, mode, data.as_ref())
@@ -56,7 +57,8 @@ pub fn paste(ctx: &mut EditorCtx, cmd: Cmd, mode: PasteMode) -> Damage {
                     paste_blockwise(&ctx.config, buf_view, buffer, reps, mode, data)
                 }
             };
-            event::on_paste(&mut ctx.status, reg_data, reps);
+            let new_lines = buffer.rope().len_lines();
+            event::on_paste(&mut ctx.status, new_lines - old_lines);
             damage
         }
     }
@@ -247,8 +249,8 @@ fn paste_blockwise(
             let g_idx = line_idx + buf_line.col_to_char_idx(span.start);
 
             // anchor_col falls inside a wide grapheme:
-            //  If the wide grapheme is a tab, break into before and after whitespace
-            //  Otherwise, pad initial fragment with spaces and move wide grapheme after pasted data
+            // - If the wide grapheme is a tab, break into before and after whitespace
+            // - Otherwise, pad initial fragment with spaces and move wide grapheme after pasted data
             if span.start < anchor_col {
                 let len_before = anchor_col - span.start;
 

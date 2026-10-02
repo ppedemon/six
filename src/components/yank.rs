@@ -33,7 +33,7 @@ impl YankData {
 
     pub fn block(&self) -> (usize, usize) {
         let rows = self.num_lines();
-        let cols = self.start.col.max(self.end.col) - self.start.col.min(self.end.col);
+        let cols = self.start.col.max(self.end.col) - self.start.col.min(self.end.col) + 1;
         (rows, cols)
     }
 }
