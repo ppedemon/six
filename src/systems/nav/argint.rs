@@ -70,10 +70,10 @@ fn interpret_motion(
     given_mode: Option<MotionMode>,
     arg_reps: usize,
 ) -> (YankData, RegisterData) {
-    let mut extent = {
+    let (m, mut extent) = {
         let (_, buf_view, buffer) = active_session_and_buffer!(mut ctx);
         let m = fix_c(&ctx.config, buf_view, buffer.rope(), op, m);
-        exec_motion(ctx, m, arg_reps)
+        (m, exec_motion(ctx, m, arg_reps))
     };
 
     let (_, buf_view, buffer) = active_session_and_buffer!(mut ctx);
@@ -172,20 +172,22 @@ fn exec_motion(ctx: &mut EditorCtx, m: Motion, arg_reps: usize) -> Extent {
 // `ctx` provides the active buffer and display configuration, `m` identifies
 // the original motion, and `yank_data` receives the corrected range.
 fn fix_w(ctx: &mut EditorCtx, m: Motion, yank_data: &mut YankData) {
-    let (_, buf_view, buffer) = active_session_and_buffer!(mut ctx);
-    let rope = buffer.rope();
+    if yank_data.start.row < yank_data.end.row {
+        let (_, buf_view, buffer) = active_session_and_buffer!(mut ctx);
+        let rope = buffer.rope();
 
-    let end_idx = coords_to_char_idx(&ctx.config, rope, buf_view, yank_data.end);
-    let line_idx = rope.line_to_char(yank_data.end.row);
+        let end_idx = coords_to_char_idx(&ctx.config, rope, buf_view, yank_data.end);
+        let line_idx = rope.line_to_char(yank_data.end.row);
 
-    if rope
-        .slice(line_idx..end_idx)
-        .chars()
-        .all(|c| c.is_whitespace())
-    {
-        let end_idx = line_idx.saturating_sub(2);
-        yank_data.end = char_idx_to_coords(&ctx.config, rope, buf_view, end_idx);
-        yank_data.inclusive = true;
+        if rope
+            .slice(line_idx..end_idx)
+            .chars()
+            .all(|c| c.is_whitespace())
+        {
+            let end_idx = line_idx.saturating_sub(2);
+            yank_data.end = char_idx_to_coords(&ctx.config, rope, buf_view, end_idx);
+            yank_data.inclusive = true;
+        }
     }
 }
 

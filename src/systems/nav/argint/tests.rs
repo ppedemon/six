@@ -198,6 +198,72 @@ fn interpret_motion_calls_charwise_linewise_fix() {
     assert_eq!(reg_data, RegisterData::line("  abc\ndef  \n".into()));
 }
 
+#[test]
+fn interpret_motion_change_keeps_next_big_word_on_whitespace() {
+    let mut ctx = setup("  alpha beta", Coords::default());
+
+    let (yank_data, _) = interpret_motion(
+        &mut ctx,
+        Operator::Interactive(InteractiveOp::Change),
+        Motion::NextBigWord,
+        None,
+        1,
+    );
+
+    assert_eq!(yank_data.end, Coords::new(0, 2));
+    assert!(!yank_data.inclusive);
+}
+
+#[test]
+fn interpret_motion_change_ends_big_word_from_a_non_whitespace_cursor() {
+    let mut ctx = setup("  alpha beta", Coords::new(0, 2));
+
+    let (yank_data, reg_data) = interpret_motion(
+        &mut ctx,
+        Operator::Interactive(InteractiveOp::Change),
+        Motion::NextBigWord,
+        None,
+        1,
+    );
+
+    assert_eq!(yank_data.end, Coords::new(0, 6));
+    assert!(yank_data.inclusive);
+    assert_eq!(reg_data, RegisterData::char("alpha".to_owned()));
+}
+
+#[test]
+fn interpret_motion_change_keeps_next_sub_word_on_whitespace() {
+    let mut ctx = setup("  alpha_beta tail", Coords::default());
+
+    let (yank_data, _) = interpret_motion(
+        &mut ctx,
+        Operator::Interactive(InteractiveOp::Change),
+        Motion::NextSubWord,
+        None,
+        1,
+    );
+
+    assert_eq!(yank_data.end, Coords::new(0, 2));
+    assert!(!yank_data.inclusive);
+}
+
+#[test]
+fn interpret_motion_change_ends_big_word_for_next_sub_word_from_word_text() {
+    let mut ctx = setup("alpha_beta tail", Coords::default());
+
+    let (yank_data, reg_data) = interpret_motion(
+        &mut ctx,
+        Operator::Interactive(InteractiveOp::Change),
+        Motion::NextSubWord,
+        None,
+        1,
+    );
+
+    assert_eq!(yank_data.end, Coords::new(0, 9));
+    assert!(yank_data.inclusive);
+    assert_eq!(reg_data, RegisterData::char("alpha_beta".to_owned()));
+}
+
 // --- yank_charwise ---
 
 #[test]
