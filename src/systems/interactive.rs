@@ -48,6 +48,7 @@ pub struct InteractiveArgs {
 }
 
 impl InteractiveArgs {
+    // Build an interactive command that enters insert mode and waits for input.
     pub fn new(op: InteractiveOp, cmd: Cmd) -> Self {
         Self {
             op,
@@ -56,6 +57,7 @@ impl InteractiveArgs {
         }
     }
 
+    // Build a replayable command that applies the saved insert without waiting.
     pub fn batch(op: InteractiveOp, cmd: Cmd) -> Self {
         Self {
             op,
@@ -65,6 +67,8 @@ impl InteractiveArgs {
     }
 }
 
+// Run the command's setup, remember it for repetition, then either enter insert
+// mode or replay the saved insert as a batch.
 pub fn handle_interactive(ctx: &mut EditorCtx, args: InteractiveArgs) {
     prelude(ctx, &args);
     ctx.repbuf.save_last_cmd(args.cmd);
@@ -80,6 +84,7 @@ pub fn handle_interactive(ctx: &mut EditorCtx, args: InteractiveArgs) {
     }
 }
 
+// Apply the structural part of the interactive operation before inserting.
 fn prelude(ctx: &mut EditorCtx, args: &InteractiveArgs) {
     match args.op {
         InteractiveOp::EnterInsert(insert_point) => {}
@@ -89,6 +94,8 @@ fn prelude(ctx: &mut EditorCtx, args: &InteractiveArgs) {
     }
 }
 
+// Delete the selected change range and adjust linewise changes so insertion
+// starts on a newly opened line in the appropriate place.
 fn change_prelude(ctx: &mut EditorCtx, args: &InteractiveArgs) {
     let (buf_id, row, num_rows) = {
         let (session, buf_view, buffer) = active_session_and_buffer!(ctx);
@@ -119,10 +126,13 @@ fn change_prelude(ctx: &mut EditorCtx, args: &InteractiveArgs) {
     }
 }
 
+// Finish an interactive insert by applying the saved insert according to the
+// operation that started it.
 pub fn finish_interactive(ctx: &mut EditorCtx, op: InteractiveOp, reps: usize) {
     apply_last_insert(ctx, op, reps, false);
 }
 
+// Choose where insertion begins for operations that reuse the current cursor.
 fn insert_point(ctx: &mut EditorCtx, op: InteractiveOp) -> InsertPoint {
     match op {
         InteractiveOp::EnterInsert(insert_point) => insert_point,
@@ -142,6 +152,8 @@ fn insert_point(ctx: &mut EditorCtx, op: InteractiveOp) -> InsertPoint {
     }
 }
 
+// Replay the saved insert for this operation, then normalize the cursor when
+// running a batch command.
 fn apply_last_insert(ctx: &mut EditorCtx, op: InteractiveOp, reps: usize, from_batch: bool) {
     match op {
         InteractiveOp::EnterInsert(_) => {
@@ -161,6 +173,8 @@ fn apply_last_insert(ctx: &mut EditorCtx, op: InteractiveOp, reps: usize, from_b
     }
 }
 
+// Replay the first row for batch commands, then apply the saved insert on each
+// remaining row at the original block column.
 fn apply_change_insert(ctx: &mut EditorCtx, from_batch: bool) {
     let ops = ctx.registers.last_insert().to_vec();
     if from_batch {
@@ -208,6 +222,8 @@ fn apply_change_insert(ctx: &mut EditorCtx, from_batch: bool) {
     }
 }
 
+// Replay an open-line insert. Batch replay consumes one repetition for the
+// initial line opened by the prelude.
 fn apply_open_insert(ctx: &mut EditorCtx, reps: usize, from_batch: bool) {
     let len = ctx.registers.last_insert().len();
     let mut new_ops = Vec::with_capacity(len + 1);
