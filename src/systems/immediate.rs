@@ -11,12 +11,13 @@ use crate::{
     },
 };
 
-mod delete;
+pub mod delete;
 mod delete_char;
 mod join;
 mod paste;
 mod replace;
 mod yank;
+
 use delete_char::{backspace, delete_char};
 use join::join;
 use paste::{PasteMode, paste};

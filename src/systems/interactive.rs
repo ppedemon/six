@@ -9,11 +9,13 @@ use crate::{
     },
     components::{EditorCtx, YankData},
     systems::{
-        commons::is_last_col,
+        commons::{display_width, next_col_or_display_width},
+        immediate::delete::delete,
         input::dispatch_txn,
-        insert::apply_insert_log,
+        insert::{DamageEvent, apply_insert_log, broadcast_damage},
         interactive::ExecMode::{Batch, Interactive},
         mode::{enter_insert, goto_insert_point},
+        nav::utils::ensure_cursor_inside_line,
     },
 };
 
@@ -87,13 +89,18 @@ fn prelude(ctx: &mut EditorCtx, args: &InteractiveArgs) {
     }
 }
 
-fn change_prelude<'a>(ctx: &mut EditorCtx, args: &'a InteractiveArgs) {
-    let (row, num_rows) = {
-        let (_, buf_view, buffer) = active_session_and_buffer!(ctx);
-        (buf_view.cursor.row, buffer.rope().len_lines())
+fn change_prelude(ctx: &mut EditorCtx, args: &InteractiveArgs) {
+    let (buf_id, row, num_rows) = {
+        let (session, buf_view, buffer) = active_session_and_buffer!(ctx);
+        (
+            session.buf_id,
+            buf_view.cursor.row,
+            buffer.rope().len_lines(),
+        )
     };
 
-    //delete_for_c_cmd(ctx, args.cmd);
+    let damage = delete(ctx, args.cmd);
+    broadcast_damage(ctx, DamageEvent::new(buf_id, damage));
 
     if let Some(yank_data) = ctx.repbuf.last_yank() {
         match yank_data.mode {
@@ -113,52 +120,7 @@ fn change_prelude<'a>(ctx: &mut EditorCtx, args: &'a InteractiveArgs) {
 }
 
 pub fn finish_interactive(ctx: &mut EditorCtx, op: InteractiveOp, reps: usize) {
-    if op == InteractiveOp::Change {
-        finish_interactive_change(ctx);
-    } else {
-        apply_last_insert(ctx, op, reps, false);
-    }
-}
-
-fn finish_interactive_change(ctx: &mut EditorCtx) {
-    match ctx.repbuf.last_yank() {
-        Some(
-            yank_data @ YankData {
-                mode: MotionMode::Blockwise,
-                start,
-                ..
-            },
-        ) => {
-            let (_, buf_view) = active_session!(ctx);
-            let cursor = buf_view.cursor;
-            let rows = yank_data.num_lines();
-
-            if cursor.row != start.row {
-                return;
-            }
-
-            let ops = ctx.registers.last_insert().to_vec();
-            for _ in 0..rows.saturating_sub(1) {
-                dispatch_txn(
-                    ctx,
-                    &[
-                        Cmd::new(Operator::Move(Motion::Down)).into(),
-                        Cmd::new(Operator::Move(Motion::GotoCol(start.col + 1))).into(),
-                    ],
-                );
-                apply_insert_log(ctx, &ops, 1);
-            }
-
-            dispatch_txn(
-                ctx,
-                &[
-                    Cmd::new(Operator::Move(Motion::GotoLine(cursor.row + 1))).into(),
-                    Cmd::new(Operator::Move(Motion::GotoCol(cursor.col + 1))).into(),
-                ],
-            );
-        }
-        _ => {}
-    }
+    apply_last_insert(ctx, op, reps, false);
 }
 
 fn insert_point(ctx: &mut EditorCtx, op: InteractiveOp) -> InsertPoint {
@@ -166,8 +128,11 @@ fn insert_point(ctx: &mut EditorCtx, op: InteractiveOp) -> InsertPoint {
         InteractiveOp::EnterInsert(insert_point) => insert_point,
         InteractiveOp::Change => {
             let (_, buf_view, buffer) = active_session_and_buffer!(mut ctx);
+            let rope = buffer.rope();
             let cursor = buf_view.cursor;
-            if is_last_col(&ctx.config, buffer.rope(), buf_view, buf_view.cursor) {
+
+            let dw = display_width(&ctx.config, rope, buf_view, cursor);
+            if next_col_or_display_width(&ctx.config, buffer.rope(), buf_view, cursor) == dw {
                 InsertPoint::Last
             } else {
                 InsertPoint::Curr
@@ -184,19 +149,74 @@ fn apply_last_insert(ctx: &mut EditorCtx, op: InteractiveOp, reps: usize, from_b
             apply_insert_log(ctx, &ops, reps);
         }
         InteractiveOp::Change => {
-            // TODO Implement
+            apply_change_insert(ctx, from_batch);
         }
         InteractiveOp::OpenAbove | InteractiveOp::OpenBelow => {
-            let len = ctx.registers.last_insert().len();
-            let mut new_ops = Vec::with_capacity(len + 1);
-            new_ops.push(EditOp::Enter);
-            new_ops.extend(ctx.registers.last_insert());
-            let mut n = reps;
-            if from_batch {
-                apply_insert_log(ctx, &new_ops[1..], 1);
-                n -= 1;
-            }
-            apply_insert_log(ctx, &new_ops, n);
+            apply_open_insert(ctx, reps, from_batch)
         }
     }
+
+    if from_batch {
+        ensure_cursor_inside_line(ctx);
+    }
+}
+
+fn apply_change_insert(ctx: &mut EditorCtx, from_batch: bool) {
+    let ops = ctx.registers.last_insert().to_vec();
+    if from_batch {
+        apply_insert_log(ctx, &ops, 1);
+        ctx.status.clear_msg(); // Batch change commands don't show delete notifications
+    }
+
+    match ctx.repbuf.last_yank() {
+        Some(
+            yank_data @ YankData {
+                mode: MotionMode::Blockwise,
+                start,
+                ..
+            },
+        ) => {
+            let (_, buf_view) = active_session!(ctx);
+            let cursor = buf_view.cursor;
+            let rows = yank_data.num_lines();
+
+            if cursor.row != start.row {
+                return;
+            }
+
+            for _ in 0..rows.saturating_sub(1) {
+                dispatch_txn(
+                    ctx,
+                    &[
+                        Cmd::new(Operator::Move(Motion::Down)).into(),
+                        // Note: GotoCol is one-based. First col is #1.
+                        Cmd::new(Operator::Move(Motion::GotoCol(start.col + 1))).into(),
+                    ],
+                );
+                apply_insert_log(ctx, &ops, 1);
+            }
+
+            dispatch_txn(
+                ctx,
+                &[
+                    Cmd::new(Operator::Move(Motion::GotoLine(cursor.row + 1))).into(),
+                    Cmd::new(Operator::Move(Motion::GotoCol(cursor.col))).into(),
+                ],
+            );
+        }
+        _ => {}
+    }
+}
+
+fn apply_open_insert(ctx: &mut EditorCtx, reps: usize, from_batch: bool) {
+    let len = ctx.registers.last_insert().len();
+    let mut new_ops = Vec::with_capacity(len + 1);
+    new_ops.push(EditOp::Enter);
+    new_ops.extend(ctx.registers.last_insert());
+    let mut n = reps;
+    if from_batch {
+        apply_insert_log(ctx, &new_ops[1..], 1);
+        n -= 1;
+    }
+    apply_insert_log(ctx, &new_ops, n);
 }

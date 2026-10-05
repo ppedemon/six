@@ -76,7 +76,7 @@ fn delete_linewise(ctx: &mut EditorCtx, yank_data: YankData) -> Damage {
     let is_empty = buf_view.cursor.row == 0 && num_lines >= buffer.rope().len_lines();
     let start_idx = buffer.rope().line_to_char(buf_view.cursor.row);
 
-    let row = if buf_view.cursor.row + 1 == buffer.rope().len_lines() {
+    let row = if buf_view.cursor.row + num_lines >= buffer.rope().len_lines() {
         let end_idx = buffer.rope().len_chars();
 
         // NOTE: we don't want the text to end with a trailing '\n'. So if we are
@@ -103,14 +103,14 @@ fn delete_linewise(ctx: &mut EditorCtx, yank_data: YankData) -> Damage {
 fn delete_blockwise(ctx: &mut EditorCtx, yank_data: YankData) -> Damage {
     let (rows, cols) = yank_data.block();
     let (_, buf_view, buffer) = active_session_and_buffer!(mut ctx);
-    let cursor = buf_view.cursor;
 
+    let cursor = buf_view.cursor;
     let start_col = cursor.col;
-    let end_col = start_col + cols;
 
     for i in 0..rows {
         let line_idx = buffer.rope().line_to_char(cursor.row + i);
         let line = display_line(&ctx.config, buffer.rope(), buf_view, cursor.row + i);
+        let end_col = (start_col + cols).min(line.display_width);
 
         let Some((lg, lspan)) = line.grapheme_at(start_col) else {
             continue;
