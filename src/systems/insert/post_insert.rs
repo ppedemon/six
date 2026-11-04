@@ -14,6 +14,7 @@ pub fn post_insert(ctx: &mut EditorCtx) {
     if repetable {
         post_insert_repeat(ctx);
     }
+    commit_undo_txn(ctx);
     restore_cursor(ctx);
 }
 
@@ -33,6 +34,11 @@ fn post_insert_repeat(ctx: &mut EditorCtx) {
             interactive::finish_interactive(ctx, op, reps);
         }
     }
+}
+
+fn commit_undo_txn(ctx: &mut EditorCtx) {
+    let (_, _, buffer) = active_session_and_buffer!(mut ctx);
+    buffer.commit_undo_txn();
 }
 
 fn restore_cursor(ctx: &mut EditorCtx) {

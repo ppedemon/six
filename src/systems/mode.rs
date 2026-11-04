@@ -42,7 +42,6 @@ pub fn enter_normal(ctx: &mut EditorCtx) {
     session.mode = Mode::Normal;
 
     if old_mode == Mode::Insert {
-        buffer.commit_undo_txn();
         post_insert(ctx);
     }
 }

@@ -13,10 +13,6 @@ use crate::{
 
 pub fn apply_insert_log(ctx: &mut EditorCtx, ops: &[EditOp], reps: usize) {
     let damage_evt = intepret_insert_log(ctx, ops, reps);
-
-    let (_, _, buffer) = active_session_and_buffer!(mut ctx);
-    buffer.commit_undo_txn();
-
     broadcast_damage(ctx, damage_evt)
 }
 
