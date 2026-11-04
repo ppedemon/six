@@ -1,5 +1,5 @@
 use crate::{
-    active_session,
+    active_session, active_session_and_buffer,
     cmd::{Arg, Cmd, ImmediateOp, Motion, Operator},
     components::{EditorCtx, Register},
     systems::{
@@ -95,6 +95,11 @@ pub fn handle_immediate(ctx: &mut EditorCtx, args: ImmediateArgs) {
         ImmediateOp::Replace(c) => replace(ctx, c, args.cmd.reps.unwrap_or(1)),
         ImmediateOp::Undo => undo(ctx, args.cmd),
     };
+
+    if args.cmd.op != Operator::Immediate(ImmediateOp::Undo) {
+        let (_, _, buffer) = active_session_and_buffer!(mut ctx);
+        buffer.commit_undo_txn();
+    }
 
     let (session, _) = active_session!(ctx);
     let damage_evt = DamageEvent::new(session.buf_id, damage);
