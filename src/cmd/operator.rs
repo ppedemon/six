@@ -53,6 +53,7 @@ pub enum ImmediateOp {
     DeleteEol,
     RepeatLast,
     Replace(char),
+    Undo,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
