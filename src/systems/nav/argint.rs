@@ -139,7 +139,7 @@ fn fix_c(
             if cursor_on_whitespace(config, buf_view, rope) {
                 m
             } else {
-                Motion::EndBigWord
+                Motion::EndSubWord
             }
         }
         _ => m,

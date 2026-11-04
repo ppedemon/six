@@ -7,9 +7,8 @@ use crate::{
         Operator::{self, Move},
         TxnItem,
     },
-    components::{EditorCtx, YankData},
+    components::{Coords, EditorCtx, YankData},
     systems::{
-        commons::{display_width, next_col_or_display_width},
         immediate::delete::delete,
         input::dispatch_txn,
         insert::{DamageEvent, apply_insert_log, broadcast_damage},
@@ -70,9 +69,14 @@ impl InteractiveArgs {
 // Run the command's setup, remember it for repetition, then either enter insert
 // mode or replay the saved insert as a batch.
 pub fn handle_interactive(ctx: &mut EditorCtx, args: InteractiveArgs) {
+    let cursor = {
+        let (_, buf_view) = active_session!(ctx);
+        buf_view.cursor
+    };
+
     prelude(ctx, &args);
     ctx.repbuf.save_last_cmd(args.cmd);
-    let insert_point = insert_point(ctx, args.op);
+    let insert_point = insert_point(ctx, args.op, cursor);
 
     match args.exec_mode {
         ExecMode::Interactive => enter_insert(ctx, insert_point),
@@ -133,16 +137,13 @@ pub fn finish_interactive(ctx: &mut EditorCtx, op: InteractiveOp, reps: usize) {
 }
 
 // Choose where insertion begins for operations that reuse the current cursor.
-fn insert_point(ctx: &mut EditorCtx, op: InteractiveOp) -> InsertPoint {
+fn insert_point(ctx: &mut EditorCtx, op: InteractiveOp, orig_cursor: Coords) -> InsertPoint {
     match op {
         InteractiveOp::EnterInsert(insert_point) => insert_point,
         InteractiveOp::Change => {
-            let (_, buf_view, buffer) = active_session_and_buffer!(mut ctx);
-            let rope = buffer.rope();
+            let (_, buf_view) = active_session!(mut ctx);
             let cursor = buf_view.cursor;
-
-            let dw = display_width(&ctx.config, rope, buf_view, cursor);
-            if next_col_or_display_width(&ctx.config, buffer.rope(), buf_view, cursor) == dw {
+            if cursor.col < orig_cursor.col {
                 InsertPoint::Last
             } else {
                 InsertPoint::Curr
@@ -214,7 +215,7 @@ fn apply_change_insert(ctx: &mut EditorCtx, from_batch: bool) {
                 ctx,
                 &[
                     Cmd::new(Operator::Move(Motion::GotoLine(cursor.row + 1))).into(),
-                    Cmd::new(Operator::Move(Motion::GotoCol(cursor.col))).into(),
+                    Cmd::new(Operator::Move(Motion::GotoCol(cursor.col + 1))).into(),
                 ],
             );
         }
