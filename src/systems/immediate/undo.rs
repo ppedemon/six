@@ -1,7 +1,10 @@
 use ropey::Rope;
 
 use crate::{
-    active_session_and_buffer, cmd::Cmd, components::{EditorCtx, MutBuffer, UndoTxnMeta}, systems::{commons::char_idx_to_coords, insert::Damage, nav::utils::ensure_cursor_inside_line},
+    active_session_and_buffer,
+    cmd::Cmd,
+    components::{EditorCtx, MutBuffer, UndoTxnMeta},
+    systems::{commons::char_idx_to_coords, insert::Damage, nav::utils::ensure_cursor_inside_line},
 };
 
 pub fn undo(ctx: &mut EditorCtx, cmd: Cmd) -> Damage {
