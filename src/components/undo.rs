@@ -1,4 +1,4 @@
-use std::{fmt, ops::Range};
+use std::{collections::VecDeque, fmt, ops::Range};
 
 use ropey::Rope;
 
@@ -158,24 +158,29 @@ impl fmt::Display for UndoTxn {
 // taken care of by the UndoTxnAgg struct.
 pub struct UndoStack {
     agg: UndoTxnAgg,
-    txns: Vec<UndoTxn>,
+    txns: VecDeque<UndoTxn>,
 }
 
 impl UndoStack {
+    const MAX_TXNS: usize = 256;
+
     pub fn new() -> Self {
         Self {
             agg: UndoTxnAgg::new(),
-            txns: Vec::default(),
+            txns: VecDeque::with_capacity(Self::MAX_TXNS),
         }
     }
 
     pub fn pop(&mut self) -> Option<UndoTxn> {
-        self.txns.pop()
+        self.txns.pop_back()
     }
 
     pub fn commit(&mut self) {
         if let Some(txn) = self.agg.commit() {
-            self.txns.push(txn);
+            if self.txns.len() >= Self::MAX_TXNS {
+                self.txns.pop_front();
+            }
+            self.txns.push_back(txn);
         }
     }
 
