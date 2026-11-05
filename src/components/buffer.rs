@@ -112,6 +112,7 @@ impl<'a> MutBuffer for SessionMutableBuffer<'a> {
         }
 
         self.buffer.marks.adjust(Change::insert(char_idx, len));
+        self.buffer.dirty = true;
     }
 
     fn insert_rope(&mut self, char_idx: usize, rope: &Rope) {
