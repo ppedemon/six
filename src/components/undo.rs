@@ -2,35 +2,33 @@ use std::{collections::VecDeque, fmt, ops::Range};
 
 use ropey::Rope;
 
-// -- Undo Chunk ---
+// --- Undo Chunk ---
+
+pub enum Action {
+    Insert,
+    Delete,
+}
 
 // An undo chunk us a basic unit of text editing work. It can be either
 // a series of contiguous insertions or deletions.
-pub enum UndoChunk {
-    Insert {
-        char_idx: usize,
-        text: String,
-        len_chars: usize,
-        num_lines: usize,
-    },
-    Delete {
-        char_idx: usize,
-        text: String,
-        len_chars: usize,
-        num_lines: usize,
-    },
+pub struct UndoChunk {
+    pub action: Action,
+    pub char_idx: usize,
+    pub text: String,
+    pub len_chars: usize,
+    pub num_lines: usize,
 }
 
 impl fmt::Debug for UndoChunk {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let (kind, char_idx, text) = match self {
-            Self::Insert { char_idx, text, .. } => ("Insert", char_idx, text),
-            Self::Delete { char_idx, text, .. } => ("Delete", char_idx, text),
+        let action = match self.action {
+            Action::Insert => "Insert",
+            Action::Delete => "Delete",
         };
 
-        f.debug_struct(kind)
-            .field("char_idx", char_idx)
-            .field("text", text)
+        f.debug_struct(action)
+            .field("char_idx", &self.char_idx)
+            .field("text", &self.text)
             .finish()
     }
 }
@@ -41,49 +39,99 @@ impl fmt::Display for UndoChunk {
     }
 }
 
-// -- Undo Transaction ---
+// --- Undo Summary ---
 
-// Undo transacton metadata. we will use this for computing Damage regions
-// and status event messages.
-pub struct UndoTxnMeta {
-    pub timestamp_ms: u64,
-    pub start_idx: usize,
-    pub end_idx: usize,
-    pub multi_line: bool,
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UndoScope {
+    None,
+    PatchRange { start_line: usize, end_line: usize },
+    DestroyFrom { start_line: usize },
 }
 
-impl UndoTxnMeta {
-    fn new(timestamp_ms: u64, start_idx: usize, end_idx: usize, multi_line: bool) -> Self {
+#[derive(Debug, Clone, Copy)]
+pub struct UndoSummary {
+    pub timestamp_ms: u64,
+    pub start_idx: usize,
+    pub scope: UndoScope,
+}
+
+impl UndoSummary {
+    pub fn single_line(timestamp_ms: u64, start_idx: usize, line: usize) -> Self {
         Self {
             timestamp_ms,
             start_idx,
-            end_idx,
-            multi_line,
+            scope: UndoScope::PatchRange {
+                start_line: line,
+                end_line: line,
+            },
+        }
+    }
+
+    pub fn destroy_from(timestamp_ms: u64, start_idx: usize, line: usize) -> Self {
+        Self {
+            timestamp_ms,
+            start_idx,
+            scope: UndoScope::DestroyFrom { start_line: line },
         }
     }
 
     pub fn is_empty(&self) -> bool {
-        self.timestamp_ms == u64::MAX && self.start_idx == usize::MAX && self.end_idx == 0
+        self.scope == UndoScope::None
     }
 
-    pub fn merge(&mut self, other: Self) {
+    pub fn merge(&mut self, other: UndoSummary) {
         self.timestamp_ms = self.timestamp_ms.min(other.timestamp_ms);
         self.start_idx = self.start_idx.min(other.start_idx);
-        self.end_idx = self.end_idx.max(other.end_idx);
-        self.multi_line |= other.multi_line;
+
+        self.scope = match (self.scope, other.scope) {
+            (UndoScope::None, _) => other.scope,
+            (_, UndoScope::None) => self.scope,
+            (
+                UndoScope::PatchRange {
+                    start_line: s1,
+                    end_line: e1,
+                },
+                UndoScope::PatchRange {
+                    start_line: s2,
+                    end_line: e2,
+                },
+            ) => UndoScope::PatchRange {
+                start_line: s1.min(s2),
+                end_line: e1.max(e2),
+            },
+            (
+                UndoScope::DestroyFrom { start_line: s1 },
+                UndoScope::PatchRange { start_line: s2, .. },
+            ) => UndoScope::DestroyFrom {
+                start_line: s1.min(s2),
+            },
+            (
+                UndoScope::PatchRange { start_line: s1, .. },
+                UndoScope::DestroyFrom { start_line: s2 },
+            ) => UndoScope::DestroyFrom {
+                start_line: s1.min(s2),
+            },
+            (
+                UndoScope::DestroyFrom { start_line: s1 },
+                UndoScope::DestroyFrom { start_line: s2 },
+            ) => UndoScope::DestroyFrom {
+                start_line: s1.min(s2),
+            },
+        }
     }
 }
 
-impl Default for UndoTxnMeta {
+impl Default for UndoSummary {
     fn default() -> Self {
         Self {
             timestamp_ms: u64::MAX,
             start_idx: usize::MAX,
-            end_idx: 0,
-            multi_line: false,
+            scope: UndoScope::None,
         }
     }
 }
+
+// --- Undo Transaction ---
 
 // Undo transactions are a logical grouping of one or more undo chunks.
 // The lifespan of a transaction is managed by systems by calling the
@@ -96,43 +144,6 @@ pub struct UndoTxn {
 impl UndoTxn {
     pub fn new(data: Vec<UndoChunk>, timestamp_ms: u64) -> Self {
         Self { data, timestamp_ms }
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.data.is_empty()
-    }
-
-    pub fn range(&self) -> UndoTxnMeta {
-        let mut start_idx = usize::MAX;
-        let mut end_idx = 0;
-        let mut multi_line = false;
-
-        for chunk in &self.data {
-            match chunk {
-                UndoChunk::Insert {
-                    char_idx,
-                    text,
-                    len_chars,
-                    num_lines,
-                } => {
-                    start_idx = start_idx.min(*char_idx);
-                    end_idx = end_idx.max(char_idx + len_chars);
-                    multi_line |= *num_lines > 1;
-                }
-                UndoChunk::Delete {
-                    char_idx,
-                    text,
-                    len_chars,
-                    num_lines,
-                } => {
-                    start_idx = start_idx.min(*char_idx);
-                    end_idx = end_idx.max(char_idx + len_chars);
-                    multi_line |= *num_lines > 1;
-                }
-            }
-        }
-
-        UndoTxnMeta::new(self.timestamp_ms, start_idx, end_idx, multi_line)
     }
 }
 
@@ -152,7 +163,7 @@ impl fmt::Display for UndoTxn {
     }
 }
 
-// -- Undo Stack ---
+// --- Undo Stack ---
 
 // Stack of undo transactions. The chunk and transactions managing is
 // taken care of by the UndoTxnAgg struct.
@@ -377,7 +388,8 @@ impl UndoTxnAgg {
         if self.buffer.len_chars() > 0 {
             match self.mode {
                 AggMode::Insert => {
-                    self.chunks.push(UndoChunk::Insert {
+                    self.chunks.push(UndoChunk {
+                        action: Action::Insert,
                         char_idx: self.start_idx,
                         text: self.buffer.to_string(),
                         len_chars: self.buffer.len_chars(),
@@ -385,7 +397,8 @@ impl UndoTxnAgg {
                     });
                 }
                 AggMode::Delete => {
-                    self.chunks.push(UndoChunk::Delete {
+                    self.chunks.push(UndoChunk {
+                        action: Action::Delete,
                         char_idx: self.start_idx,
                         text: self.buffer.to_string(),
                         len_chars: self.buffer.len_chars(),

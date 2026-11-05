@@ -4,7 +4,7 @@ use ratatui::layout::{Position, Rect};
 use ropey::Rope;
 
 use crate::{
-    components::{BufferId, DisplayBuffer, InsertLog, MutBuffer, undo::UndoTxnMeta}, misc,
+    components::{BufferId, DisplayBuffer, InsertLog, MutBuffer, undo::UndoSummary}, misc,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -216,7 +216,7 @@ impl MutBuffer for ExMutableBuffer<'_> {
         self.rope.remove(char_range);
     }
 
-    fn undo(&mut self) -> Option<UndoTxnMeta> {
+    fn undo(&mut self) -> Option<UndoSummary> {
         None
     }
 }

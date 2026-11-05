@@ -3,10 +3,7 @@ use std::ops::Range;
 use ropey::Rope;
 
 use super::undo::UndoStack;
-use crate::components::{
-    Change, Marks,
-    undo::{UndoChunk, UndoTxnMeta},
-};
+use crate::components::{Change, Marks, UndoSummary, undo::Action};
 
 // Mutable view of a buffer
 pub trait MutBuffer {
@@ -16,7 +13,7 @@ pub trait MutBuffer {
     fn insert_rope(&mut self, char_idx: usize, rope: &Rope);
     fn insert_iter(&mut self, char_idx: usize, iter: impl IntoIterator<Item = char>);
     fn remove(&mut self, char_range: Range<usize>);
-    fn undo(&mut self) -> Option<UndoTxnMeta>;
+    fn undo(&mut self) -> Option<UndoSummary>;
 }
 
 pub struct Buffer {
@@ -147,37 +144,46 @@ impl<'a> MutBuffer for SessionMutableBuffer<'a> {
         self.buffer.dirty = true;
     }
 
-    fn undo(&mut self) -> Option<UndoTxnMeta> {
+    fn undo(&mut self) -> Option<UndoSummary> {
         let buffer = &mut self.buffer;
-        
+
         if let Some(txn) = buffer.undo_stack.pop() {
-            let range = Some(txn.range());
+            let mut summary = UndoSummary::default();
             for chunk in txn.data.into_iter().rev() {
-                match chunk {
-                    UndoChunk::Insert {
-                        char_idx,
-                        text,
-                        len_chars,
-                        num_lines,
-                    } => {
-                        let end_idx = char_idx + len_chars;
-                        buffer.rope.remove(char_idx..end_idx);
-                        buffer.marks.adjust(Change::delete(char_idx..end_idx));
+                let s = mk_summary(
+                    &buffer.rope,
+                    txn.timestamp_ms,
+                    chunk.char_idx,
+                    chunk.num_lines,
+                );
+                summary.merge(s);
+
+                match chunk.action {
+                    Action::Insert => {
+                        let end_idx = chunk.char_idx + chunk.len_chars;
+                        buffer.rope.remove(chunk.char_idx..end_idx);
+                        buffer.marks.adjust(Change::delete(chunk.char_idx..end_idx));
                     }
-                    UndoChunk::Delete {
-                        char_idx,
-                        text,
-                        len_chars,
-                        num_lines,
-                    } => {
-                        buffer.rope.insert(char_idx, &text);
-                        buffer.marks.adjust(Change::insert(char_idx, len_chars));
+                    Action::Delete => {
+                        buffer.rope.insert(chunk.char_idx, &chunk.text);
+                        buffer
+                            .marks
+                            .adjust(Change::insert(chunk.char_idx, chunk.len_chars));
                     }
                 }
             }
-            return range;
+            return Some(summary);
         }
 
         None
+    }
+}
+
+fn mk_summary(rope: &Rope, timestamp_ms: u64, char_idx: usize, num_lines: usize) -> UndoSummary {
+    let line_idx = rope.char_to_line(char_idx);
+    if num_lines > 1 {
+        UndoSummary::destroy_from(timestamp_ms, char_idx, line_idx)
+    } else {
+        UndoSummary::single_line(timestamp_ms, char_idx, line_idx)
     }
 }
