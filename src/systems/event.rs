@@ -86,5 +86,5 @@ pub fn on_undo(
     status.set_msg(Level::Info, "");
     write!(status.msg, "{count} {change}; before #{change_id}  ")
         .expect("writing to a String cannot fail");
-    time::ppr_time_diff(&mut status.msg, timestamp_ms).expect("writing to a String cannot fail");
+    time::ppr_timestamp_ms(&mut status.msg, timestamp_ms).expect("writing to a String cannot fail");
 }
