@@ -22,6 +22,7 @@ mod yank;
 use delete_char::{backspace, delete_char};
 use join::join;
 use paste::{PasteMode, paste};
+pub use undo::BufReport;
 use yank::yank;
 
 #[derive(Clone, Copy)]

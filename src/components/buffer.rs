@@ -168,6 +168,7 @@ impl<'a> MutBuffer for SessionMutableBuffer<'a> {
                 let s = mk_summary(
                     &buffer.rope,
                     txn.timestamp_ms,
+                    txn.change_id,
                     chunk.char_idx,
                     chunk.num_lines,
                 );
@@ -194,11 +195,17 @@ impl<'a> MutBuffer for SessionMutableBuffer<'a> {
     }
 }
 
-fn mk_summary(rope: &Rope, timestamp_ms: u64, char_idx: usize, num_lines: usize) -> UndoSummary {
+fn mk_summary(
+    rope: &Rope,
+    timestamp_ms: u64,
+    change_id: u64,
+    char_idx: usize,
+    num_lines: usize,
+) -> UndoSummary {
     let line_idx = rope.char_to_line(char_idx);
     if num_lines > 1 {
-        UndoSummary::destroy_from(timestamp_ms, char_idx, line_idx)
+        UndoSummary::destroy_from(timestamp_ms, change_id, char_idx, line_idx)
     } else {
-        UndoSummary::single_line(timestamp_ms, char_idx, line_idx)
+        UndoSummary::single_line(timestamp_ms, change_id, char_idx, line_idx)
     }
 }

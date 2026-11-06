@@ -2,6 +2,8 @@ use std::{collections::VecDeque, fmt, ops::Range};
 
 use ropey::Rope;
 
+use crate::misc;
+
 // --- Undo Chunk ---
 
 pub enum Action {
@@ -51,14 +53,18 @@ pub enum UndoScope {
 #[derive(Debug, Clone, Copy)]
 pub struct UndoSummary {
     pub timestamp_ms: u64,
+    pub change_id: u64,
+    pub changes: u64,
     pub start_idx: usize,
     pub scope: UndoScope,
 }
 
 impl UndoSummary {
-    pub fn single_line(timestamp_ms: u64, start_idx: usize, line: usize) -> Self {
+    pub fn single_line(timestamp_ms: u64, change_id: u64, start_idx: usize, line: usize) -> Self {
         Self {
             timestamp_ms,
+            change_id,
+            changes: 1,
             start_idx,
             scope: UndoScope::PatchRange {
                 start_line: line,
@@ -67,9 +73,11 @@ impl UndoSummary {
         }
     }
 
-    pub fn destroy_from(timestamp_ms: u64, start_idx: usize, line: usize) -> Self {
+    pub fn destroy_from(timestamp_ms: u64, change_id: u64, start_idx: usize, line: usize) -> Self {
         Self {
             timestamp_ms,
+            change_id,
+            changes: 1,
             start_idx,
             scope: UndoScope::DestroyFrom { start_line: line },
         }
@@ -81,6 +89,8 @@ impl UndoSummary {
 
     pub fn merge(&mut self, other: UndoSummary) {
         self.timestamp_ms = self.timestamp_ms.min(other.timestamp_ms);
+        self.change_id = self.change_id.min(other.change_id);
+        self.changes = self.changes.saturating_add(other.changes);
         self.start_idx = self.start_idx.min(other.start_idx);
 
         self.scope = match (self.scope, other.scope) {
@@ -125,6 +135,8 @@ impl Default for UndoSummary {
     fn default() -> Self {
         Self {
             timestamp_ms: u64::MAX,
+            change_id: u64::MAX,
+            changes: 0,
             start_idx: usize::MAX,
             scope: UndoScope::None,
         }
@@ -139,14 +151,16 @@ impl Default for UndoSummary {
 pub struct UndoTxn {
     pub data: Vec<UndoChunk>,
     pub timestamp_ms: u64,
+    pub change_id: u64,
     pub dirty: bool,
 }
 
 impl UndoTxn {
-    pub fn new(data: Vec<UndoChunk>, timestamp_ms: u64, dirty: bool) -> Self {
+    pub fn new(data: Vec<UndoChunk>, timestamp_ms: u64, change_id: u64, dirty: bool) -> Self {
         Self {
             data,
             timestamp_ms,
+            change_id,
             dirty,
         }
     }
@@ -248,6 +262,7 @@ enum AggMode {
 
 struct UndoTxnAgg {
     in_txn: bool,
+    change_counter: u64,
     creation_ts: u64,
     dirty: bool,
     mode: AggMode,
@@ -261,6 +276,7 @@ impl UndoTxnAgg {
     fn new() -> Self {
         Self {
             in_txn: false,
+            change_counter: 0,
             creation_ts: 0,
             dirty: false,
             mode: AggMode::None,
@@ -277,7 +293,7 @@ impl UndoTxnAgg {
         }
 
         self.in_txn = true;
-        self.creation_ts = Self::now();
+        self.creation_ts = misc::time::now();
         self.dirty = dirty;
         self.mode = AggMode::None;
         self.start_idx = 0;
@@ -297,8 +313,9 @@ impl UndoTxnAgg {
         if self.chunks.is_empty() {
             None
         } else {
+            self.change_counter += 1;
             let data = std::mem::take(&mut self.chunks);
-            let txn = UndoTxn::new(data, self.creation_ts, self.dirty);
+            let txn = UndoTxn::new(data, self.creation_ts, self.change_counter, self.dirty);
             #[cfg(feature = "dev")]
             {
                 tracing::debug!("UndoTxnAgg::commit: {txn:?}");
@@ -422,12 +439,5 @@ impl UndoTxnAgg {
 
             self.buffer.remove(0..self.buffer.len_chars());
         }
-    }
-
-    fn now() -> u64 {
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_millis() as u64
     }
 }

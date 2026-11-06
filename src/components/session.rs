@@ -4,7 +4,8 @@ use ratatui::layout::{Position, Rect};
 use ropey::Rope;
 
 use crate::{
-    components::{BufferId, DisplayBuffer, InsertLog, MutBuffer, undo::UndoSummary}, misc,
+    components::{BufferId, DisplayBuffer, InsertLog, MutBuffer, undo::UndoSummary},
+    misc,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
