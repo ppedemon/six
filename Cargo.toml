@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 anyhow = "1.0.102"
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
 color-eyre = { version = "0.6.5", optional = true }
 crossterm = "0.29.0"
 nom = "8.0.0"

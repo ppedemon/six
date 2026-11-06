@@ -1,11 +1,13 @@
-use std::format;
+use std::{fmt::Write, format};
 
 use ropey::{Rope, RopeSlice};
 
 use crate::{
     cmd::MotionMode,
     components::{BufferName, Level, Status, YankData},
+    misc::time,
     rope,
+    systems::immediate,
 };
 
 pub fn on_buffer_loaded(status: &mut Status, name: &BufferName, rope: &Rope) {
@@ -62,4 +64,27 @@ pub fn on_delete(status: &mut Status, num_lines: usize, is_empty: bool) {
     } else {
         status.clear_msg();
     }
+}
+
+pub fn on_empty_undo_stack(status: &mut Status) {
+    status.set_msg(Level::Info, "Already at oldest change");
+}
+
+pub fn on_undo(
+    status: &mut Status,
+    timestamp_ms: u64,
+    change_id: u64,
+    buf_report: immediate::BufReport,
+) {
+    let (count, singular, plural) = match buf_report {
+        immediate::BufReport::Changed(changes) => (changes, "change", "changes"),
+        immediate::BufReport::Added(lines) => (lines, "line added", "lines added"),
+        immediate::BufReport::Removed(lines) => (lines, "line deleted", "lines deleted"),
+    };
+    let change = if count == 1 { singular } else { plural };
+
+    status.set_msg(Level::Info, "");
+    write!(status.msg, "{count} {change}; before #{change_id}  ")
+        .expect("writing to a String cannot fail");
+    time::ppr_timestamp_ms(&mut status.msg, timestamp_ms).expect("writing to a String cannot fail");
 }

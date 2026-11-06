@@ -4,7 +4,7 @@ use ratatui::layout::{Position, Rect};
 use ropey::Rope;
 
 use crate::{
-    components::{BufferId, DisplayBuffer, InsertLog, MutBuffer},
+    components::{BufferId, DisplayBuffer, InsertLog, MutBuffer, undo::UndoSummary},
     misc,
 };
 
@@ -203,10 +203,6 @@ impl MutBuffer for ExMutableBuffer<'_> {
         }
     }
 
-    fn remove(&mut self, char_range: Range<usize>) {
-        self.rope.remove(char_range);
-    }
-
     fn insert_rope(&mut self, char_idx: usize, rope: &Rope) {
         if rope.len_chars() == 0 {
             return;
@@ -215,5 +211,13 @@ impl MutBuffer for ExMutableBuffer<'_> {
         let tail = self.rope.split_off(char_idx);
         self.rope.append(rope.clone());
         self.rope.append(tail);
+    }
+
+    fn remove(&mut self, char_range: Range<usize>) {
+        self.rope.remove(char_range);
+    }
+
+    fn undo(&mut self) -> Option<UndoSummary> {
+        None
     }
 }

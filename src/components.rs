@@ -8,6 +8,7 @@ mod marks;
 mod registers;
 mod repeat;
 mod session;
+mod undo;
 mod yank;
 
 use std::collections::HashMap;
@@ -22,6 +23,7 @@ pub use marks::{Change, Marks};
 pub use registers::{Register, RegisterData, Registers};
 pub use repeat::RepeatBuffer;
 pub use session::{BufferName, BufferView, Coords, ExSession, ExState, Mode, Session, Viewport};
+pub use undo::{UndoScope, UndoSummary};
 pub use yank::YankData;
 
 pub type SessionId = usize;

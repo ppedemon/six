@@ -1,9 +1,9 @@
 use crate::{
-    active_session,
+    active_session, active_session_and_buffer,
     cmd::{Arg, Cmd, ImmediateOp, Motion, Operator},
     components::{EditorCtx, Register},
     systems::{
-        immediate::{delete::delete, replace::replace},
+        immediate::{delete::delete, replace::replace, undo::undo},
         input::dispatch_cmd,
         insert::{Damage, DamageEvent, broadcast_damage},
         interactive::{InteractiveArgs, handle_interactive},
@@ -16,11 +16,13 @@ mod delete_char;
 mod join;
 mod paste;
 mod replace;
+mod undo;
 mod yank;
 
 use delete_char::{backspace, delete_char};
 use join::join;
 use paste::{PasteMode, paste};
+pub use undo::BufReport;
 use yank::yank;
 
 #[derive(Clone, Copy)]
@@ -92,7 +94,13 @@ pub fn handle_immediate(ctx: &mut EditorCtx, args: ImmediateArgs) {
             Damage::Intact
         }
         ImmediateOp::Replace(c) => replace(ctx, c, args.cmd.reps.unwrap_or(1)),
+        ImmediateOp::Undo => undo(ctx, args.cmd),
     };
+
+    if args.cmd.op != Operator::Immediate(ImmediateOp::Undo) {
+        let (_, _, buffer) = active_session_and_buffer!(mut ctx);
+        buffer.commit_undo_txn();
+    }
 
     let (session, _) = active_session!(ctx);
     let damage_evt = DamageEvent::new(session.buf_id, damage);
@@ -119,7 +127,9 @@ fn is_readonly(reg: Option<Register>) -> bool {
 
 fn is_repeatable(op: ImmediateOp) -> bool {
     match op {
-        ImmediateOp::Yank | ImmediateOp::YankLine | ImmediateOp::RepeatLast => false,
+        ImmediateOp::Yank | ImmediateOp::YankLine | ImmediateOp::RepeatLast | ImmediateOp::Undo => {
+            false
+        }
         _ => true,
     }
 }
@@ -130,7 +140,8 @@ fn updates_registers(op: ImmediateOp) -> bool {
         | ImmediateOp::Paste
         | ImmediateOp::PasteBefore
         | ImmediateOp::RepeatLast
-        | ImmediateOp::Replace(_) => false,
+        | ImmediateOp::Replace(_)
+        | ImmediateOp::Undo => false,
         _ => true,
     }
 }

@@ -53,6 +53,7 @@ fn handle_session_nav(ctx: &mut EditorCtx, args: NavArgs) {
     match session.mode {
         Mode::Insert => {
             session.insert_log.poison();
+            buffer.commit_undo_txn();
             session_nav::<InsertNav>(
                 config,
                 buffer,

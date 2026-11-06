@@ -1,7 +1,7 @@
 use ropey::Rope;
 
 use crate::{
-    active_session, active_session_and_buffer,
+    active_session_and_buffer,
     cmd::{ExMode, InsertPoint},
     components::{BufferView, Config, EditorCtx, Focus, Level, Mode, TextStyle},
     systems::{
@@ -37,7 +37,7 @@ pub fn enter_normal(ctx: &mut EditorCtx) {
     ctx.status.clear_msg();
     ctx.status.clear_cmd();
 
-    let (session, _) = active_session!(mut ctx);
+    let (session, _, buffer) = active_session_and_buffer!(mut ctx);
     let old_mode = session.mode;
     session.mode = Mode::Normal;
 
