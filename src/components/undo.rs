@@ -139,11 +139,16 @@ impl Default for UndoSummary {
 pub struct UndoTxn {
     pub data: Vec<UndoChunk>,
     pub timestamp_ms: u64,
+    pub dirty: bool,
 }
 
 impl UndoTxn {
-    pub fn new(data: Vec<UndoChunk>, timestamp_ms: u64) -> Self {
-        Self { data, timestamp_ms }
+    pub fn new(data: Vec<UndoChunk>, timestamp_ms: u64, dirty: bool) -> Self {
+        Self {
+            data,
+            timestamp_ms,
+            dirty,
+        }
     }
 }
 
@@ -151,6 +156,7 @@ impl fmt::Debug for UndoTxn {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("UndoTxn")
             .field("timestamp_ms", &self.timestamp_ms)
+            .field("dirty", &self.dirty)
             .field("chunk_count", &self.data.len())
             .field("data", &self.data)
             .finish()
@@ -195,24 +201,24 @@ impl UndoStack {
         }
     }
 
-    pub fn insert_char(&mut self, char_idx: usize, c: char) {
-        self.agg.insert_char(char_idx, c);
+    pub fn insert_char(&mut self, dirty: bool, char_idx: usize, c: char) {
+        self.agg.insert_char(dirty, char_idx, c);
     }
 
-    pub fn insert_str(&mut self, char_idx: usize, s: &str) {
-        self.agg.insert_str(char_idx, s);
+    pub fn insert_str(&mut self, dirty: bool, char_idx: usize, s: &str) {
+        self.agg.insert_str(dirty, char_idx, s);
     }
 
-    pub fn insert_rope(&mut self, char_idx: usize, rope: &Rope) {
-        self.agg.insert_rope(char_idx, rope);
+    pub fn insert_rope(&mut self, dirty: bool, char_idx: usize, rope: &Rope) {
+        self.agg.insert_rope(dirty, char_idx, rope);
     }
 
-    pub fn remove_char(&mut self, char_range: Range<usize>, c: char) {
-        self.agg.remove_char(char_range, c);
+    pub fn remove_char(&mut self, dirty: bool, char_range: Range<usize>, c: char) {
+        self.agg.remove_char(dirty, char_range, c);
     }
 
-    pub fn remove(&mut self, char_range: Range<usize>, text: &str) {
-        self.agg.remove(char_range, text);
+    pub fn remove(&mut self, dirty: bool, char_range: Range<usize>, text: &str) {
+        self.agg.remove(dirty, char_range, text);
     }
 }
 
@@ -243,6 +249,7 @@ enum AggMode {
 struct UndoTxnAgg {
     in_txn: bool,
     creation_ts: u64,
+    dirty: bool,
     mode: AggMode,
     start_idx: usize,
     end_idx: usize,
@@ -255,6 +262,7 @@ impl UndoTxnAgg {
         Self {
             in_txn: false,
             creation_ts: 0,
+            dirty: false,
             mode: AggMode::None,
             start_idx: 0,
             end_idx: 0,
@@ -263,13 +271,14 @@ impl UndoTxnAgg {
         }
     }
 
-    fn begin_txn(&mut self) {
+    fn begin_txn(&mut self, dirty: bool) {
         if self.in_txn {
             return;
         }
 
         self.in_txn = true;
         self.creation_ts = Self::now();
+        self.dirty = dirty;
         self.mode = AggMode::None;
         self.start_idx = 0;
         self.end_idx = 0;
@@ -288,34 +297,37 @@ impl UndoTxnAgg {
         if self.chunks.is_empty() {
             None
         } else {
-            let txn = UndoTxn::new(std::mem::take(&mut self.chunks), self.creation_ts);
+            let data = std::mem::take(&mut self.chunks);
+            let txn = UndoTxn::new(data, self.creation_ts, self.dirty);
             #[cfg(feature = "dev")]
-            tracing::debug!("UndoTxnAgg::commit: {txn:?}");
+            {
+                tracing::debug!("UndoTxnAgg::commit: {txn:?}");
+            }
             Some(txn)
         }
     }
 
-    fn insert_char(&mut self, char_idx: usize, c: char) {
-        self.insert_preamble(char_idx);
+    fn insert_char(&mut self, dirty: bool, char_idx: usize, c: char) {
+        self.insert_preamble(dirty, char_idx);
         self.buffer.insert_char(self.buffer.len_chars(), c);
         self.end_idx += 1;
     }
 
-    fn insert_str(&mut self, char_idx: usize, s: &str) {
-        self.insert_preamble(char_idx);
+    fn insert_str(&mut self, dirty: bool, char_idx: usize, s: &str) {
+        self.insert_preamble(dirty, char_idx);
         self.buffer.insert(self.buffer.len_chars(), s);
         self.end_idx += s.chars().count();
     }
 
-    fn insert_rope(&mut self, char_idx: usize, rope: &Rope) {
-        self.insert_preamble(char_idx);
+    fn insert_rope(&mut self, dirty: bool, char_idx: usize, rope: &Rope) {
+        self.insert_preamble(dirty, char_idx);
         self.buffer.append(rope.clone());
         self.end_idx += rope.len_chars();
     }
 
-    fn insert_preamble(&mut self, char_idx: usize) {
+    fn insert_preamble(&mut self, dirty: bool, char_idx: usize) {
         if !self.in_txn {
-            self.begin_txn();
+            self.begin_txn(dirty);
         }
 
         let needs_flush = match self.mode {
@@ -333,8 +345,8 @@ impl UndoTxnAgg {
         self.mode = AggMode::Insert;
     }
 
-    fn remove_char(&mut self, char_range: Range<usize>, c: char) {
-        self.remove_preamble(&char_range);
+    fn remove_char(&mut self, dirty: bool, char_range: Range<usize>, c: char) {
+        self.remove_preamble(dirty, &char_range);
 
         // char_range.end == self.start_idx: contiguous backspace deletes
         // char_range.start == self.start_idx: contiguous deletes (via Del key)
@@ -349,8 +361,8 @@ impl UndoTxnAgg {
         }
     }
 
-    fn remove(&mut self, char_range: Range<usize>, text: &str) {
-        self.remove_preamble(&char_range);
+    fn remove(&mut self, dirty: bool, char_range: Range<usize>, text: &str) {
+        self.remove_preamble(dirty, &char_range);
 
         if char_range.end == self.start_idx {
             self.start_idx = char_range.start;
@@ -362,9 +374,9 @@ impl UndoTxnAgg {
         }
     }
 
-    fn remove_preamble(&mut self, char_range: &Range<usize>) {
+    fn remove_preamble(&mut self, dirty: bool, char_range: &Range<usize>) {
         if !self.in_txn {
-            self.begin_txn();
+            self.begin_txn(dirty);
         }
 
         let needs_flush = match self.mode {

@@ -83,7 +83,9 @@ impl<'a> MutBuffer for SessionMutableBuffer<'a> {
 
     fn insert_char(&mut self, char_idx: usize, ch: char) {
         self.buffer.rope.insert_char(char_idx, ch);
-        self.buffer.undo_stack.insert_char(char_idx, ch);
+        self.buffer
+            .undo_stack
+            .insert_char(self.buffer.dirty, char_idx, ch);
         self.buffer.marks.adjust(Change::insert(char_idx, 1));
         self.buffer.dirty = true;
     }
@@ -94,7 +96,9 @@ impl<'a> MutBuffer for SessionMutableBuffer<'a> {
         }
 
         self.buffer.rope.insert(char_idx, text);
-        self.buffer.undo_stack.insert_str(char_idx, text);
+        self.buffer
+            .undo_stack
+            .insert_str(self.buffer.dirty, char_idx, text);
 
         self.buffer
             .marks
@@ -104,10 +108,11 @@ impl<'a> MutBuffer for SessionMutableBuffer<'a> {
 
     fn insert_iter(&mut self, char_idx: usize, iter: impl IntoIterator<Item = char>) {
         let mut len = 0;
-
         for (i, c) in iter.into_iter().enumerate() {
             self.buffer.rope.insert_char(char_idx + i, c);
-            self.buffer.undo_stack.insert_char(char_idx + i, c);
+            self.buffer
+                .undo_stack
+                .insert_char(self.buffer.dirty, char_idx + i, c);
             len += 1;
         }
 
@@ -123,7 +128,10 @@ impl<'a> MutBuffer for SessionMutableBuffer<'a> {
         let tail = self.buffer.rope.split_off(char_idx);
         self.buffer.rope.append(rope.clone());
         self.buffer.rope.append(tail);
-        self.buffer.undo_stack.insert_rope(char_idx, rope);
+
+        self.buffer
+            .undo_stack
+            .insert_rope(self.buffer.dirty, char_idx, rope);
 
         self.buffer
             .marks
@@ -134,10 +142,14 @@ impl<'a> MutBuffer for SessionMutableBuffer<'a> {
     fn remove(&mut self, char_range: Range<usize>) {
         if char_range.len() == 1 {
             let c = self.buffer.rope.char(char_range.start);
-            self.buffer.undo_stack.remove_char(char_range.clone(), c);
+            self.buffer
+                .undo_stack
+                .remove_char(self.buffer.dirty, char_range.clone(), c);
         } else {
             let text = self.buffer.rope.slice(char_range.clone()).to_string();
-            self.buffer.undo_stack.remove(char_range.clone(), &text);
+            self.buffer
+                .undo_stack
+                .remove(self.buffer.dirty, char_range.clone(), &text);
         }
 
         self.buffer.rope.remove(char_range.clone());
@@ -149,6 +161,8 @@ impl<'a> MutBuffer for SessionMutableBuffer<'a> {
         let buffer = &mut self.buffer;
 
         if let Some(txn) = buffer.undo_stack.pop() {
+            buffer.dirty = txn.dirty;
+
             let mut summary = UndoSummary::default();
             for chunk in txn.data.into_iter().rev() {
                 let s = mk_summary(
