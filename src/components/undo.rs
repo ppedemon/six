@@ -6,6 +6,7 @@ use crate::misc;
 
 // --- Undo Chunk ---
 
+#[derive(Clone)]
 pub enum Action {
     Insert,
     Delete,
@@ -13,6 +14,7 @@ pub enum Action {
 
 // An undo chunk us a basic unit of text editing work. It can be either
 // a series of contiguous insertions or deletions.
+#[derive(Clone)]
 pub struct UndoChunk {
     pub action: Action,
     pub char_idx: usize,
@@ -204,6 +206,10 @@ impl UndoStack {
 
     pub fn pop(&mut self) -> Option<UndoTxn> {
         self.txns.pop_back()
+    }
+
+    pub fn peek(&self) -> Option<&UndoTxn> {
+        self.txns.back()
     }
 
     pub fn commit(&mut self) {
@@ -438,6 +444,49 @@ impl UndoTxnAgg {
             }
 
             self.buffer.remove(0..self.buffer.len_chars());
+        }
+    }
+}
+
+// --- LineChanges ---
+
+// Last edited line keeps track of the original version of the last edited line.
+// We use it to implement the `U` command.
+pub struct LastEditedLine {
+    empty: bool,
+    pub line_idx: usize,
+    pub line: String,
+}
+
+impl LastEditedLine {
+    pub fn new() -> Self {
+        Self {
+            empty: true,
+            line_idx: 0,
+            line: String::new(),
+        }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.empty
+    }
+
+    pub fn clear(&mut self) {
+        self.empty = true;
+        self.line.clear();
+    }
+
+    pub fn take(&mut self) -> String {
+        self.empty = true;
+        std::mem::take(&mut self.line)
+    }
+
+    pub fn will_edit(&mut self, rope: &Rope, char_idx: usize) {
+        let edited_line_idx = rope.char_to_line(char_idx);
+        if self.is_empty() || edited_line_idx != self.line_idx {
+            self.empty = false;
+            self.line_idx = edited_line_idx;
+            self.line = rope.line(edited_line_idx).to_string();
         }
     }
 }

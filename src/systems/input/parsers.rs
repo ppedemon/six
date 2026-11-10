@@ -119,6 +119,7 @@ static OP_TRIE: LazyLock<Trie<KeyEvent, ParseResult<OpSpec>>> = LazyLock::new(||
         wants_arg(|evt| char_or_tab(evt).map(|c| op(ImmediateOp::Replace(c)))),
     );
     t.insert(&[char('u')], ok_op(ImmediateOp::Undo));
+    t.insert(&[char('U')], ok_op(ImmediateOp::UndoLine));
 
     t
 });

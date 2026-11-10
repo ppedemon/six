@@ -54,6 +54,7 @@ pub enum ImmediateOp {
     RepeatLast,
     Replace(char),
     Undo,
+    UndoLine,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

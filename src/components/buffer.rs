@@ -2,8 +2,10 @@ use std::ops::Range;
 
 use ropey::Rope;
 
-use super::undo::UndoStack;
-use crate::components::{Change, Marks, UndoSummary, undo::Action};
+use crate::components::{
+    Change, Marks, UndoSummary,
+    undo::{Action, LastEditedLine, UndoStack, UndoTxn},
+};
 
 // Mutable view of a buffer
 pub trait MutBuffer {
@@ -14,11 +16,13 @@ pub trait MutBuffer {
     fn insert_iter(&mut self, char_idx: usize, iter: impl IntoIterator<Item = char>);
     fn remove(&mut self, char_range: Range<usize>);
     fn undo(&mut self) -> Option<UndoSummary>;
+    fn undo_line(&mut self) -> Option<usize>;
 }
 
 pub struct Buffer {
     marks: Marks,
     undo_stack: UndoStack,
+    last_edited_line: LastEditedLine,
     dirty: bool,
     rope: Rope,
 }
@@ -28,6 +32,7 @@ impl Buffer {
         Self {
             marks: Marks::new(),
             undo_stack: UndoStack::new(),
+            last_edited_line: LastEditedLine::new(),
             dirty: false,
             rope,
         }
@@ -37,6 +42,7 @@ impl Buffer {
         Self {
             marks: Marks::new(),
             undo_stack: UndoStack::new(),
+            last_edited_line: LastEditedLine::new(),
             dirty: false,
             rope: Rope::new(),
         }
@@ -68,6 +74,18 @@ impl Buffer {
 
     pub fn commit_undo_txn(&mut self) {
         self.undo_stack.commit();
+
+        // vi seems to have a quirk here, which this code tries to mimic...
+        // When you do a multiline edit, only take into account the last
+        // line if it wasn't previously empty. I don't think this is the
+        // exact rule, but f*ck it. I declare this good enough.
+        let multi_line = self
+            .undo_stack
+            .peek()
+            .is_some_and(|txn| multi_line(txn, &self.rope));
+        if multi_line && self.last_edited_line.line.is_empty() {
+            self.last_edited_line.clear();
+        }
     }
 }
 
@@ -82,12 +100,14 @@ impl<'a> MutBuffer for SessionMutableBuffer<'a> {
     }
 
     fn insert_char(&mut self, char_idx: usize, ch: char) {
-        self.buffer.rope.insert_char(char_idx, ch);
-        self.buffer
-            .undo_stack
-            .insert_char(self.buffer.dirty, char_idx, ch);
-        self.buffer.marks.adjust(Change::insert(char_idx, 1));
-        self.buffer.dirty = true;
+        let buffer = &mut self.buffer;
+
+        buffer.last_edited_line.will_edit(&buffer.rope, char_idx);
+        buffer.rope.insert_char(char_idx, ch);
+        buffer.undo_stack.insert_char(buffer.dirty, char_idx, ch);
+
+        buffer.marks.adjust(Change::insert(char_idx, 1));
+        buffer.dirty = true;
     }
 
     fn insert(&mut self, char_idx: usize, text: &str) {
@@ -95,29 +115,37 @@ impl<'a> MutBuffer for SessionMutableBuffer<'a> {
             return;
         }
 
-        self.buffer.rope.insert(char_idx, text);
-        self.buffer
-            .undo_stack
-            .insert_str(self.buffer.dirty, char_idx, text);
+        let buffer = &mut self.buffer;
 
-        self.buffer
+        buffer.last_edited_line.will_edit(&buffer.rope, char_idx);
+        buffer.rope.insert(char_idx, text);
+        buffer.undo_stack.insert_str(buffer.dirty, char_idx, text);
+
+        buffer
             .marks
             .adjust(Change::insert(char_idx, text.chars().count()));
-        self.buffer.dirty = true;
+        buffer.dirty = true;
     }
 
     fn insert_iter(&mut self, char_idx: usize, iter: impl IntoIterator<Item = char>) {
+        let buffer = &mut self.buffer;
+
         let mut len = 0;
+        let mut first = true;
         for (i, c) in iter.into_iter().enumerate() {
-            self.buffer.rope.insert_char(char_idx + i, c);
-            self.buffer
-                .undo_stack
-                .insert_char(self.buffer.dirty, char_idx + i, c);
+            if first {
+                first = false;
+                buffer
+                    .last_edited_line
+                    .will_edit(&buffer.rope, char_idx + i);
+            }
+            buffer.rope.insert_char(char_idx + i, c);
+            buffer.undo_stack.insert_char(buffer.dirty, char_idx + i, c);
             len += 1;
         }
 
-        self.buffer.marks.adjust(Change::insert(char_idx, len));
-        self.buffer.dirty = true;
+        buffer.marks.adjust(Change::insert(char_idx, len));
+        buffer.dirty = true;
     }
 
     fn insert_rope(&mut self, char_idx: usize, rope: &Rope) {
@@ -125,36 +153,41 @@ impl<'a> MutBuffer for SessionMutableBuffer<'a> {
             return;
         }
 
-        let tail = self.buffer.rope.split_off(char_idx);
-        self.buffer.rope.append(rope.clone());
-        self.buffer.rope.append(tail);
+        let buffer = &mut self.buffer;
+        buffer.last_edited_line.will_edit(&buffer.rope, char_idx);
 
-        self.buffer
-            .undo_stack
-            .insert_rope(self.buffer.dirty, char_idx, rope);
+        let tail = buffer.rope.split_off(char_idx);
+        buffer.rope.append(rope.clone());
+        buffer.rope.append(tail);
+        buffer.undo_stack.insert_rope(buffer.dirty, char_idx, rope);
 
-        self.buffer
+        buffer
             .marks
             .adjust(Change::insert(char_idx, rope.len_chars()));
-        self.buffer.dirty = true;
+        buffer.dirty = true;
     }
 
     fn remove(&mut self, char_range: Range<usize>) {
+        let buffer = &mut self.buffer;
+        buffer
+            .last_edited_line
+            .will_edit(&buffer.rope, char_range.start);
+
         if char_range.len() == 1 {
-            let c = self.buffer.rope.char(char_range.start);
-            self.buffer
+            let c = buffer.rope.char(char_range.start);
+            buffer
                 .undo_stack
-                .remove_char(self.buffer.dirty, char_range.clone(), c);
+                .remove_char(buffer.dirty, char_range.clone(), c);
         } else {
-            let text = self.buffer.rope.slice(char_range.clone()).to_string();
-            self.buffer
+            let text = buffer.rope.slice(char_range.clone()).to_string();
+            buffer
                 .undo_stack
-                .remove(self.buffer.dirty, char_range.clone(), &text);
+                .remove(buffer.dirty, char_range.clone(), &text);
         }
 
-        self.buffer.rope.remove(char_range.clone());
-        self.buffer.marks.adjust(Change::delete(char_range));
-        self.buffer.dirty = true;
+        buffer.rope.remove(char_range.clone());
+        buffer.marks.adjust(Change::delete(char_range));
+        buffer.dirty = true;
     }
 
     fn undo(&mut self) -> Option<UndoSummary> {
@@ -193,6 +226,27 @@ impl<'a> MutBuffer for SessionMutableBuffer<'a> {
 
         None
     }
+
+    fn undo_line(&mut self) -> Option<usize> {
+        if self.buffer.last_edited_line.is_empty() {
+            None
+        } else {
+            let line = self.buffer.last_edited_line.take();
+            let line_idx = self.buffer.last_edited_line.line_idx;
+
+            let start_idx = self.buffer.rope.line_to_char(line_idx);
+            let end_idx = self
+                .buffer
+                .rope
+                .line_to_char(line_idx.saturating_add(1).min(self.buffer.rope.len_lines()));
+
+            self.buffer.edit().remove(start_idx..end_idx);
+            self.buffer.edit().insert(start_idx, &line);
+            self.buffer.commit_undo_txn();
+
+            Some(line_idx)
+        }
+    }
 }
 
 fn mk_summary(
@@ -208,4 +262,21 @@ fn mk_summary(
     } else {
         UndoSummary::single_line(timestamp_ms, change_id, char_idx, line_idx)
     }
+}
+
+fn multi_line(txn: &UndoTxn, rope: &Rope) -> bool {
+    let mut line = None;
+    for chunk in &txn.data {
+        if chunk.num_lines != 1 {
+            return true;
+        }
+
+        let line_idx = rope.char_to_line(chunk.char_idx);
+        match line {
+            None => line = Some(line_idx),
+            Some(line) if line != line_idx => return true,
+            _ => {}
+        }
+    }
+    false
 }

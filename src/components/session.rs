@@ -220,4 +220,8 @@ impl MutBuffer for ExMutableBuffer<'_> {
     fn undo(&mut self) -> Option<UndoSummary> {
         None
     }
+
+    fn undo_line(&mut self) -> Option<usize> {
+        None
+    }
 }

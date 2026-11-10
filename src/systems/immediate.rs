@@ -3,7 +3,11 @@ use crate::{
     cmd::{Arg, Cmd, ImmediateOp, Motion, Operator},
     components::{EditorCtx, Register},
     systems::{
-        immediate::{delete::delete, replace::replace, undo::undo},
+        immediate::{
+            delete::delete,
+            replace::replace,
+            undo::{undo, undo_line},
+        },
         input::dispatch_cmd,
         insert::{Damage, DamageEvent, broadcast_damage},
         interactive::{InteractiveArgs, handle_interactive},
@@ -95,9 +99,12 @@ pub fn handle_immediate(ctx: &mut EditorCtx, args: ImmediateArgs) {
         }
         ImmediateOp::Replace(c) => replace(ctx, c, args.cmd.reps.unwrap_or(1)),
         ImmediateOp::Undo => undo(ctx, args.cmd),
+        ImmediateOp::UndoLine => undo_line(ctx),
     };
 
-    if args.cmd.op != Operator::Immediate(ImmediateOp::Undo) {
+    if args.cmd.op != Operator::Immediate(ImmediateOp::Undo)
+        && args.cmd.op != Operator::Immediate(ImmediateOp::UndoLine)
+    {
         let (_, _, buffer) = active_session_and_buffer!(mut ctx);
         buffer.commit_undo_txn();
     }
@@ -127,9 +134,11 @@ fn is_readonly(reg: Option<Register>) -> bool {
 
 fn is_repeatable(op: ImmediateOp) -> bool {
     match op {
-        ImmediateOp::Yank | ImmediateOp::YankLine | ImmediateOp::RepeatLast | ImmediateOp::Undo => {
-            false
-        }
+        ImmediateOp::Yank
+        | ImmediateOp::YankLine
+        | ImmediateOp::RepeatLast
+        | ImmediateOp::Undo
+        | ImmediateOp::UndoLine => false,
         _ => true,
     }
 }
@@ -141,7 +150,8 @@ fn updates_registers(op: ImmediateOp) -> bool {
         | ImmediateOp::PasteBefore
         | ImmediateOp::RepeatLast
         | ImmediateOp::Replace(_)
-        | ImmediateOp::Undo => false,
+        | ImmediateOp::Undo
+        | ImmediateOp::UndoLine => false,
         _ => true,
     }
 }

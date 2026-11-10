@@ -5,7 +5,10 @@ use crate::{
     cmd::Cmd,
     components::{EditorCtx, MutBuffer, Status, UndoScope, UndoSummary},
     systems::{
-        commons::char_idx_to_coords, event, insert::Damage, nav::utils::ensure_cursor_inside_line,
+        commons::char_idx_to_coords,
+        event,
+        insert::Damage,
+        nav::{self, NormalNav, utils::ensure_cursor_inside_line},
     },
 };
 
@@ -54,11 +57,29 @@ pub fn undo(ctx: &mut EditorCtx, cmd: Cmd) -> Damage {
         Damage::From(line) => buf_view.display_buf.destroy_from(line),
     }
 
-    let cursor_idx = cursor_idx.min(buffer.rope().len_chars().saturating_sub(1));
+    let cursor_idx = cursor_idx.min(buffer.rope().len_chars());
     buf_view.cursor = char_idx_to_coords(&ctx.config, buffer.rope(), buf_view, cursor_idx);
     ensure_cursor_inside_line(ctx);
 
     report_undo(&mut ctx.status, merged_summary, orig_len, new_len);
+    damage
+}
+
+pub fn undo_line(ctx: &mut EditorCtx) -> Damage {
+    let (_, buf_view, buffer) = active_session_and_buffer!(mut ctx);
+    let line_idx = buffer.edit().undo_line();
+
+    let damage = match line_idx {
+        Some(line_idx) => {
+            buf_view
+                .display_buf
+                .patch_range(&ctx.config, buffer.rope(), line_idx..line_idx + 1);
+            nav::goto_line::<NormalNav>(&ctx.config, buffer.rope(), buf_view, line_idx + 1);
+            Damage::Line(line_idx)
+        }
+        None => Damage::Intact,
+    };
+
     damage
 }
 
