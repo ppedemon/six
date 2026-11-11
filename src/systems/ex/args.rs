@@ -25,8 +25,8 @@ pub fn validate_opt_filename(args: &str) -> Result<Option<BufferName>, ExError> 
         0 => Ok(None),
         1 => {
             let file_path = norm_filename(args[0]);
-            let path_str = file_path.to_str();
-            if path_str.is_none() || path_str.is_some_and(&str::is_empty) {
+            let path_str = file_path.as_os_str();
+            if path_str.is_empty() {
                 return Err(ExError::invalid_args("Invalid file name"));
             }
             Ok(Some(BufferName::new(args[0], file_path)))

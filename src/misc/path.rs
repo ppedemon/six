@@ -7,53 +7,35 @@ pub fn norm_filename(input: &str) -> PathBuf {
         Cow::Owned(s) => s,
     };
 
-    let unescaped = expanded.replace(r"\ ", " ");
-    let unescaped = unescape::unescape(&unescaped).unwrap_or(expanded);
-
-    let sanitized_chars: String = unescaped
+    let unescaped: String = expanded
         .chars()
-        .filter(|&c| {
-            if c.is_control() {
-                return false;
-            }
-            match c {
-                '<' | '>' | ':' | '"' | '|' | '?' | '*' | '\0' => false,
-                _ => true,
-            }
-        })
+        .filter(|&ch| !ch.is_control() && ch != '\\')
         .collect();
-
-    let path = PathBuf::from(sanitized_chars);
+    let path = PathBuf::from(unescaped);
     clean_path(&path)
 }
 
 fn clean_path(path: &Path) -> PathBuf {
-    if let Ok(canonical_path) = std::fs::canonicalize(path) {
-        return canonical_path;
-    }
-
     let mut out = PathBuf::new();
 
     for component in path.components() {
         match component {
             Component::CurDir => {}
-            Component::ParentDir => {
-                // Look at the last component we added
-                match out.components().next_back() {
-                    None | Some(Component::ParentDir) => {
-                        out.push(Component::ParentDir.as_os_str());
-                    }
-                    Some(Component::RootDir) | Some(Component::Prefix(_)) => {}
-                    Some(Component::Normal(_)) => {
-                        out.pop();
-                    }
-                    Some(Component::CurDir) => {}
+            Component::ParentDir => match out.components().next_back() {
+                Some(Component::Normal(_)) => {
+                    out.pop();
                 }
-            }
+                Some(Component::RootDir) => {}
+                _ => out.push(Component::ParentDir.as_os_str()),
+            },
             Component::Normal(c) => out.push(c),
             Component::RootDir => out.push(Component::RootDir.as_os_str()),
             Component::Prefix(p) => out.push(p.as_os_str()),
         }
+    }
+
+    if out.as_os_str().is_empty() {
+        return PathBuf::from(".");
     }
 
     out
@@ -64,29 +46,31 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_filename_sanitize() {
-        let input1 = r"new\ file.txt";
-        assert_eq!(norm_filename(input1).to_str(), Some("new file.txt"));
-
-        let input2 = "~/documents/secret\u{0007}file*.txt";
-        let expected = dirs::home_dir()
-            .map(|home| home.join("documents/secretfile.txt"))
-            .unwrap();
-        assert_eq!(norm_filename(input2).to_str(), expected.to_str(),);
+    fn norm_filename_unescapes_backslashes() {
+        assert_eq!(
+            norm_filename(r"new\ file.txt"),
+            PathBuf::from("new file.txt")
+        );
+        assert_eq!(norm_filename(r"\a"), PathBuf::from("a"));
+        assert_eq!(norm_filename(r"\\|"), PathBuf::from("|"));
     }
 
     #[test]
-    fn test_path_cleansing() {
-        let input1 = "../file.txt";
-        assert_eq!(norm_filename(input1).to_str(), Some("../file.txt"));
+    fn norm_filename_expands_tilde_and_removes_control_characters() {
+        let home = dirs::home_dir().expect("home directory should be available");
+        let actual = norm_filename("~/documents/secret\u{0007}file.txt");
 
-        let input2 = "/home/pablo/../../home/pablo/../pablo/./././../pablo/./fil\0e.\\.txt";
+        assert_eq!(actual, home.join("documents/secretfile.txt"));
+    }
+
+    #[test]
+    fn clean_path_normalizes_components() {
+        assert_eq!(clean_path(Path::new("a/./../b")), PathBuf::from("b"));
         assert_eq!(
-            norm_filename(input2).to_str(),
-            Some(r"/home/pablo/file.\.txt")
+            clean_path(Path::new("../.././../doc.txt")),
+            PathBuf::from("../../../doc.txt")
         );
-
-        let input3 = "../.././../doc.txt";
-        assert_eq!(norm_filename(input3).to_str(), Some(r"../../../doc.txt"));
+        assert_eq!(clean_path(Path::new("a/..")), PathBuf::from("."));
+        assert_eq!(clean_path(Path::new("/../../a")), PathBuf::from("/a"));
     }
 }
