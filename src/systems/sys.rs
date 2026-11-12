@@ -1,7 +1,7 @@
 use crate::{
     active_session_and_buffer,
     cmd::{Cmd, SysOp},
-    components::EditorCtx,
+    components::{EditorCtx, ExMode},
     ex::ExRange,
     systems::{
         commons::cursor_to_char_idx,
@@ -25,7 +25,7 @@ impl SysArgs {
 pub fn handle_sys(ctx: &mut EditorCtx, args: SysArgs) {
     match args.op {
         SysOp::EnterNormal => enter_normal(ctx),
-        SysOp::EnterEx(ex_mode) => enter_ex(ctx, ex_mode),
+        SysOp::EnterEx => enter_ex(ctx, ExMode::Colon, args.cmd),
         SysOp::HardQuit => quit_editor(ctx),
         SysOp::CondWriteAndQuit => {
             ex::save_active(ctx, None, false, true, ExRange::All).unwrap();

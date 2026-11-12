@@ -20,10 +20,12 @@ pub fn exec_builtin(
 ) -> Result<(), ExError> {
     match builtin {
         BuiltIn::Quit("q!") => {
+            validate_range(&range, |p| matches!(p, ExRange::Implicit))?;
             validate_no_args(args)?;
             lifecycle::quit_editor(ctx);
         }
         BuiltIn::Quit("q") => {
+            validate_range(&range, |p| matches!(p, ExRange::Implicit))?;
             validate_no_args(args)?;
             soft_quit(ctx)?;
         }
@@ -71,5 +73,13 @@ fn soft_quit(ctx: &mut EditorCtx) -> Result<(), ExError> {
     } else {
         lifecycle::quit_editor(ctx);
         Ok(())
+    }
+}
+
+fn validate_range(range: &ExRange, pred: fn(&ExRange) -> bool) -> Result<(), ExError> {
+    if pred(range) {
+        Ok(())
+    } else {
+        Err(ExError::UnsupportedRange)
     }
 }

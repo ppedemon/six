@@ -150,10 +150,18 @@ pub enum ExState {
     Submit(String),
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExMode {
+    Colon,
+    SearchForward,
+    SearchBackward,
+}
+
 pub struct ExSession {
     pub viewport: Viewport,
     rope: Rope,
     pub state: ExState,
+    pub mode: ExMode,
 }
 
 impl ExSession {
@@ -162,6 +170,7 @@ impl ExSession {
             viewport: Viewport::default(),
             rope: Rope::new(),
             state: ExState::Idle,
+            mode: ExMode::Colon,
         }
     }
 

@@ -2,11 +2,12 @@ use ropey::Rope;
 
 use crate::{
     active_session_and_buffer,
-    cmd::{ExMode, InsertPoint},
-    components::{BufferView, Config, EditorCtx, Focus, Level, Mode, TextStyle},
+    cmd::{Cmd, InsertPoint},
+    components::{BufferView, Config, EditorCtx, ExMode, Focus, Level, Mode, TextStyle},
+    ex::{Address, Delimiter, ExRange},
     systems::{
         commons,
-        insert::{clear_ex, insert_char, post_insert},
+        insert::{Damage, clear_ex, insert_char, post_insert},
     },
 };
 
@@ -46,7 +47,7 @@ pub fn enter_normal(ctx: &mut EditorCtx) {
     }
 }
 
-pub fn enter_ex(ctx: &mut EditorCtx, ex_mode: ExMode) {
+pub fn enter_ex(ctx: &mut EditorCtx, ex_mode: ExMode, cmd: Cmd) {
     clear_ex(ctx);
 
     ctx.editor.focus = Focus::Ex;
@@ -55,8 +56,27 @@ pub fn enter_ex(ctx: &mut EditorCtx, ex_mode: ExMode) {
     let ex_session = &mut ctx.ex_session;
     let buf_view = &mut ctx.ex_buffer_view;
 
+    ex_session.mode = ex_mode;
+
     let _ = match ex_mode {
-        ExMode::Colon => insert_char(&ctx.config, buf_view, &mut ex_session.edit(), ':'),
+        ExMode::Colon => {
+            let ex_range = cmd
+                .reps
+                .filter(|reps| *reps > 1)
+                .map(|reps| {
+                    ExRange::explicit(
+                        Address::current(),
+                        Address::current_plus(reps - 1),
+                        Delimiter::Comma,
+                    )
+                })
+                .unwrap_or(ExRange::Implicit);
+            insert_char(&ctx.config, buf_view, &mut ex_session.edit(), ':');
+            for c in ex_range.to_string().chars() {
+                insert_char(&ctx.config, buf_view, &mut ex_session.edit(), c);
+            }
+            Damage::Intact
+        }
         ExMode::SearchForward => insert_char(&ctx.config, buf_view, &mut ex_session.edit(), '/'),
         ExMode::SearchBackward => insert_char(&ctx.config, buf_view, &mut ex_session.edit(), '?'),
     };

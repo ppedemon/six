@@ -23,6 +23,9 @@ pub enum ExError {
     #[error("Invalid range")]
     InvalidRange,
 
+    #[error("Command does not take a range")]
+    UnsupportedRange,
+
     #[error("No such mark: {mark}")]
     NoSuchMark { mark: char },
 

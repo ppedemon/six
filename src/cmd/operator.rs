@@ -8,20 +8,13 @@ pub enum InsertPoint {
     Last,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ExMode {
-    Colon,
-    SearchForward,
-    SearchBackward,
-}
-
 // System commands:
 // Mode switching, general buffer ops (like ZZ and ZQ),
 // TODO add window management here
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SysOp {
     EnterNormal,
-    EnterEx(ExMode),
+    EnterEx,
     HardQuit,
     CondWriteAndQuit,
     AddLocalMark(char),

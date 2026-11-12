@@ -3,7 +3,7 @@ use std::sync::LazyLock;
 
 use crate::{
     cmd::{
-        ExMode, ImmediateOp, InsertPoint, InteractiveOp, Motion, MotionMode, Operator, SysOp,
+        ImmediateOp, InsertPoint, InteractiveOp, Motion, MotionMode, Operator, SysOp,
         TextObjectKind, TextObjectScope,
     },
     components::Register,
@@ -72,9 +72,9 @@ fn ok_needy_op<T: Into<Operator>>(t: T) -> ParseResult<OpSpec> {
 
 static OP_TRIE: LazyLock<Trie<KeyEvent, ParseResult<OpSpec>>> = LazyLock::new(|| {
     let mut t = Trie::new();
-    t.insert(&[char(':')], ok_op(SysOp::EnterEx(ExMode::Colon)));
-    t.insert(&[char('/')], ok_op(SysOp::EnterEx(ExMode::SearchForward)));
-    t.insert(&[char('/')], ok_op(SysOp::EnterEx(ExMode::SearchForward)));
+    t.insert(&[char(':')], ok_op(SysOp::EnterEx));
+    t.insert(&[char('/')], ok_op(SysOp::EnterEx));
+    t.insert(&[char('/')], ok_op(SysOp::EnterEx));
     t.insert(&[char('Z'), char('Z')], ok_op(SysOp::CondWriteAndQuit));
     t.insert(&[char('Z'), char('Q')], ok_op(SysOp::HardQuit));
     t.insert(

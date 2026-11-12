@@ -1,3 +1,4 @@
+use core::fmt;
 use nom::{
     IResult, Parser,
     branch::alt,
@@ -8,7 +9,7 @@ use nom::{
     sequence::{delimited, preceded},
 };
 use regex::Regex;
-use std::fmt::Write;
+use std::{fmt::Write, write};
 
 #[derive(Debug, Clone)]
 pub enum SearchPattern {
@@ -28,6 +29,15 @@ impl PartialEq for SearchPattern {
 
 impl Eq for SearchPattern {}
 
+impl fmt::Display for SearchPattern {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Backward(regex) => write!(f, "?{}?", regex),
+            Self::Forward(regex) => write!(f, "/{}/", regex),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BaseAddress {
     Zero,
@@ -38,16 +48,64 @@ pub enum BaseAddress {
     Pattern(SearchPattern),
 }
 
+impl fmt::Display for BaseAddress {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Zero => write!(f, "0"),
+            Self::Current => write!(f, "."),
+            Self::Last => write!(f, "$"),
+            Self::Line(line) => write!(f, "{line}"),
+            Self::Mark(c) => write!(f, "'{c}"),
+            Self::Pattern(p) => fmt::Display::fmt(p, f),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Modifier {
     Plus(usize),
     Minus(usize),
 }
 
+impl fmt::Display for Modifier {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Plus(n) => write!(f, "+{n}"),
+            Self::Minus(n) => write!(f, "-{n}"),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Address {
     pub base: BaseAddress,
     pub modifiers: Vec<Modifier>,
+}
+
+impl Address {
+    pub fn current() -> Self {
+        Self {
+            base: BaseAddress::Current,
+            modifiers: Vec::new(),
+        }
+    }
+
+    pub fn current_plus(offset: usize) -> Self {
+        Self {
+            base: BaseAddress::Current,
+            modifiers: vec![Modifier::Plus(offset)],
+        }
+    }
+}
+
+impl fmt::Display for Address {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        fmt::Display::fmt(&self.base, f)?;
+        self.modifiers
+            .iter()
+            .map(|m| fmt::Display::fmt(m, f))
+            .collect()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -71,10 +129,39 @@ pub enum ExRange {
 }
 
 impl ExRange {
+    pub fn explicit(start: Address, end: Address, delimiter: Delimiter) -> Self {
+        Self::Explicit {
+            start,
+            end,
+            delimiter,
+        }
+    }
+
     pub fn coerce_implicit_to(self, scope: ExRange) -> ExRange {
         match self {
             ExRange::Implicit => scope,
             _ => self,
+        }
+    }
+}
+
+impl fmt::Display for ExRange {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::All => write!(f, "%"),
+            Self::Implicit => std::fmt::Result::Ok(()),
+            Self::Single { address } => fmt::Display::fmt(address, f),
+            Self::Explicit {
+                start,
+                end,
+                delimiter,
+            } => {
+                let delim_c = match delimiter {
+                    Delimiter::Comma => ',',
+                    Delimiter::Semi => ';',
+                };
+                write!(f, "{start}{delim_c}{end}")
+            }
         }
     }
 }
