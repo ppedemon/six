@@ -5,5 +5,5 @@ mod solver;
 
 pub use cmd::{BuiltIn, ExCmd, parse_cmd_line};
 pub use error::ExError;
-pub use range::{ExRange, Address, Delimiter};
+pub use range::{Address, Delimiter, ExRange};
 pub use solver::{ExRangeSolverArgs, solve_exrange};

@@ -73,8 +73,6 @@ fn ok_needy_op<T: Into<Operator>>(t: T) -> ParseResult<OpSpec> {
 static OP_TRIE: LazyLock<Trie<KeyEvent, ParseResult<OpSpec>>> = LazyLock::new(|| {
     let mut t = Trie::new();
     t.insert(&[char(':')], ok_op(SysOp::EnterEx));
-    t.insert(&[char('/')], ok_op(SysOp::EnterEx));
-    t.insert(&[char('/')], ok_op(SysOp::EnterEx));
     t.insert(&[char('Z'), char('Z')], ok_op(SysOp::CondWriteAndQuit));
     t.insert(&[char('Z'), char('Q')], ok_op(SysOp::HardQuit));
     t.insert(
@@ -196,6 +194,9 @@ static MOTION_TRIE: LazyLock<Trie<KeyEvent, ParseResult<Motion>>> = LazyLock::ne
         &[char('`')],
         wants_arg(|evt| parse_mark(evt).map(Motion::ExactGotoMark)),
     );
+
+    t.insert(&[char('/')], ok(Motion::ExSearchForward));
+    t.insert(&[char('?')], ok(Motion::ExSearchBackward));
 
     t
 });

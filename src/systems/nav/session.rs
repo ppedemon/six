@@ -1,3 +1,5 @@
+use std::unimplemented;
+
 use ropey::Rope;
 
 use super::{
@@ -7,8 +9,10 @@ use super::{
 use crate::{
     active_session_and_buffer,
     cmd::{Cmd, Motion},
-    components::{Buffer, BufferView, Config, EditorCtx, Focus, LastSearch, Mode, Viewport},
-    systems::commons::char_idx_to_coords,
+    components::{
+        Buffer, BufferView, Config, EditorCtx, ExMode, Focus, LastSearch, Mode, Viewport,
+    },
+    systems::{commons::char_idx_to_coords, mode::enter_ex},
 };
 
 pub struct NavArgs {
@@ -48,44 +52,26 @@ fn handle_ex_nav(ctx: &mut EditorCtx, args: NavArgs) {
 
 fn handle_session_nav(ctx: &mut EditorCtx, args: NavArgs) {
     let config = &ctx.config;
-    let (session, buf_view, buffer) = active_session_and_buffer!(mut ctx);
+    let (session, _, buffer) = active_session_and_buffer!(mut ctx);
 
     match session.mode {
         Mode::Insert => {
             session.insert_log.poison();
             buffer.commit_undo_txn();
-            session_nav::<InsertNav>(
-                config,
-                buffer,
-                &mut ctx.last_search,
-                &mut session.viewport,
-                buf_view,
-                args,
-            );
+            session_nav::<InsertNav>(ctx, args);
         }
-        Mode::Normal => {
-            session_nav::<NormalNav>(
-                &ctx.config,
-                buffer,
-                &mut ctx.last_search,
-                &mut session.viewport,
-                buf_view,
-                args,
-            );
-        }
+        Mode::Normal => session_nav::<NormalNav>(ctx, args),
     }
 }
 
 const PAGE_SCROLL_MARGIN: u16 = 3;
 
-fn session_nav<R: NavRules>(
-    config: &Config,
-    buffer: &Buffer,
-    last_search: &mut LastSearch,
-    viewport: &mut Viewport,
-    buf_view: &mut BufferView,
-    args: NavArgs,
-) {
+fn session_nav<R: NavRules>(ctx: &mut EditorCtx, args: NavArgs) {
+    let config = &ctx.config;
+    let (session, buf_view, buffer) = active_session_and_buffer!(mut ctx);
+    let last_search = &mut ctx.last_search;
+    let viewport = &mut session.viewport;
+
     let reps = args.cmd.reps.unwrap_or(1);
     let rope = buffer.rope();
 
@@ -161,6 +147,11 @@ fn session_nav<R: NavRules>(
         Motion::ExactGotoMark(c) => exact_goto_mark::<R>(config, buffer, viewport, buf_view, c),
 
         Motion::Line => line::<R>(buffer, buf_view, reps),
+
+        Motion::ExSearchForward => enter_ex(ctx, ExMode::SearchForward, args.cmd),
+        Motion::ExSearchBackward => enter_ex(ctx, ExMode::SearchBackward, args.cmd),
+        Motion::ImmSearchForward => unimplemented!("Actual search forward not supported yet"),
+        Motion::ImmSearchBackward => unimplemented!("Actual search backward not supported yet"),
     }
 }
 

@@ -60,25 +60,21 @@ pub fn enter_ex(ctx: &mut EditorCtx, ex_mode: ExMode, cmd: Cmd) {
 
     let _ = match ex_mode {
         ExMode::Colon => {
-            let ex_range = cmd
-                .reps
-                .filter(|reps| *reps > 1)
-                .map(|reps| {
-                    ExRange::explicit(
-                        Address::current(),
-                        Address::current_plus(reps - 1),
-                        Delimiter::Comma,
-                    )
-                })
-                .unwrap_or(ExRange::Implicit);
+            let ex_range = reps_to_range(cmd.reps);
             insert_char(&ctx.config, buf_view, &mut ex_session.edit(), ':');
-            for c in ex_range.to_string().chars() {
-                insert_char(&ctx.config, buf_view, &mut ex_session.edit(), c);
-            }
+            ex_range.to_string().chars().for_each(|c| {
+                let _ = insert_char(&ctx.config, buf_view, &mut ex_session.edit(), c);
+            });
             Damage::Intact
         }
-        ExMode::SearchForward => insert_char(&ctx.config, buf_view, &mut ex_session.edit(), '/'),
-        ExMode::SearchBackward => insert_char(&ctx.config, buf_view, &mut ex_session.edit(), '?'),
+        ExMode::SearchForward => {
+            ctx.last_search.init_fwd_pat_search(cmd);
+            insert_char(&ctx.config, buf_view, &mut ex_session.edit(), '/')
+        }
+        ExMode::SearchBackward => {
+            ctx.last_search.init_bwd_pat_search(cmd);
+            insert_char(&ctx.config, buf_view, &mut ex_session.edit(), '?')
+        }
     };
 
     apply_insert_point(&ctx.config, &ex_session.rope(), buf_view, InsertPoint::Last);
@@ -87,6 +83,18 @@ pub fn enter_ex(ctx: &mut EditorCtx, ex_mode: ExMode, cmd: Cmd) {
 pub fn goto_insert_point(ctx: &mut EditorCtx, insert_point: InsertPoint) {
     let (_, buf_view, buffer) = active_session_and_buffer!(mut ctx);
     apply_insert_point(&ctx.config, buffer.rope(), buf_view, insert_point);
+}
+
+fn reps_to_range(reps: Option<usize>) -> ExRange {
+    reps.filter(|reps| *reps > 1)
+        .map(|reps| {
+            ExRange::explicit(
+                Address::current(),
+                Address::current_plus(reps - 1),
+                Delimiter::Comma,
+            )
+        })
+        .unwrap_or(ExRange::Implicit)
 }
 
 fn apply_insert_point(

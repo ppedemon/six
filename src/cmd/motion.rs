@@ -41,6 +41,12 @@ pub enum Motion {
     // Mark-based
     GotoMark(char),
     ExactGotoMark(char),
+
+    // Search-based
+    ExSearchForward,   // Search forward, jump to ex mode to get search pattern
+    ExSearchBackward,  // Search backward, jump to ex mode to get search pattern
+    ImmSearchForward,  // Search forward, pattern to search in last_search cache
+    ImmSearchBackward, // Search backward, pattern to search in last_search cache
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -93,6 +99,11 @@ impl Motion {
 
             Self::GotoMark(char) => MotionMeta::Linewise,
             Self::ExactGotoMark(char) => MotionMeta::Charwise,
+
+            Self::ExSearchForward => MotionMeta::Charwise,
+            Self::ExSearchBackward => MotionMeta::Charwise,
+            Self::ImmSearchForward => MotionMeta::Charwise,
+            Self::ImmSearchBackward => MotionMeta::Charwise,
         }
     }
 }
