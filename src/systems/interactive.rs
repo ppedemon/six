@@ -3,7 +3,7 @@ use std::sync::LazyLock;
 use crate::{
     active_session, active_session_and_buffer,
     cmd::{
-        Cmd, EditOp, InsertPoint, InteractiveOp, Motion, MotionMode,
+        Arg, Cmd, EditOp, InsertPoint, InteractiveOp, Motion, MotionMode,
         Operator::{self, Move},
         TxnItem,
     },
@@ -35,11 +35,13 @@ static OPEN_BELOW: LazyLock<Vec<TxnItem>> = LazyLock::new(|| {
     txn
 });
 
+#[derive(Clone, Copy)]
 enum ExecMode {
     Interactive,
     Batch,
 }
 
+#[derive(Clone, Copy)]
 pub struct InteractiveArgs {
     op: InteractiveOp,
     cmd: Cmd,
@@ -74,7 +76,7 @@ pub fn handle_interactive(ctx: &mut EditorCtx, args: InteractiveArgs) {
         buf_view.cursor
     };
 
-    prelude(ctx, &args);
+    prelude(ctx, args);
     ctx.repbuf.save_last_cmd(args.cmd);
     let insert_point = insert_point(ctx, args.op, cursor);
 
@@ -89,18 +91,25 @@ pub fn handle_interactive(ctx: &mut EditorCtx, args: InteractiveArgs) {
 }
 
 // Apply the structural part of the interactive operation before inserting.
-fn prelude(ctx: &mut EditorCtx, args: &InteractiveArgs) {
+fn prelude(ctx: &mut EditorCtx, args: InteractiveArgs) {
     match args.op {
         InteractiveOp::EnterInsert(insert_point) => {}
         InteractiveOp::OpenAbove => dispatch_txn(ctx, &OPEN_ABOVE),
         InteractiveOp::OpenBelow => dispatch_txn(ctx, &OPEN_BELOW),
         InteractiveOp::Change => change_prelude(ctx, args),
+        InteractiveOp::ChangeEol => {
+            let mut fake_args = args;
+            fake_args.cmd = fake_args
+                .cmd
+                .arg(Arg::motion(None, None, Motion::EndOfLine));
+            change_prelude(ctx, fake_args)
+        }
     }
 }
 
 // Delete the selected change range and adjust linewise changes so insertion
 // starts on a newly opened line in the appropriate place.
-fn change_prelude(ctx: &mut EditorCtx, args: &InteractiveArgs) {
+fn change_prelude(ctx: &mut EditorCtx, args: InteractiveArgs) {
     let (buf_id, row, num_rows) = {
         let (session, buf_view, buffer) = active_session_and_buffer!(ctx);
         (
@@ -140,7 +149,7 @@ pub fn finish_interactive(ctx: &mut EditorCtx, op: InteractiveOp, reps: usize) {
 fn insert_point(ctx: &mut EditorCtx, op: InteractiveOp, orig_cursor: Coords) -> InsertPoint {
     match op {
         InteractiveOp::EnterInsert(insert_point) => insert_point,
-        InteractiveOp::Change => {
+        InteractiveOp::Change | InteractiveOp::ChangeEol => {
             let (_, buf_view) = active_session!(mut ctx);
             let cursor = buf_view.cursor;
             if cursor.col < orig_cursor.col {
@@ -161,7 +170,7 @@ fn apply_last_insert(ctx: &mut EditorCtx, op: InteractiveOp, reps: usize, from_b
             let ops = ctx.registers.last_insert().to_vec();
             apply_insert_log(ctx, &ops, reps);
         }
-        InteractiveOp::Change => {
+        InteractiveOp::Change | InteractiveOp::ChangeEol => {
             apply_change_insert(ctx, from_batch);
         }
         InteractiveOp::OpenAbove | InteractiveOp::OpenBelow => {

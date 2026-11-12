@@ -36,6 +36,7 @@ pub enum InteractiveOp {
     OpenAbove,
     OpenBelow,
     Change,
+    ChangeEol,
 }
 
 // Immediate commands: just mutate the text or registers.
