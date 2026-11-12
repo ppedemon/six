@@ -1,4 +1,4 @@
-use crate::cmd::{Cmd, Motion, Operator};
+use crate::{cmd::{Cmd, Motion, Operator}, ex::SearchDef};
 
 enum Direction {
     Backward,
@@ -7,9 +7,7 @@ enum Direction {
 
 pub struct LastSearch {
     last_char_search: Option<Motion>,
-    last_pat: Option<String>,
-    direction: Option<Direction>,
-    offset: usize,
+    search_def: Option<SearchDef>,
     cmd: Cmd,
 }
 
@@ -17,9 +15,7 @@ impl LastSearch {
     pub fn empty() -> Self {
         Self {
             last_char_search: None,
-            last_pat: None,
-            direction: None,
-            offset: 0,
+            search_def: None,
             cmd: Cmd::new(Operator::Nop),
         }
     }
@@ -39,13 +35,7 @@ impl LastSearch {
         self.last_char_search
     }
 
-    pub fn init_fwd_pat_search(&mut self, cmd: Cmd) {
-        self.direction = Some(Direction::Foward);
-        self.cmd = cmd;
-    }
-
-    pub fn init_bwd_pat_search(&mut self, cmd: Cmd) {
-        self.direction = Some(Direction::Backward);
+    pub fn set_cmd(&mut self, cmd: Cmd) {
         self.cmd = cmd;
     }
 }

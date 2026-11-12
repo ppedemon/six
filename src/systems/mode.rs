@@ -68,11 +68,11 @@ pub fn enter_ex(ctx: &mut EditorCtx, ex_mode: ExMode, cmd: Cmd) {
             Damage::Intact
         }
         ExMode::SearchForward => {
-            ctx.last_search.init_fwd_pat_search(cmd);
+            ctx.last_search.set_cmd(cmd);
             insert_char(&ctx.config, buf_view, &mut ex_session.edit(), '/')
         }
         ExMode::SearchBackward => {
-            ctx.last_search.init_bwd_pat_search(cmd);
+            ctx.last_search.set_cmd(cmd);
             insert_char(&ctx.config, buf_view, &mut ex_session.edit(), '?')
         }
     };
