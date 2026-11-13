@@ -57,8 +57,10 @@ pub fn save(path: impl AsRef<Path>, append: bool, rope_slice: RopeSlice) -> io::
         writer.write_all(chunk.as_bytes())?;
     }
 
-    // Rope normalization: ensure last line is POSIX valid by adding a '\n'
-    writer.write(b"\n")?;
+    // Rope normalization: ensure last line is POSIX valid by adding a '\n' if necessary
+    if rope_slice.char(rope_slice.len_chars().saturating_sub(1)) != '\n' {
+        writer.write(b"\n")?;
+    }
 
     writer.flush()?;
     writer.get_ref().sync_all()?;

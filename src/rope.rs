@@ -64,94 +64,70 @@ pub fn slice_as_rope(rope: &Rope, range: Range<usize>) -> Rope {
     Rope::from(slice)
 }
 
-pub fn find_forward(
-    rope: &Rope,
-    regex: &Regex,
-    start_line: usize,
-    start_col: Option<usize>,
-) -> Option<(usize, usize)> {
-    let total_lines = rope.len_lines();
-
-    if start_line >= total_lines {
+pub fn find_forward(rope: &Rope, start_idx: usize, regex: &Regex) -> Option<(usize, usize)> {
+    if start_idx >= rope.len_chars() {
         return None;
     }
 
-    for current_line in start_line..total_lines {
-        let line_start_char = rope.line_to_char(current_line);
-        let line_slice = rope.line(current_line);
+    let start_line = rope.char_to_line(start_idx);
+
+    for i in start_line..rope.len_lines() {
+        let line = rope.line(i);
+        let line_idx = rope.line_to_char(i);
+
+        let (line_idx, line_slice) = if i == start_line {
+            (start_idx, line.slice(start_idx - line_idx..))
+        } else {
+            (line_idx, line)
+        };
 
         let line_text = match line_slice.as_str() {
-            Some(inline_str) => Cow::Borrowed(inline_str),
-            None => Cow::Owned(line_slice.to_string()),
+            Some(s) => Cow::Borrowed(s),
+            None => Cow::Owned(line.to_string()),
         };
 
-        let search_offset = if current_line == start_line {
-            start_col
-                .and_then(|col| line_text.char_indices().nth(col))
-                .map(|(byte_idx, _)| byte_idx)
-                .unwrap_or(0)
-        } else {
-            0
-        };
-
-        if let Some(m) = regex.find(&line_text[search_offset..]) {
-            let match_start_byte = search_offset + m.start();
-            let match_end_byte = search_offset + m.end();
-
-            let absolute_start = line_start_char + line_text[..match_start_byte].chars().count();
-            let absolute_end = line_start_char + line_text[..match_end_byte].chars().count();
-            return Some((absolute_start, absolute_end));
+        if let Some(m) = regex.find(&line_text) {
+            let match_start = line_idx + line_text[..m.start()].chars().count();
+            let match_end = line_idx + line_text[..m.end()].chars().count();
+            return Some((match_start, match_end));
         }
     }
 
     None
 }
 
-pub fn find_backward(
-    rope: &Rope,
-    regex: &Regex,
-    start_line: usize,
-    start_col: Option<usize>,
-) -> Option<(usize, usize)> {
-    let mut current_line = if start_line >= rope.len_lines() {
-        rope.len_lines().saturating_sub(1)
-    } else {
-        start_line
-    };
+pub fn find_backward(rope: &Rope, start_idx: usize, regex: &Regex) -> Option<(usize, usize)> {
+    if start_idx >= rope.len_chars() {
+        return None;
+    }
 
-    loop {
-        let line_start_char = rope.line_to_char(current_line);
-        let line_slice = rope.line(current_line);
+    let start_line = rope.char_to_line(start_idx);
+
+    for i in (0..=start_line).rev() {
+        let line = rope.line(i);
+        let line_idx = rope.line_to_char(i);
+
+        let line_slice = if i == start_line {
+            line.slice(0..start_idx - line_idx)
+        } else {
+            line
+        };
 
         let line_text = match line_slice.as_str() {
-            Some(inline_str) => Cow::Borrowed(inline_str),
-            None => Cow::Owned(line_slice.to_string()),
+            Some(s) => Cow::Borrowed(s),
+            None => Cow::Owned(line.to_string()),
         };
 
-        let search_end_byte = if current_line == start_line {
-            start_col
-                .and_then(|col| line_text.char_indices().nth(col))
-                .map(|(byte_idx, _)| byte_idx)
-                .unwrap_or(line_text.len())
-        } else {
-            line_text.len()
-        };
-
-        let mut last_match_in_line = None;
-        for m in regex.find_iter(&line_text[..search_end_byte]) {
-            last_match_in_line = Some((m.start(), m.end()));
+        let mut last_match = None;
+        for m in regex.find_iter(&line_text) {
+            last_match = Some(m);
         }
 
-        if let Some((local_start, local_end)) = last_match_in_line {
-            let absolute_start = line_start_char + line_text[..local_start].chars().count();
-            let absolute_end = line_start_char + line_text[..local_end].chars().count();
-            return Some((absolute_start, absolute_end));
+        if let Some(m) = last_match {
+            let match_start = line_idx + line_text[..m.start()].chars().count();
+            let match_end = line_idx + line_text[..m.end()].chars().count();
+            return Some((match_start, match_end));
         }
-
-        if current_line == 0 {
-            break;
-        }
-        current_line -= 1;
     }
 
     None
@@ -181,7 +157,7 @@ mod find_tests {
     fn test_find_forward_basic() {
         let rope = setup_test_rope();
 
-        let res = find_forward(&rope, &re("fox"), 0, Some(0));
+        let res = find_forward(&rope, 0, &re("fox"));
         assert!(res.is_some());
         let (start, end) = res.unwrap();
         assert_eq!(start, 16);
@@ -192,10 +168,10 @@ mod find_tests {
     fn test_find_forward_respects_column() {
         let rope = setup_test_rope();
 
-        let res = find_forward(&rope, &re("fox"), 0, Some(16));
+        let res = find_forward(&rope, 16, &re("fox"));
         assert_eq!(res, Some((16, 19)));
 
-        let res_past = find_forward(&rope, &re("fox"), 0, Some(17));
+        let res_past = find_forward(&rope, 17, &re("fox"));
         assert!(res_past.is_some());
         let (start, end) = res_past.unwrap();
 
@@ -209,7 +185,7 @@ mod find_tests {
     fn test_find_forward_whole_line_range() {
         let rope = setup_test_rope();
 
-        let res = find_forward(&rope, &re("The"), 0, None);
+        let res = find_forward(&rope, 0, &re("The"));
         assert_eq!(res, Some((0, 3)));
     }
 
@@ -218,7 +194,7 @@ mod find_tests {
         let rope = setup_test_rope();
 
         // Start from line 3, search backward for "lazy" (which is on line 1)
-        let res = find_backward(&rope, &re("lazy"), 3, Some(0));
+        let res = find_backward(&rope, 60, &re("lazy"));
         assert!(res.is_some());
         let (start, end) = res.unwrap();
         assert_eq!(rope.slice(start..end).to_string(), "lazy");
@@ -232,12 +208,12 @@ mod find_tests {
         // "jumps" starts at column 4 on that line.
 
         // If cursor is at column 10 (after "jumps"), searching backward should find it.
-        let res_before = find_backward(&rope, &re("jumps"), 2, Some(10));
+        let res_before = find_backward(&rope, 54, &re("jumps"));
         assert!(res_before.is_some());
 
         // If cursor is at column 3 (before "jumps"), searching backward must skip it
         // and find the "jumps" back on Line 1.
-        let res_after = find_backward(&rope, &re("jumps"), 2, Some(3));
+        let res_after = find_backward(&rope, 47, &re("jumps"));
         assert!(res_after.is_some());
         let (start, end) = res_after.unwrap();
         let line_of_match = rope.char_to_line(start);
@@ -249,7 +225,7 @@ mod find_tests {
     fn test_find_backward_whole_line_range() {
         let rope = setup_test_rope();
 
-        let res = find_backward(&rope, &re("again"), 2, None);
+        let res = find_backward(&rope, 60, &re("again"));
         assert!(res.is_some());
         let (start, end) = res.unwrap();
         assert_eq!(rope.slice(start..end).to_string(), "again");
@@ -263,13 +239,14 @@ mod find_tests {
         // Regex byte indexes will not align 1:1 with Rope char indexes.
 
         // Forward search check
-        let res_fw = find_forward(&rope, &re("rust"), 4, Some(0));
+        let start_idx = rope.line_to_char(4);
+        let res_fw = find_forward(&rope, start_idx, &re("rust"));
         assert!(res_fw.is_some());
         let (start_fw, end_fw) = res_fw.unwrap();
         assert_eq!(rope.slice(start_fw..end_fw).to_string(), "rust");
 
         // Backward search check starting past the word "rust"
-        let res_bw = find_backward(&rope, &re("r.st"), 4, Some(15));
+        let res_bw = find_backward(&rope, 87, &re("r.st"));
         assert!(res_bw.is_some());
         let (start_bw, end_bw) = res_bw.unwrap();
         assert_eq!(rope.slice(start_bw..end_bw).to_string(), "rust");
@@ -282,10 +259,10 @@ mod find_tests {
     fn test_no_match_returns_none() {
         let rope = setup_test_rope();
 
-        let res_fw = find_forward(&rope, &re("nonexistent_pattern"), 0, None);
+        let res_fw = find_forward(&rope, 0, &re("nonexistent_pattern"));
         assert!(res_fw.is_none());
 
-        let res_bw = find_backward(&rope, &re("nonexistent_pattern"), 5, None);
+        let res_bw = find_backward(&rope, 103, &re("nonexistent_pattern"));
         assert!(res_bw.is_none());
     }
 
@@ -294,13 +271,12 @@ mod find_tests {
         let rope = setup_test_rope();
 
         // Passing a line index that doesn't exist shouldn't panic
-        let res_fw = find_forward(&rope, &re("end"), 100, None);
+        let res_fw = find_forward(&rope, 1000, &re("end"));
         assert!(res_fw.is_none());
 
-        let res_bw = find_backward(&rope, &re("The"), 100, None);
+        let res_bw = find_backward(&rope, 1000, &re("The"));
         // Should clamp to the last valid line and still find "The" at the top
-        assert!(res_bw.is_some());
-        assert_eq!(res_bw.unwrap(), (0, 3));
+        assert!(res_bw.is_none());
     }
 }
 

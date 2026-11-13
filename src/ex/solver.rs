@@ -27,10 +27,12 @@ impl<'a> ExRangeSolverArgs<'a> {
 fn solve_pattern(pattern: SearchPattern, rope: &Rope, curr_line: usize) -> Result<usize, ExError> {
     let search_result = match pattern {
         SearchPattern::Backward(regex) => {
-            rope::find_backward(rope, &regex, curr_line.saturating_sub(1), None)
+            let start_idx = rope.line_to_char(curr_line) + rope.line(curr_line).len_chars();
+            rope::find_backward(rope, start_idx, &regex)
         }
         SearchPattern::Forward(regex) => {
-            rope::find_forward(rope, &regex, curr_line.saturating_add(1), None)
+            let start_idx = rope.line_to_char(curr_line);
+            rope::find_forward(rope, start_idx, &regex)
         }
     };
 
@@ -229,20 +231,20 @@ mod test {
         // Backward search from line 4 (idx 3) looking for "banana"
         let p_backward =
             BaseAddress::Pattern(SearchPattern::Backward(Regex::new("banana").unwrap()));
-        assert_eq!(solve_base_address(p_backward, mkargs(&rope), 4).unwrap(), 2); // Line 1
+        assert_eq!(solve_base_address(p_backward, mkargs(&rope), 3).unwrap(), 2); // Line 1
 
-        // Forward pattern not found error propagation (we don't check in the current line)
+        // Forward pattern not found error propagation
         let p_missing = BaseAddress::Pattern(SearchPattern::Forward(Regex::new("cherry").unwrap()));
         assert!(matches!(
-            solve_base_address(p_missing, mkargs(&rope), 3),
+            solve_base_address(p_missing, mkargs(&rope), 4),
             Err(ExError::PatternNotFound),
         ));
 
-        // Backward pattern not found error propagation (we don't check in the current line)
+        // Backward pattern not found error propagation
         let p_missing =
             BaseAddress::Pattern(SearchPattern::Backward(Regex::new("cherry").unwrap()));
         assert!(matches!(
-            solve_base_address(p_missing, mkargs(&rope), 3),
+            solve_base_address(p_missing, mkargs(&rope), 2),
             Err(ExError::PatternNotFound),
         ));
     }
