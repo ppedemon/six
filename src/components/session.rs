@@ -157,6 +157,16 @@ pub enum ExMode {
     SearchBackward,
 }
 
+impl ExMode {
+    pub fn to_char(&self) -> char {
+        match self {
+            Self::Colon => ':',
+            Self::SearchForward => '/',
+            Self::SearchBackward => '?',
+        }
+    }
+}
+
 pub struct ExSession {
     pub viewport: Viewport,
     rope: Rope,

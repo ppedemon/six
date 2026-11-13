@@ -5,6 +5,9 @@ pub enum ExError {
     #[error("Not an editor command: {cmd}")]
     ParseError { cmd: String },
 
+    #[error("Invalid Search Pattern: {pat}")]
+    InvalidSearchPattern { pat: String },
+
     #[error("No write since last change (add ! to override)")]
     UnsavedChanges,
 

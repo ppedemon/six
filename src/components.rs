@@ -18,7 +18,7 @@ pub use config::Config;
 pub use display::{DisplayBuffer, DisplayLine, DisplayLineRef};
 pub use editor::{Editor, Focus, Level, Status, TextStyle};
 pub use insert_log::InsertLog;
-pub use last_search::LastSearch;
+pub use last_search::{Direction, LastSearch, Offset, OffsetSide, OffsetSign, PatSearch};
 pub use marks::{Change, Marks};
 pub use registers::{Register, RegisterData, Registers};
 pub use repeat::RepeatBuffer;

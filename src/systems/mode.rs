@@ -3,11 +3,11 @@ use ropey::Rope;
 use crate::{
     active_session_and_buffer,
     cmd::{Cmd, InsertPoint},
-    components::{BufferView, Config, EditorCtx, ExMode, Focus, Level, Mode, TextStyle},
+    components::{BufferView, Config, EditorCtx, ExMode, Focus, Level, Mode, MutBuffer, TextStyle},
     ex::{Address, Delimiter, ExRange},
     systems::{
         commons,
-        insert::{Damage, clear_ex, insert_char, post_insert},
+        insert::{clear_ex, insert_char, post_insert},
     },
 };
 
@@ -54,35 +54,29 @@ pub fn enter_ex(ctx: &mut EditorCtx, ex_mode: ExMode, cmd: Cmd) {
     ctx.editor.char_at_cursor = None;
 
     let ex_session = &mut ctx.ex_session;
-    let buf_view = &mut ctx.ex_buffer_view;
-
     ex_session.mode = ex_mode;
 
-    let _ = match ex_mode {
+    let buf_view = &mut ctx.ex_buffer_view;
+    let buffer = &mut ex_session.edit();
+    let c = ex_mode.to_char();
+
+    match ex_mode {
         ExMode::Colon => {
             let ex_range = reps_to_range(cmd.reps);
-            insert_char(&ctx.config, buf_view, &mut ex_session.edit(), ':');
-            ex_range.to_string().chars().for_each(|c| {
-                let _ = insert_char(&ctx.config, buf_view, &mut ex_session.edit(), c);
-            });
-            Damage::Intact
+            insert_char(&ctx.config, buf_view, buffer, c);
+            insert_str(&ex_range.to_string(), &ctx.config, buffer, buf_view);
         }
-        ExMode::SearchForward => {
-            ctx.last_search.set_cmd(cmd);
-            insert_char(&ctx.config, buf_view, &mut ex_session.edit(), '/')
-        }
-        ExMode::SearchBackward => {
-            ctx.last_search.set_cmd(cmd);
-            insert_char(&ctx.config, buf_view, &mut ex_session.edit(), '?')
-        }
+        _ => match ctx.last_search.last_pat_search() {
+            None => {
+                insert_char(&ctx.config, buf_view, buffer, c);
+            }
+            Some(p) => {
+                insert_str(&p.to_string(), &ctx.config, buffer, buf_view);
+            }
+        },
     };
 
-    apply_insert_point(&ctx.config, &ex_session.rope(), buf_view, InsertPoint::Last);
-}
-
-pub fn goto_insert_point(ctx: &mut EditorCtx, insert_point: InsertPoint) {
-    let (_, buf_view, buffer) = active_session_and_buffer!(mut ctx);
-    apply_insert_point(&ctx.config, buffer.rope(), buf_view, insert_point);
+    apply_insert_point(&ctx.config, buffer.rope(), buf_view, InsertPoint::Last);
 }
 
 fn reps_to_range(reps: Option<usize>) -> ExRange {
@@ -95,6 +89,17 @@ fn reps_to_range(reps: Option<usize>) -> ExRange {
             )
         })
         .unwrap_or(ExRange::Implicit)
+}
+
+fn insert_str(s: &str, config: &Config, buffer: &mut impl MutBuffer, buf_view: &mut BufferView) {
+    s.to_string().chars().for_each(|c| {
+        let _ = insert_char(config, buf_view, buffer, c);
+    });
+}
+
+pub fn goto_insert_point(ctx: &mut EditorCtx, insert_point: InsertPoint) {
+    let (_, buf_view, buffer) = active_session_and_buffer!(mut ctx);
+    apply_insert_point(&ctx.config, buffer.rope(), buf_view, insert_point);
 }
 
 fn apply_insert_point(
