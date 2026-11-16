@@ -27,11 +27,17 @@ impl<'a> ExRangeSolverArgs<'a> {
 fn solve_pattern(pattern: SearchPattern, rope: &Rope, curr_line: usize) -> Result<usize, ExError> {
     let search_result = match pattern {
         SearchPattern::Backward(regex) => {
-            let start_idx = rope.line_to_char(curr_line) + rope.line(curr_line).len_chars();
+            if curr_line == 0 {
+                return Err(ExError::PatternNotFound);
+            }
+            let start_idx = rope.line_to_char(curr_line - 1) + rope.line(curr_line - 1).len_chars();
             rope::find_backward(rope, start_idx, &regex)
         }
         SearchPattern::Forward(regex) => {
-            let start_idx = rope.line_to_char(curr_line);
+            if curr_line >= rope.len_lines().saturating_sub(1) {
+                return Err(ExError::PatternNotFound);
+            }
+            let start_idx = rope.line_to_char(curr_line + 1);
             rope::find_forward(rope, start_idx, &regex)
         }
     };
@@ -231,12 +237,12 @@ mod test {
         // Backward search from line 4 (idx 3) looking for "banana"
         let p_backward =
             BaseAddress::Pattern(SearchPattern::Backward(Regex::new("banana").unwrap()));
-        assert_eq!(solve_base_address(p_backward, mkargs(&rope), 3).unwrap(), 2); // Line 1
+        assert_eq!(solve_base_address(p_backward, mkargs(&rope), 3).unwrap(), 2); // Line 2
 
         // Forward pattern not found error propagation
         let p_missing = BaseAddress::Pattern(SearchPattern::Forward(Regex::new("cherry").unwrap()));
         assert!(matches!(
-            solve_base_address(p_missing, mkargs(&rope), 4),
+            solve_base_address(p_missing, mkargs(&rope), 3),
             Err(ExError::PatternNotFound),
         ));
 
@@ -244,7 +250,20 @@ mod test {
         let p_missing =
             BaseAddress::Pattern(SearchPattern::Backward(Regex::new("cherry").unwrap()));
         assert!(matches!(
-            solve_base_address(p_missing, mkargs(&rope), 2),
+            solve_base_address(p_missing, mkargs(&rope), 3),
+            Err(ExError::PatternNotFound),
+        ));
+
+        // Test border pattern searches
+        let p_missing = BaseAddress::Pattern(SearchPattern::Forward(Regex::new("banana").unwrap()));
+        assert!(matches!(
+            solve_base_address(p_missing, mkargs(&rope), 4),
+            Err(ExError::PatternNotFound),
+        ));
+
+        let p_missing = BaseAddress::Pattern(SearchPattern::Backward(Regex::new("apple").unwrap()));
+        assert!(matches!(
+            solve_base_address(p_missing, mkargs(&rope), 1),
             Err(ExError::PatternNotFound),
         ));
     }
