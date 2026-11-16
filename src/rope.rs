@@ -7,7 +7,7 @@ mod search;
 mod word;
 
 pub use char::{find_char_backward, find_char_forward, till_char_backward, till_char_forward};
-pub use search::{find_backward, find_forward};
+pub use search::{wrap_find_backward, wrap_find_forward};
 pub use word::{
     end_big_word, end_sub_word, is_sub_word_char, next_big_word, next_sub_word, prev_big_word,
     prev_sub_word,

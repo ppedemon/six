@@ -4,12 +4,34 @@ use std::ops::Range;
 use regex::Regex;
 use ropey::Rope;
 
+pub struct SearchResult {
+    pub wrap: bool,
+    pub start: usize,
+    pub end: usize,
+}
+
+impl SearchResult {
+    fn new(wrap: bool, start: usize, end: usize) -> Self {
+        Self { wrap, start, end }
+    }
+
+    fn wrap(mut self) -> Self {
+        self.wrap = true;
+        self
+    }
+}
+
 // Finds the first regex match at or after `start_idx`.
 //
 // Returns the match's half-open character range, or `None` if no match is found,
 // the search range is empty, or `start_idx` is outside the rope.
-pub fn find_forward(rope: &Rope, start_idx: usize, regex: &Regex) -> Option<(usize, usize)> {
+pub fn find_forward(rope: &Rope, start_idx: usize, regex: &Regex) -> Option<SearchResult> {
     range_find_forward(rope, start_idx..rope.len_chars(), regex)
+}
+
+pub fn wrap_find_forward(rope: &Rope, start_idx: usize, regex: &Regex) -> Option<SearchResult> {
+    find_forward(rope, start_idx, regex)
+        .or(range_find_forward(rope, 0..start_idx, regex).map(SearchResult::wrap))
 }
 
 // Finds the first regex match in the given character range, searching forward.
@@ -19,11 +41,7 @@ pub fn find_forward(rope: &Rope, start_idx: usize, regex: &Regex) -> Option<(usi
 //
 // Returns the match's half-open character range, or `None` if the range is empty,
 // reversed, out of bounds, or contains no match.
-pub fn range_find_forward(
-    rope: &Rope,
-    range: Range<usize>,
-    regex: &Regex,
-) -> Option<(usize, usize)> {
+pub fn range_find_forward(rope: &Rope, range: Range<usize>, regex: &Regex) -> Option<SearchResult> {
     if range.start >= range.end || range.end > rope.len_chars() {
         return None;
     }
@@ -37,7 +55,7 @@ pub fn range_find_forward(
     if let Some(m) = regex.find(&haystack) {
         let match_start = range.start + slice.byte_to_char(m.start());
         let match_end = range.start + slice.byte_to_char(m.end());
-        return Some((match_start, match_end));
+        return Some(SearchResult::new(false, match_start, match_end));
     }
 
     None
@@ -50,8 +68,17 @@ pub fn range_find_forward(
 //
 // Returns the match's half-open character range, or `None` if no match is found
 // or `before_idx` is zero or outside the rope.
-pub fn find_backward(rope: &Rope, before_idx: usize, regex: &Regex) -> Option<(usize, usize)> {
+pub fn find_backward(rope: &Rope, before_idx: usize, regex: &Regex) -> Option<SearchResult> {
     range_find_backward(rope, 0..before_idx, regex)
+}
+
+pub fn wrap_find_backward(rope: &Rope, before_idx: usize, regex: &Regex) -> Option<SearchResult> {
+    find_backward(rope, before_idx, regex).or(range_find_backward(
+        rope,
+        before_idx..rope.len_chars(),
+        regex,
+    )
+    .map(SearchResult::wrap))
 }
 
 // Finds the last regex match in the given character range, searching backward.
@@ -65,7 +92,7 @@ pub fn range_find_backward(
     rope: &Rope,
     range: Range<usize>,
     regex: &Regex,
-) -> Option<(usize, usize)> {
+) -> Option<SearchResult> {
     if range.start >= range.end || range.end > rope.len_chars() {
         return None;
     }
@@ -84,14 +111,14 @@ pub fn range_find_backward(
     if let Some(m) = last_match {
         let match_start = range.start + slice.byte_to_char(m.start());
         let match_end = range.start + slice.byte_to_char(m.end());
-        return Some((match_start, match_end));
+        return Some(SearchResult::new(false, match_start, match_end));
     }
 
     None
 }
 
 #[cfg(test)]
-mod find_tests {
+mod tests {
     use super::*;
     use ropey::Rope;
 
@@ -110,13 +137,18 @@ mod find_tests {
         Regex::new(s).unwrap()
     }
 
+    fn bounds(result: Option<SearchResult>) -> Option<(usize, usize)> {
+        result.map(|result| (result.start, result.end))
+    }
+
     #[test]
     fn test_find_forward_basic() {
         let rope = setup_test_rope();
 
         let res = find_forward(&rope, 0, &re("fox"));
         assert!(res.is_some());
-        let (start, end) = res.unwrap();
+        let result = res.unwrap();
+        let (start, end) = (result.start, result.end);
         assert_eq!(start, 16);
         assert_eq!(end, 19);
     }
@@ -126,11 +158,12 @@ mod find_tests {
         let rope = setup_test_rope();
 
         let res = find_forward(&rope, 16, &re("fox"));
-        assert_eq!(res, Some((16, 19)));
+        assert_eq!(bounds(res), Some((16, 19)));
 
         let res_past = find_forward(&rope, 17, &re("fox"));
         assert!(res_past.is_some());
-        let (start, end) = res_past.unwrap();
+        let result = res_past.unwrap();
+        let (start, end) = (result.start, result.end);
 
         // Verify it skipped line 0 and found the second instance
         let matched_str = rope.slice(start..end).to_string();
@@ -143,16 +176,22 @@ mod find_tests {
         let rope = setup_test_rope();
 
         let res = find_forward(&rope, 0, &re("The"));
-        assert_eq!(res, Some((0, 3)));
+        assert_eq!(bounds(res), Some((0, 3)));
     }
 
     #[test]
     fn test_range_find_forward_respects_both_bounds() {
         let rope = Rope::from_str("one two one\none two");
 
-        assert_eq!(range_find_forward(&rope, 4..7, &re("two")), Some((4, 7)));
-        assert_eq!(range_find_forward(&rope, 5..7, &re("two")), None);
-        assert_eq!(range_find_forward(&rope, 8..16, &re("one")), Some((8, 11)));
+        assert_eq!(
+            bounds(range_find_forward(&rope, 4..7, &re("two"))),
+            Some((4, 7))
+        );
+        assert_eq!(bounds(range_find_forward(&rope, 5..7, &re("two"))), None);
+        assert_eq!(
+            bounds(range_find_forward(&rope, 8..16, &re("one"))),
+            Some((8, 11))
+        );
     }
 
     #[test]
@@ -160,18 +199,36 @@ mod find_tests {
         let rope = Rope::from_str("north\nsouth\neast\nnorth\nsouth\neast");
         let regex = re("north\\nsouth\\neast");
 
-        assert_eq!(range_find_forward(&rope, 0..16, &regex), Some((0, 16)));
-        assert_eq!(find_forward(&rope, 1, &regex), Some((17, 33)));
-        assert_eq!(range_find_forward(&rope, 1..16, &regex), None);
+        assert_eq!(
+            bounds(range_find_forward(&rope, 0..16, &regex)),
+            Some((0, 16))
+        );
+        assert_eq!(bounds(find_forward(&rope, 1, &regex)), Some((17, 33)));
+        assert_eq!(bounds(range_find_forward(&rope, 1..16, &regex)), None);
+    }
+
+    #[test]
+    fn test_wrap_find_forward_reports_wrapped_and_unwrapped_matches() {
+        let rope = Rope::from_str("first\nsecond");
+
+        let unwrapped = wrap_find_forward(&rope, 0, &re("first")).unwrap();
+        assert_eq!((unwrapped.start, unwrapped.end), (0, 5));
+        assert!(!unwrapped.wrap);
+
+        let wrapped = wrap_find_forward(&rope, 6, &re("first")).unwrap();
+        assert_eq!((wrapped.start, wrapped.end), (0, 5));
+        assert!(wrapped.wrap);
+
+        assert!(wrap_find_forward(&rope, 0, &re("missing")).is_none());
     }
 
     #[test]
     fn test_range_find_forward_rejects_empty_reversed_and_out_of_bounds_ranges() {
         let rope = Rope::from_str("one two");
 
-        assert_eq!(range_find_forward(&rope, 2..2, &re("one")), None);
-        assert_eq!(range_find_forward(&rope, 5..3, &re("one")), None);
-        assert_eq!(range_find_forward(&rope, 0..8, &re("one")), None);
+        assert_eq!(bounds(range_find_forward(&rope, 2..2, &re("one"))), None);
+        assert_eq!(bounds(range_find_forward(&rope, 5..3, &re("one"))), None);
+        assert_eq!(bounds(range_find_forward(&rope, 0..8, &re("one"))), None);
     }
 
     #[test]
@@ -181,7 +238,8 @@ mod find_tests {
         // Start from line 3, search backward for "lazy" (which is on line 1)
         let res = find_backward(&rope, 60, &re("lazy"));
         assert!(res.is_some());
-        let (start, end) = res.unwrap();
+        let result = res.unwrap();
+        let (start, end) = (result.start, result.end);
         assert_eq!(rope.slice(start..end).to_string(), "lazy");
     }
 
@@ -200,7 +258,8 @@ mod find_tests {
         // and find the "jumps" back on Line 1.
         let res_after = find_backward(&rope, 47, &re("jumps"));
         assert!(res_after.is_some());
-        let (start, end) = res_after.unwrap();
+        let result = res_after.unwrap();
+        let (start, end) = (result.start, result.end);
         let line_of_match = rope.char_to_line(start);
         assert_eq!(line_of_match, 1);
         assert_eq!(rope.slice(start..end).to_string(), "jumps");
@@ -212,7 +271,8 @@ mod find_tests {
 
         let res = find_backward(&rope, 60, &re("again"));
         assert!(res.is_some());
-        let (start, end) = res.unwrap();
+        let result = res.unwrap();
+        let (start, end) = (result.start, result.end);
         assert_eq!(rope.slice(start..end).to_string(), "again");
     }
 
@@ -220,26 +280,29 @@ mod find_tests {
     fn test_range_find_backward_respects_both_bounds() {
         let rope = Rope::from_str("one two one\none two");
 
-        assert_eq!(range_find_backward(&rope, 0..7, &re("two")), Some((4, 7)));
         assert_eq!(
-            range_find_backward(&rope, 0..8, &re("one|two")),
+            bounds(range_find_backward(&rope, 0..7, &re("two"))),
             Some((4, 7))
         );
-        assert_eq!(range_find_backward(&rope, 5..8, &re("two")), None);
         assert_eq!(
-            range_find_backward(&rope, 5..11, &re("two|one")),
+            bounds(range_find_backward(&rope, 0..8, &re("one|two"))),
+            Some((4, 7))
+        );
+        assert_eq!(bounds(range_find_backward(&rope, 5..8, &re("two"))), None);
+        assert_eq!(
+            bounds(range_find_backward(&rope, 5..11, &re("two|one"))),
             Some((8, 11))
         );
         assert_eq!(
-            range_find_backward(&rope, 4..16, &re("one|two")),
+            bounds(range_find_backward(&rope, 4..16, &re("one|two"))),
             Some((12, 15))
         );
         assert_eq!(
-            range_find_backward(&rope, 5..13, &re("one|two")),
+            bounds(range_find_backward(&rope, 5..13, &re("one|two"))),
             Some((8, 11))
         );
         assert_eq!(
-            range_find_backward(&rope, 12..19, &re("one|two")),
+            bounds(range_find_backward(&rope, 12..19, &re("one|two"))),
             Some((16, 19))
         );
     }
@@ -250,20 +313,35 @@ mod find_tests {
         let regex = re("north\\nsouth\\neast");
 
         assert_eq!(
-            range_find_backward(&rope, 0..rope.len_chars(), &regex),
+            bounds(range_find_backward(&rope, 0..rope.len_chars(), &regex)),
             Some((17, 33))
         );
-        assert_eq!(find_backward(&rope, 17, &regex), Some((0, 16)));
-        assert_eq!(range_find_backward(&rope, 1..16, &regex), None);
+        assert_eq!(bounds(find_backward(&rope, 17, &regex)), Some((0, 16)));
+        assert_eq!(bounds(range_find_backward(&rope, 1..16, &regex)), None);
+    }
+
+    #[test]
+    fn test_wrap_find_backward_reports_wrapped_and_unwrapped_matches() {
+        let rope = Rope::from_str("first\nsecond");
+
+        let unwrapped = wrap_find_backward(&rope, rope.len_chars(), &re("second")).unwrap();
+        assert_eq!((unwrapped.start, unwrapped.end), (6, 12));
+        assert!(!unwrapped.wrap);
+
+        let wrapped = wrap_find_backward(&rope, 6, &re("second")).unwrap();
+        assert_eq!((wrapped.start, wrapped.end), (6, 12));
+        assert!(wrapped.wrap);
+
+        assert!(wrap_find_backward(&rope, 0, &re("missing")).is_none());
     }
 
     #[test]
     fn test_range_find_backward_rejects_empty_reversed_and_out_of_bounds_ranges() {
         let rope = Rope::from_str("one two");
 
-        assert_eq!(range_find_backward(&rope, 2..2, &re("one")), None);
-        assert_eq!(range_find_backward(&rope, 5..3, &re("one")), None);
-        assert_eq!(range_find_backward(&rope, 0..8, &re("one")), None);
+        assert_eq!(bounds(range_find_backward(&rope, 2..2, &re("one"))), None);
+        assert_eq!(bounds(range_find_backward(&rope, 5..3, &re("one"))), None);
+        assert_eq!(bounds(range_find_backward(&rope, 0..8, &re("one"))), None);
     }
 
     #[test]
@@ -271,10 +349,10 @@ mod find_tests {
         let rope = Rope::from_str("one two");
 
         assert_eq!(
-            find_backward(&rope, rope.len_chars(), &re("two")),
+            bounds(find_backward(&rope, rope.len_chars(), &re("two"))),
             Some((4, 7))
         );
-        assert_eq!(find_backward(&rope, 0, &re("one")), None);
+        assert_eq!(bounds(find_backward(&rope, 0, &re("one"))), None);
     }
 
     #[test]
@@ -288,13 +366,15 @@ mod find_tests {
         let start_idx = rope.line_to_char(4);
         let res_fw = find_forward(&rope, start_idx, &re("rust"));
         assert!(res_fw.is_some());
-        let (start_fw, end_fw) = res_fw.unwrap();
+        let result_fw = res_fw.unwrap();
+        let (start_fw, end_fw) = (result_fw.start, result_fw.end);
         assert_eq!(rope.slice(start_fw..end_fw).to_string(), "rust");
 
         // Backward search check starting past the word "rust"
         let res_bw = find_backward(&rope, 87, &re("r.st"));
         assert!(res_bw.is_some());
-        let (start_bw, end_bw) = res_bw.unwrap();
+        let result_bw = res_bw.unwrap();
+        let (start_bw, end_bw) = (result_bw.start, result_bw.end);
         assert_eq!(rope.slice(start_bw..end_bw).to_string(), "rust");
 
         // Ensure character alignment is clean
@@ -311,11 +391,11 @@ mod find_tests {
         let range = 1000..2000;
 
         assert_eq!(
-            range_find_forward(&rope, range.clone(), &re("needle")),
+            bounds(range_find_forward(&rope, range.clone(), &re("needle"))),
             Some((needle_start, needle_end))
         );
         assert_eq!(
-            range_find_backward(&rope, range, &re("needle")),
+            bounds(range_find_backward(&rope, range, &re("needle"))),
             Some((needle_start, needle_end))
         );
     }
