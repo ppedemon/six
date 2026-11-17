@@ -68,13 +68,7 @@ fn solve_base_address(
         BaseAddress::Last => Ok(rope.len_lines()),
 
         // BaseAddress::Line is already 1-based
-        BaseAddress::Line(line_idx) => {
-            if line_idx > rope.len_lines() {
-                Err(ExError::InvalidRange)
-            } else {
-                Ok(line_idx)
-            }
-        }
+        BaseAddress::Line(line_idx) => Ok(line_idx),
 
         // solve_pattern works with 0-based line numbers
         BaseAddress::Pattern(pattern) => {
@@ -99,24 +93,39 @@ fn solve_address(
     args: ExRangeSolverArgs,
     relative_to: usize,
 ) -> Result<usize, ExError> {
-    let mut base_address = solve_base_address(address.base, args, relative_to)?;
-    for modifier in address.modifiers {
-        match modifier {
-            Modifier::Minus(amount) => {
-                if base_address < amount {
-                    return Err(ExError::InvalidRange);
-                }
-                base_address -= amount;
-            }
-            Modifier::Plus(amount) => {
-                base_address = base_address.saturating_add(amount);
-                if base_address > args.rope.len_lines() {
-                    return Err(ExError::InvalidRange);
-                }
-            }
+    let base_address = solve_base_address(address.base, args, relative_to)?;
+
+    let pos = address
+        .modifiers
+        .iter()
+        .filter_map(|m| match m {
+            Modifier::Plus(n) => Some(n),
+            _ => None,
+        })
+        .fold(0usize, |sum, n| sum.saturating_add(*n));
+
+    let neg = address
+        .modifiers
+        .iter()
+        .filter_map(|m| match m {
+            Modifier::Minus(n) => Some(n),
+            _ => None,
+        })
+        .fold(0usize, |sum, n| sum.saturating_add(*n));
+
+    if pos >= neg {
+        let delta = pos - neg;
+        Ok(base_address
+            .saturating_add(delta)
+            .min(args.rope.len_lines()))
+    } else {
+        let delta = neg - pos;
+        if delta > base_address {
+            Err(ExError::InvalidRange)
+        } else {
+            Ok(base_address - delta)
         }
     }
-    Ok(base_address)
 }
 
 // Preconditions:
@@ -197,11 +206,11 @@ mod test {
             3,
         );
 
-        // BaseAddress::Line(n) -> returns n directly
-        assert!(matches!(
-            solve_base_address(BaseAddress::Line(5), mkargs(&rope), relative_to),
-            Err(ExError::InvalidRange),
-        ));
+        // BaseAddress::Line(n) -> don't check if n exceeds doc lines, we will cap later
+        assert_eq!(
+            solve_base_address(BaseAddress::Line(5), mkargs(&rope), relative_to).unwrap(),
+            5,
+        );
 
         // BaseAddress::Mark
         let mut marks = Marks::new();
@@ -285,10 +294,7 @@ mod test {
 
         // Overflow test: yields InvalidRange
         let addr_overflow = address_mod(BaseAddress::Line(usize::MAX), vec![Modifier::Plus(10)]);
-        assert!(matches!(
-            solve_address(addr_overflow, mkargs(&rope), 2),
-            Err(ExError::InvalidRange)
-        ));
+        assert_eq!(solve_address(addr_overflow, mkargs(&rope), 2).unwrap(), 5);
     }
 
     #[test]

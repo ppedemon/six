@@ -1,10 +1,8 @@
 use nom::{
     Parser,
-    bytes::complete::{escaped, tag},
-    character::complete::{anychar, none_of, space0, space1},
-    combinator::opt,
+    bytes::complete::escaped,
+    character::complete::{anychar, none_of, space1},
     multi::separated_list0,
-    sequence::delimited,
 };
 
 use crate::misc::path::norm_filename;
@@ -33,16 +31,6 @@ pub fn validate_opt_filename(args: &str) -> Result<Option<BufferName>, ExError> 
         }
         _ => Err(ExError::invalid_args("Only one filename allowed")),
     })
-}
-
-pub fn validate_opt_append_filename(args: &str) -> Result<(bool, Option<BufferName>), ExError> {
-    let (args, append) = delimited(space0::<_, nom::error::Error<_>>, opt(tag(">>")), space0)
-        .map(|t| t.is_some())
-        .parse(args)
-        .map_err(|_| ExError::InvalidArgs {
-            msg: args.to_string(),
-        })?;
-    validate_opt_filename(args).map(|file_name| (append, file_name))
 }
 
 pub fn validate_args<T>(

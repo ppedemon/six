@@ -1,13 +1,11 @@
 use crate::{
-    cmd::{Cmd, Motion, Operator},
-    components::{Buffer, EditorCtx, Level},
+    components::{Buffer, EditorCtx},
     ex::{BuiltIn, ExError, ExRange},
     systems::{
         ex::{
-            args::{validate_no_args, validate_opt_append_filename, validate_opt_filename},
+            args::{validate_no_args, validate_opt_filename},
             fs,
         },
-        input::dispatch_cmd,
         lifecycle,
     },
 };
@@ -19,51 +17,52 @@ pub fn exec_builtin(
     args: &str,
 ) -> Result<(), ExError> {
     match builtin {
-        BuiltIn::Quit("q!") => {
-            validate_range(&range, |p| matches!(p, ExRange::Implicit))?;
-            validate_no_args(args)?;
-            lifecycle::quit_editor(ctx);
-        }
-        BuiltIn::Quit("q") => {
-            validate_range(&range, |p| matches!(p, ExRange::Implicit))?;
-            validate_no_args(args)?;
-            soft_quit(ctx)?;
-        }
-        BuiltIn::Quit("wq!") => {
-            let name = validate_opt_filename(args)?;
-            fs::hard_save_active(ctx, name, false, false, range)?;
-            lifecycle::quit_editor(ctx);
-        }
-        BuiltIn::Quit("wq") => {
-            let name = validate_opt_filename(args)?;
-            fs::save_active(ctx, name, false, false, range)?;
-            lifecycle::quit_editor(ctx);
-        }
-        BuiltIn::Quit("x!") => {
-            let name = validate_opt_filename(args)?;
-            fs::hard_save_active(ctx, name, false, true, range)?;
-            lifecycle::quit_editor(ctx);
-        }
-        BuiltIn::Quit("x") => {
-            let name = validate_opt_filename(args)?;
-            fs::save_active(ctx, name, false, true, range)?;
-            soft_quit(ctx)?;
-        }
-        BuiltIn::Write("w!") => {
-            let (append, name) = validate_opt_append_filename(args)?;
-            fs::hard_save_active(ctx, name, append, false, range)?;
-        }
-        BuiltIn::Write("w") => {
-            let (append, name) = validate_opt_append_filename(args)?;
-            fs::save_active(ctx, name, append, false, range)?;
-        }
-        BuiltIn::GotoLine(line) => {
-            dispatch_cmd(ctx, Cmd::new(Operator::Move(Motion::GotoLine(line))));
-            ctx.status.set_msg(Level::Info, &format!(":{}", line));
-        }
-        _ => unreachable!("Unimplemented builtin: {builtin:?}"),
+        BuiltIn::Quit { bang } => quit(ctx, range, args, bang)?,
+        BuiltIn::Exit { bang } => exit(ctx, range, args, bang)?,
+        BuiltIn::Write { bang, append, quit } => write(ctx, range, args, bang, append, quit)?,
     }
+    Ok(())
+}
 
+fn quit(ctx: &mut EditorCtx, range: ExRange, args: &str, bang: bool) -> Result<(), ExError> {
+    validate_range(&range, |p| matches!(p, ExRange::Implicit))?;
+    validate_no_args(args)?;
+    if bang {
+        lifecycle::quit_editor(ctx);
+    } else {
+        soft_quit(ctx)?;
+    }
+    Ok(())
+}
+
+fn exit(ctx: &mut EditorCtx, range: ExRange, args: &str, bang: bool) -> Result<(), ExError> {
+    let name = validate_opt_filename(args)?;
+    if bang {
+        fs::hard_save_active(ctx, name, false, true, range)?;
+    } else {
+        fs::save_active(ctx, name, false, true, range)?;
+    }
+    lifecycle::quit_editor(ctx);
+    Ok(())
+}
+
+fn write(
+    ctx: &mut EditorCtx,
+    range: ExRange,
+    args: &str,
+    bang: bool,
+    append: bool,
+    quit: bool,
+) -> Result<(), ExError> {
+    let name = validate_opt_filename(args)?;
+    if bang {
+        fs::hard_save_active(ctx, name, append, false, range)?;
+    } else {
+        fs::save_active(ctx, name, append, false, range)?;
+    }
+    if quit {
+        lifecycle::quit_editor(ctx);
+    }
     Ok(())
 }
 

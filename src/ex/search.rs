@@ -33,7 +33,7 @@ fn parse_sign(input: &str) -> IResult<&str, OffsetSign> {
 
 fn parse_stride(input: &str) -> IResult<&str, usize> {
     take_while1(|c: char| c.is_ascii_digit())
-        .map_res(|s: &str| s.parse::<usize>())
+        .map(|s: &str| s.parse::<usize>().unwrap_or(usize::MAX))
         .parse(input)
 }
 

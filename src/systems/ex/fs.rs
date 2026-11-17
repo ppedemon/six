@@ -199,7 +199,11 @@ fn hard_save(
 fn rope_slice(buffer: &Buffer, curr_line: usize, range: ExRange) -> Result<RopeSlice<'_>, ExError> {
     let args = ExRangeSolverArgs::new(buffer.rope(), buffer.marks());
     let range = solve_exrange(range, args, curr_line)?;
-    Ok(rope::slice_as_view(buffer.rope(), range))
+    if range.is_empty() {
+        Err(ExError::InvalidRange)
+    } else {
+        Ok(rope::slice_as_view(buffer.rope(), range))
+    }
 }
 
 fn save_buffer(

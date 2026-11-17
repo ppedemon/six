@@ -9,7 +9,7 @@ use nom::{
     sequence::{delimited, preceded},
 };
 use regex::Regex;
-use std::{fmt::Write, write};
+use std::{fmt::Write, unreachable, write};
 
 #[derive(Debug, Clone)]
 pub enum SearchPattern {
@@ -167,21 +167,24 @@ impl fmt::Display for ExRange {
 }
 
 fn parse_modifier(input: &str) -> IResult<&str, Modifier> {
-    let (input, (_, sign, _, amount)) = (
-        space0,
-        alt((char('+'), char('-'))),
-        space0,
-        opt(digit1.map_res(|s: &str| s.parse::<usize>())),
-    )
-        .parse(input)?;
-
-    let modifier = match sign {
-        '+' => Ok(Modifier::Plus(amount.unwrap_or(1))),
-        '-' => Ok(Modifier::Minus(amount.unwrap_or(1))),
-        _ => unreachable!("Invalid modifier sign"),
-    }?;
-
-    Ok((input, modifier))
+    alt((
+        (
+            space0,
+            digit1.map(|s: &str| s.parse::<usize>().unwrap_or(usize::MAX)),
+        )
+            .map(|(_, n)| Modifier::Plus(n)),
+        (
+            space0,
+            alt((char('+'), char('-'))),
+            opt(digit1.map(|s: &str| s.parse::<usize>().unwrap_or(usize::MAX))),
+        )
+            .map(|(_, sign, n)| match sign {
+                '+' => Modifier::Plus(n.unwrap_or(1)),
+                '-' => Modifier::Minus(n.unwrap_or(1)),
+                _ => unreachable!("Invalid modifier sign"),
+            }),
+    ))
+    .parse(input)
 }
 
 fn parse_delimited_regex<'a>(delim: char) -> impl Fn(&str) -> IResult<&str, Regex> {
@@ -218,7 +221,7 @@ fn parse_base_address(input: &str) -> IResult<&str, BaseAddress> {
         value(BaseAddress::Current, char('.')),
         value(BaseAddress::Last, char('$')),
         digit1
-            .map_res(|s: &str| s.parse::<usize>())
+            .map(|s: &str| s.parse::<usize>().unwrap_or(usize::MAX))
             .map(BaseAddress::Line),
         preceded(char('\''), anychar).map(BaseAddress::Mark),
         parse_search_pattern.map(BaseAddress::Pattern),
@@ -401,7 +404,7 @@ mod test {
     #[test]
     fn test_arbitrary_whitespace() {
         assert_parse(
-            "  .  +  1  ;  $  -  2  d  ",
+            "  .  +1  ;  $  -2  d  ",
             explicit(
                 address_mod(BaseAddress::Current, vec![Modifier::Plus(1)]),
                 address_mod(BaseAddress::Last, vec![Modifier::Minus(2)]),
@@ -429,6 +432,57 @@ mod test {
                 address(BaseAddress::Pattern(SearchPattern::Forward(end_re))),
                 Delimiter::Comma,
             ),
+            "",
+        );
+    }
+
+    #[test]
+    fn test_ex_manual_ranges() {
+        assert_parse(
+            "+++",
+            singleton(address_mod(
+                BaseAddress::Current,
+                vec![Modifier::Plus(1), Modifier::Plus(1), Modifier::Plus(1)],
+            )),
+            "",
+        );
+
+        assert_parse(
+            "/^aaa.*/-",
+            singleton(address_mod(
+                BaseAddress::Pattern(SearchPattern::Forward(Regex::new("^aaa.*").unwrap())),
+                vec![Modifier::Minus(1)],
+            )),
+            "",
+        );
+
+        assert_parse(
+            "-2",
+            singleton(address_mod(BaseAddress::Current, vec![Modifier::Minus(2)])),
+            "",
+        );
+
+        assert_parse(
+            "3 ---- 2",
+            singleton(address_mod(
+                BaseAddress::Line(3),
+                vec![
+                    Modifier::Minus(1),
+                    Modifier::Minus(1),
+                    Modifier::Minus(1),
+                    Modifier::Minus(1),
+                    Modifier::Plus(2),
+                ],
+            )),
+            "",
+        );
+
+        assert_parse(
+            "1 2 3",
+            singleton(address_mod(
+                BaseAddress::Line(1),
+                vec![Modifier::Plus(2), Modifier::Plus(3)],
+            )),
             "",
         );
     }

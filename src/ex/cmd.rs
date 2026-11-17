@@ -1,14 +1,9 @@
-use std::{collections::HashMap, sync::LazyLock};
-
 use nom::{
     IResult, Parser,
     branch::alt,
-    bytes::complete::{escaped, take_while1},
-    character::{
-        char,
-        complete::{anychar, digit1, none_of, space0},
-    },
-    combinator::{complete, opt, recognize},
+    bytes::complete::{escaped, tag, take_while1},
+    character::complete::{anychar, char, none_of, space0},
+    combinator::{complete, fail, opt, recognize},
     multi::{many1, separated_list1},
     sequence::delimited,
 };
@@ -16,17 +11,26 @@ use nom::{
 use crate::ex::{ExError, ExRange, range::parse_exrange};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum BuiltIn<'a> {
-    Quit(&'a str),
-    Write(&'a str),
-    GotoLine(usize),
+pub enum BuiltIn {
+    Quit {
+        bang: bool,
+    },
+    Exit {
+        bang: bool,
+    },
+    Write {
+        bang: bool,
+        append: bool,
+        quit: bool,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ExCmd<'a> {
+    ExRange(ExRange),
     BuiltIn {
         range: ExRange,
-        builtin: BuiltIn<'a>,
+        builtin: BuiltIn,
         args: &'a str,
     },
     Shell {
@@ -35,27 +39,41 @@ pub enum ExCmd<'a> {
     },
 }
 
-static BUILTIN_CMDS: LazyLock<HashMap<&str, BuiltIn<'static>>> = LazyLock::new(|| {
-    let mut builtins = HashMap::new();
-    builtins.insert("q!", BuiltIn::Quit("q!"));
-    builtins.insert("q", BuiltIn::Quit("q"));
-    builtins.insert("wq!", BuiltIn::Quit("wq!"));
-    builtins.insert("wq", BuiltIn::Quit("wq"));
-    builtins.insert("x!", BuiltIn::Quit("x!"));
-    builtins.insert("x", BuiltIn::Quit("x"));
-    builtins.insert("w!", BuiltIn::Write("w!"));
-    builtins.insert("w", BuiltIn::Write("w"));
-    builtins
-});
+fn opt_bang(input: &str) -> IResult<&str, bool> {
+    opt(char('!')).map(|bang| bang.is_some()).parse(input)
+}
 
-fn parse_builtin(input: &str) -> IResult<&str, BuiltIn<'_>> {
-    delimited(
-        space0,
-        take_while1(|c: char| c.is_alphanumeric() || c == '!'),
-        space0,
-    )
-    .map_opt(|s| BUILTIN_CMDS.get(s).copied())
-    .parse(input)
+fn opt_append(input: &str) -> IResult<&str, bool> {
+    opt((space0, tag(">>"), space0))
+        .map(|o| o.is_some())
+        .parse(input)
+}
+
+fn parse_builtin_cmd(input: &str) -> IResult<&str, BuiltIn> {
+    let (rest, cmd) = take_while1(|c: char| c.is_ascii_alphanumeric()).parse(input)?;
+    match cmd {
+        "q" | "quit" => opt_bang.map(|bang| BuiltIn::Quit { bang }).parse(rest),
+        "x" | "xit" => opt_bang.map(|bang| BuiltIn::Exit { bang }).parse(rest),
+        "wq" => (opt_bang, opt_append)
+            .map(|(bang, append)| BuiltIn::Write {
+                bang,
+                append,
+                quit: true,
+            })
+            .parse(rest),
+        "w" | "write" => (opt_bang, opt_append)
+            .map(|(bang, append)| BuiltIn::Write {
+                bang,
+                append,
+                quit: false,
+            })
+            .parse(rest),
+        _ => fail().parse(rest),
+    }
+}
+
+fn parse_builtin(input: &str) -> IResult<&str, BuiltIn> {
+    delimited(space0, parse_builtin_cmd, space0).parse(input)
 }
 
 fn parse_shell(input: &str) -> IResult<&str, ExCmd<'_>> {
@@ -81,29 +99,21 @@ fn parse_internal(input: &str) -> IResult<&str, ExCmd<'_>> {
         .parse(input)
 }
 
-fn parse_num(input: &str) -> IResult<&str, ExCmd<'_>> {
-    (
-        space0::<&str, _>,
-        digit1.map_res(|s: &str| s.parse::<usize>()),
-        space0,
-    )
-        .map(|(_, d, _)| ExCmd::BuiltIn {
-            range: ExRange::Implicit,
-            builtin: BuiltIn::GotoLine(d),
-            args: "",
-        })
-        .parse(input)
-}
-
 pub fn parse_cmd_line(input: &str) -> Result<Vec<ExCmd<'_>>, ExError> {
     let separator = complete((space0, char('|'), space0));
 
-    let (rest, cmds) = separated_list1(separator, alt((parse_shell, parse_internal)))
-        .parse(input)
-        .or_else(|_| parse_num.map(|cmd| vec![cmd]).parse(input))
-        .map_err(|_| ExError::ParseError {
-            cmd: input.to_string(),
-        })?;
+    let (rest, cmds) = separated_list1(
+        separator,
+        alt((
+            parse_shell,
+            parse_internal,
+            parse_exrange.map(ExCmd::ExRange),
+        )),
+    )
+    .parse(input)
+    .map_err(|_| ExError::ParseError {
+        cmd: input.to_string(),
+    })?;
 
     if rest.trim().len() > 0 {
         return Err(ExError::ParseError {
@@ -117,10 +127,7 @@ pub fn parse_cmd_line(input: &str) -> Result<Vec<ExCmd<'_>>, ExError> {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::ex::{
-        BuiltIn::GotoLine,
-        range::{Address, BaseAddress, Delimiter, Modifier},
-    };
+    use crate::ex::range::{Address, BaseAddress, Delimiter, Modifier};
 
     fn address(base: BaseAddress) -> Address {
         Address {
@@ -141,7 +148,11 @@ mod test {
             result.unwrap()[0],
             ExCmd::BuiltIn {
                 range: ExRange::Implicit,
-                builtin: BuiltIn::Write("w"),
+                builtin: BuiltIn::Write {
+                    bang: false,
+                    append: false,
+                    quit: false,
+                },
                 args: ""
             }
         );
@@ -152,7 +163,7 @@ mod test {
             result.unwrap()[0],
             ExCmd::BuiltIn {
                 range: ExRange::Implicit,
-                builtin: BuiltIn::Quit("q"),
+                builtin: BuiltIn::Quit { bang: false },
                 args: "!"
             }
         );
@@ -167,8 +178,12 @@ mod test {
                     end: address_mod(BaseAddress::Current, vec![Modifier::Plus(3)]),
                     delimiter: Delimiter::Semi,
                 },
-                builtin: BuiltIn::Write("w!"),
-                args: r">> test\|file.txt",
+                builtin: BuiltIn::Write {
+                    bang: true,
+                    append: true,
+                    quit: false,
+                },
+                args: r"test\|file.txt",
             }
         );
     }
@@ -206,7 +221,11 @@ mod test {
             result[0],
             ExCmd::BuiltIn {
                 range: ExRange::Implicit,
-                builtin: BuiltIn::Write("w"),
+                builtin: BuiltIn::Write {
+                    bang: false,
+                    append: false,
+                    quit: false,
+                },
                 args: ""
             }
         );
@@ -214,7 +233,7 @@ mod test {
             result[1],
             ExCmd::BuiltIn {
                 range: ExRange::Implicit,
-                builtin: BuiltIn::Quit("q"),
+                builtin: BuiltIn::Quit { bang: false },
                 args: ""
             }
         );
@@ -228,7 +247,11 @@ mod test {
             result[0],
             ExCmd::BuiltIn {
                 range: ExRange::Implicit,
-                builtin: BuiltIn::Write("w"),
+                builtin: BuiltIn::Write {
+                    bang: false,
+                    append: false,
+                    quit: false,
+                },
                 args: "file.txt"
             }
         );
@@ -250,7 +273,11 @@ mod test {
             result[0],
             ExCmd::BuiltIn {
                 range: ExRange::Implicit,
-                builtin: BuiltIn::Write("w"),
+                builtin: BuiltIn::Write {
+                    bang: false,
+                    append: false,
+                    quit: false,
+                },
                 args: "file.txt"
             }
         );
@@ -261,7 +288,11 @@ mod test {
                 range: ExRange::Single {
                     address: address(BaseAddress::Current)
                 },
-                builtin: BuiltIn::Write("w!"),
+                builtin: BuiltIn::Write {
+                    bang: true,
+                    append: false,
+                    quit: false,
+                },
                 args: "out.txt"
             }
         );
@@ -278,16 +309,16 @@ mod test {
     }
 
     #[test]
-    fn test_parse_numline() {
-        let cmd_line = "10";
+    fn test_parse_range() {
+        let cmd_line = "1;10 20";
         let result = parse_cmd_line(cmd_line).unwrap();
         assert_eq!(
             result[0],
-            ExCmd::BuiltIn {
-                range: ExRange::Implicit,
-                builtin: GotoLine(10),
-                args: ""
-            }
+            ExCmd::ExRange(ExRange::explicit(
+                address(BaseAddress::Line(1)),
+                address_mod(BaseAddress::Line(10), vec![Modifier::Plus(20)]),
+                Delimiter::Semi
+            ))
         )
     }
 }
