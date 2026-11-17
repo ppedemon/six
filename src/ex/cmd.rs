@@ -50,7 +50,7 @@ fn opt_append(input: &str) -> IResult<&str, bool> {
 }
 
 fn parse_builtin_cmd(input: &str) -> IResult<&str, BuiltIn> {
-    let (rest, cmd) = take_while1(|c: char| c.is_ascii_alphanumeric()).parse(input)?;
+    let (rest, cmd) = take_while1(|c: char| c.is_ascii_alphabetic()).parse(input)?;
     match cmd {
         "q" | "quit" => opt_bang.map(|bang| BuiltIn::Quit { bang }).parse(rest),
         "x" | "xit" => opt_bang.map(|bang| BuiltIn::Exit { bang }).parse(rest),

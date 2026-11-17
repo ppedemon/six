@@ -95,29 +95,17 @@ fn solve_address(
 ) -> Result<usize, ExError> {
     let base_address = solve_base_address(address.base, args, relative_to)?;
 
-    let pos = address
+    let (pos, neg) = address
         .modifiers
         .iter()
-        .filter_map(|m| match m {
-            Modifier::Plus(n) => Some(n),
-            _ => None,
-        })
-        .fold(0usize, |sum, n| sum.saturating_add(*n));
-
-    let neg = address
-        .modifiers
-        .iter()
-        .filter_map(|m| match m {
-            Modifier::Minus(n) => Some(n),
-            _ => None,
-        })
-        .fold(0usize, |sum, n| sum.saturating_add(*n));
+        .fold((0usize, 0usize), |(pos, neg), m| match m {
+            Modifier::Plus(n) => (pos.saturating_add(*n), neg),
+            Modifier::Minus(n) => (pos, neg.saturating_add(*n)),
+        });
 
     if pos >= neg {
         let delta = pos - neg;
-        Ok(base_address
-            .saturating_add(delta)
-            .min(args.rope.len_lines()))
+        Ok(base_address.saturating_add(delta))
     } else {
         let delta = neg - pos;
         if delta > base_address {
@@ -292,9 +280,9 @@ mod test {
             Err(ExError::InvalidRange)
         ));
 
-        // Overflow test: yields InvalidRange
+        // Overflow test: return overflowing lines, commands check ranges
         let addr_overflow = address_mod(BaseAddress::Line(usize::MAX), vec![Modifier::Plus(10)]);
-        assert_eq!(solve_address(addr_overflow, mkargs(&rope), 2).unwrap(), 5);
+        assert_eq!(solve_address(addr_overflow, mkargs(&rope), 2).unwrap(), usize::MAX);
     }
 
     #[test]
