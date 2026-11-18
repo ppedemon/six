@@ -8,7 +8,7 @@ use nom::{
     multi::many0,
     sequence::{delimited, preceded},
 };
-use regex::Regex;
+use regex::{Regex, RegexBuilder};
 use std::{fmt::Write, unreachable, write};
 
 #[derive(Debug, Clone)]
@@ -96,6 +96,20 @@ impl Address {
             modifiers: vec![Modifier::Plus(offset)],
         }
     }
+
+    pub fn first() -> Self {
+        Self {
+            base: BaseAddress::Line(1),
+            modifiers: Vec::new(),
+        }
+    }
+
+    pub fn last() -> Self {
+        Self {
+            base: BaseAddress::Last,
+            modifiers: Vec::new(),
+        }
+    }
 }
 
 impl fmt::Display for Address {
@@ -116,24 +130,32 @@ pub enum Delimiter {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ExRange {
-    All,
     Implicit,
-    Single {
-        address: Address,
-    },
-    Explicit {
-        start: Address,
-        end: Address,
-        delimiter: Delimiter,
+    List {
+        head: Address,
+        tail: Vec<(Delimiter, Address)>,
     },
 }
 
 impl ExRange {
-    pub fn explicit(start: Address, end: Address, delimiter: Delimiter) -> Self {
-        Self::Explicit {
-            start,
-            end,
-            delimiter,
+    pub fn all() -> Self {
+        Self::List {
+            head: Address::first(),
+            tail: vec![(Delimiter::Comma, Address::last())],
+        }
+    }
+
+    pub fn single(address: Address) -> Self {
+        Self::List {
+            head: address,
+            tail: Vec::new(),
+        }
+    }
+
+    pub fn pair(start: Address, delimiter: Delimiter, end: Address) -> Self {
+        Self::List {
+            head: start,
+            tail: vec![(delimiter, end)],
         }
     }
 
@@ -148,19 +170,17 @@ impl ExRange {
 impl fmt::Display for ExRange {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::All => write!(f, "%"),
             Self::Implicit => std::fmt::Result::Ok(()),
-            Self::Single { address } => fmt::Display::fmt(address, f),
-            Self::Explicit {
-                start,
-                end,
-                delimiter,
-            } => {
-                let delim_c = match delimiter {
-                    Delimiter::Comma => ',',
-                    Delimiter::Semi => ';',
-                };
-                write!(f, "{start}{delim_c}{end}")
+            Self::List { head, tail } => {
+                write!(f, "{head}")?;
+                for (delimiter, address) in tail {
+                    let delim_c = match delimiter {
+                        Delimiter::Comma => ',',
+                        Delimiter::Semi => ';',
+                    };
+                    write!(f, "{delim_c}{address}")?;
+                }
+                std::fmt::Result::Ok(())
             }
         }
     }
@@ -202,7 +222,7 @@ fn parse_delimited_regex<'a>(delim: char) -> impl Fn(&str) -> IResult<&str, Rege
             char(delim),
         )
         .map(|s| s.replace(escape_seq.as_str(), delim_str.as_str()))
-        .map_res(|s| Regex::new(&s))
+        .map_res(|s| RegexBuilder::new(&s).multi_line(true).build())
         .parse(input)
     }
 }
@@ -255,19 +275,46 @@ fn parse_delimiter(input: &str) -> IResult<&str, Delimiter> {
     .parse(input)
 }
 
-pub fn parse_exrange(input: &str) -> IResult<&str, ExRange> {
-    let result = alt((
-        delimited(space0, value(ExRange::All, char('%')), space0),
-        (parse_address, parse_delimiter, parse_address).map(|(start, delimiter, end)| {
-            ExRange::Explicit {
-                start,
-                end,
-                delimiter,
-            }
-        }),
-        parse_address.map(|addr| ExRange::Single { address: addr }),
+#[derive(Clone)]
+enum XAddress {
+    All,
+    Address(Address),
+}
+
+fn parse_xaddress(input: &str) -> IResult<&str, XAddress> {
+    alt((
+        value(
+            XAddress::All,
+            delimited(space0::<&str, nom::error::Error<_>>, char('%'), space0),
+        ),
+        parse_address.map(XAddress::Address),
     ))
-    .parse(input);
+    .parse(input)
+}
+
+pub fn parse_exrange(input: &str) -> IResult<&str, ExRange> {
+    let result = (parse_xaddress, many0((parse_delimiter, parse_xaddress)))
+        .map(|(h, t)| {
+            let mut tail = Vec::with_capacity(t.len() * 2);
+            let head = match h {
+                XAddress::All => {
+                    tail.push((Delimiter::Comma, Address::last()));
+                    Address::first()
+                }
+                XAddress::Address(a) => a,
+            };
+            for (delim, xaddress) in t {
+                match xaddress {
+                    XAddress::All => {
+                        tail.push((delim, Address::first()));
+                        tail.push((Delimiter::Comma, Address::last()));
+                    }
+                    XAddress::Address(a) => tail.push((delim, a)),
+                }
+            }
+            ExRange::List { head, tail }
+        })
+        .parse(input);
 
     match result {
         Ok((rest, range_spec)) => {
@@ -285,29 +332,6 @@ pub fn parse_exrange(input: &str) -> IResult<&str, ExRange> {
 mod test {
     use super::*;
 
-    fn assert_parse(input: &str, expected_spec: ExRange, expected_rem: &str) {
-        let res = parse_exrange(input);
-        assert!(res.is_ok(), "Failed to parse '{}': {:?}", input, res.err());
-        let (rem, spec) = res.unwrap();
-        assert_eq!(spec, expected_spec, "Unexpected result for '{}'", input);
-        assert_eq!(rem, expected_rem, "Unexpected remainder for '{}'", input);
-    }
-
-    #[test]
-    fn test_all() {
-        assert_parse("%", ExRange::All, "");
-        assert_parse("  %  ", ExRange::All, "");
-        assert_parse("%d", ExRange::All, "d");
-        assert_parse("  %  d", ExRange::All, "d");
-    }
-
-    #[test]
-    fn test_implicit() {
-        assert_parse("", ExRange::Implicit, "");
-        assert_parse("d", ExRange::Implicit, "d");
-        assert_parse("   d", ExRange::Implicit, "d");
-    }
-
     fn address(base: BaseAddress) -> Address {
         Address {
             base,
@@ -320,15 +344,44 @@ mod test {
     }
 
     fn singleton(address: Address) -> ExRange {
-        ExRange::Single { address }
+        ExRange::List {
+            head: address,
+            tail: Vec::new(),
+        }
     }
 
     fn explicit(start: Address, end: Address, delimiter: Delimiter) -> ExRange {
-        ExRange::Explicit {
-            start,
-            end,
-            delimiter,
+        ExRange::List {
+            head: start,
+            tail: vec![(delimiter, end)],
         }
+    }
+
+    fn all() -> ExRange {
+        explicit(Address::first(), Address::last(), Delimiter::Comma)
+    }
+
+    fn assert_parse(input: &str, expected_spec: ExRange, expected_rem: &str) {
+        let res = parse_exrange(input);
+        assert!(res.is_ok(), "Failed to parse '{}': {:?}", input, res.err());
+        let (rem, spec) = res.unwrap();
+        assert_eq!(spec, expected_spec, "Unexpected result for '{}'", input);
+        assert_eq!(rem, expected_rem, "Unexpected remainder for '{}'", input);
+    }
+
+    #[test]
+    fn test_all() {
+        assert_parse("%", all(), "");
+        assert_parse("  %  ", all(), "");
+        assert_parse("%d", all(), "d");
+        assert_parse("  %  d", all(), "d");
+    }
+
+    #[test]
+    fn test_implicit() {
+        assert_parse("", ExRange::Implicit, "");
+        assert_parse("d", ExRange::Implicit, "d");
+        assert_parse("   d", ExRange::Implicit, "d");
     }
 
     #[test]

@@ -82,10 +82,10 @@ pub fn enter_ex(ctx: &mut EditorCtx, ex_mode: ExMode, cmd: Cmd) {
 fn reps_to_range(reps: Option<usize>) -> ExRange {
     reps.filter(|reps| *reps > 1)
         .map(|reps| {
-            ExRange::explicit(
+            ExRange::pair(
                 Address::current(),
-                Address::current_plus(reps - 1),
                 Delimiter::Comma,
+                Address::current_plus(reps - 1),
             )
         })
         .unwrap_or(ExRange::Implicit)

@@ -66,7 +66,7 @@ fn exec_range(ctx: &mut EditorCtx, ex_range: ExRange) -> Result<(), ExError> {
     let (_, buf_view, buffer) = active_session_and_buffer!(mut ctx);
 
     let args = ExRangeSolverArgs::new(buffer.rope(), buffer.marks());
-    let range = solve_exrange(ex_range.clone(), args, buf_view.cursor.row)?;
+    let range = solve_exrange(&ex_range, args, buf_view.cursor.row)?;
 
     dispatch_cmd(ctx, Cmd::new(Operator::Move(Motion::GotoLine(range.end))));
     ctx.status.set_msg(Level::Info, &format!(":{}", ex_range));

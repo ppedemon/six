@@ -13,7 +13,7 @@ pub fn save_active(
     name: Option<BufferName>,
     append: bool,
     only_if_dirty: bool,
-    range: ExRange,
+    ex_range: ExRange,
 ) -> Result<(), ExError> {
     let status = &mut ctx.status;
     let (session, buf_view, buffer) = active_session_and_buffer!(mut ctx);
@@ -24,7 +24,7 @@ pub fn save_active(
         name,
         append,
         only_if_dirty,
-        range,
+        ex_range,
     )?;
 
     Ok(())
@@ -35,7 +35,7 @@ pub fn hard_save_active(
     name: Option<BufferName>,
     append: bool,
     only_if_dirty: bool,
-    range: ExRange,
+    ex_range: ExRange,
 ) -> Result<(), ExError> {
     let status = &mut ctx.status;
     let (session, buf_view, buffer) = active_session_and_buffer!(mut ctx);
@@ -46,7 +46,7 @@ pub fn hard_save_active(
         name,
         append,
         only_if_dirty,
-        range,
+        ex_range,
     )?;
 
     Ok(())
@@ -63,7 +63,7 @@ pub fn save_all(ctx: &mut EditorCtx, only_if_dirty: bool) -> Result<(), ExError>
             None,
             false,
             only_if_dirty,
-            ExRange::All,
+            ExRange::all(),
         )?;
     }
     ctx.status.set_msg(Level::Info, "All buffers written");
@@ -81,7 +81,7 @@ pub fn hard_save_all(ctx: &mut EditorCtx, only_if_dirty: bool) -> Result<(), ExE
             None,
             false,
             only_if_dirty,
-            ExRange::All,
+            ExRange::all(),
         )?;
     }
     ctx.status.set_msg(Level::Info, "All buffers written");
@@ -94,7 +94,7 @@ fn save(
     name: Option<BufferName>,
     append: bool,
     only_if_dirty: bool,
-    range: ExRange,
+    ex_range: ExRange,
 ) -> Result<(), ExError> {
     let (session, buf_view, buffer) = session_args;
     let curr_line = buf_view.cursor.row;
@@ -103,7 +103,7 @@ fn save(
         return Ok(());
     }
 
-    let range = range.coerce_implicit_to(ExRange::All);
+    let range = ex_range.coerce_implicit_to(ExRange::all());
     let rope_slice = rope_slice(&buffer, curr_line, range)?;
     let writes_all = rope_slice.len_chars() == buffer.rope().len_chars();
 
@@ -161,7 +161,7 @@ fn hard_save(
     name: Option<BufferName>,
     append: bool,
     only_if_dirty: bool,
-    range: ExRange,
+    ex_range: ExRange,
 ) -> Result<(), ExError> {
     let (session, buf_view, buffer) = session_args;
     let curr_line = buf_view.cursor.row;
@@ -170,7 +170,7 @@ fn hard_save(
         return Ok(());
     }
 
-    let range = range.coerce_implicit_to(ExRange::All);
+    let range = ex_range.coerce_implicit_to(ExRange::all());
     let rope_slice = rope_slice(&buffer, curr_line, range)?;
     let writes_all = rope_slice.len_chars() == buffer.rope().len_chars();
 
@@ -196,9 +196,13 @@ fn hard_save(
     }
 }
 
-fn rope_slice(buffer: &Buffer, curr_line: usize, range: ExRange) -> Result<RopeSlice<'_>, ExError> {
+fn rope_slice(
+    buffer: &Buffer,
+    curr_line: usize,
+    ex_range: ExRange,
+) -> Result<RopeSlice<'_>, ExError> {
     let args = ExRangeSolverArgs::new(buffer.rope(), buffer.marks());
-    let range = solve_exrange(range, args, curr_line)?;
+    let range = solve_exrange(&ex_range, args, curr_line)?;
     if range.is_empty() || range.end > buffer.rope().len_lines() {
         Err(ExError::InvalidRange)
     } else {

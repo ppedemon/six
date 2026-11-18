@@ -173,11 +173,11 @@ mod test {
         assert_eq!(
             result.unwrap()[0],
             ExCmd::BuiltIn {
-                range: ExRange::Explicit {
-                    start: address(BaseAddress::Current),
-                    end: address_mod(BaseAddress::Current, vec![Modifier::Plus(3)]),
-                    delimiter: Delimiter::Semi,
-                },
+                range: ExRange::pair(
+                    address(BaseAddress::Current),
+                    Delimiter::Semi,
+                    address_mod(BaseAddress::Current, vec![Modifier::Plus(3)]),
+                ),
                 builtin: BuiltIn::Write {
                     bang: true,
                     append: true,
@@ -205,9 +205,7 @@ mod test {
         assert_eq!(
             result.unwrap()[0],
             ExCmd::Shell {
-                range: ExRange::Single {
-                    address: address(BaseAddress::Current)
-                },
+                range: ExRange::single(address(BaseAddress::Current)),
                 raw_cmd: "ls -l",
             }
         );
@@ -285,9 +283,7 @@ mod test {
         assert_eq!(
             result[1],
             ExCmd::BuiltIn {
-                range: ExRange::Single {
-                    address: address(BaseAddress::Current)
-                },
+                range: ExRange::single(address(BaseAddress::Current)),
                 builtin: BuiltIn::Write {
                     bang: true,
                     append: false,
@@ -300,9 +296,7 @@ mod test {
         assert_eq!(
             result[2],
             ExCmd::Shell {
-                range: ExRange::Single {
-                    address: address(BaseAddress::Current)
-                },
+                range: ExRange::single(address(BaseAddress::Current)),
                 raw_cmd: r"ls -l | grep file\.txt | wc -l",
             }
         );
@@ -314,10 +308,10 @@ mod test {
         let result = parse_cmd_line(cmd_line).unwrap();
         assert_eq!(
             result[0],
-            ExCmd::ExRange(ExRange::explicit(
+            ExCmd::ExRange(ExRange::pair(
                 address(BaseAddress::Line(1)),
+                Delimiter::Semi,
                 address_mod(BaseAddress::Line(10), vec![Modifier::Plus(20)]),
-                Delimiter::Semi
             ))
         )
     }

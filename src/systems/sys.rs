@@ -28,7 +28,7 @@ pub fn handle_sys(ctx: &mut EditorCtx, args: SysArgs) {
         SysOp::EnterEx => enter_ex(ctx, ExMode::Colon, args.cmd),
         SysOp::HardQuit => quit_editor(ctx),
         SysOp::CondWriteAndQuit => {
-            ex::save_active(ctx, None, false, true, ExRange::All).unwrap();
+            ex::save_active(ctx, None, false, true, ExRange::all()).unwrap();
             quit_editor(ctx)
         }
         SysOp::AddLocalMark(c) => add_local_mark(ctx, c),
