@@ -3,7 +3,9 @@ use crate::{
     cmd::{Cmd, Motion, Operator},
     components::{Direction, EditorCtx, ExState, Level},
     ex::{ExCmd, ExError, ExRange, ExRangeSolverArgs, parse_cmd_line, solve_exrange},
-    systems::{ex::builtin::exec_builtin, input::dispatch_cmd, mode::enter_normal},
+    systems::{
+        ex::builtin::exec_builtin, input::dispatch_cmd, insert::clear_ex, mode::enter_normal,
+    },
 };
 
 pub fn handle_ex_state(ctx: &mut EditorCtx) {
@@ -11,7 +13,10 @@ pub fn handle_ex_state(ctx: &mut EditorCtx) {
 
     match ex_state {
         ExState::Idle => {}
-        ExState::Cancel => enter_normal(ctx),
+        ExState::Cancel => {
+            clear_ex(ctx);
+            enter_normal(ctx);
+        }
         ExState::Submit(s) => {
             enter_normal(ctx);
             if let Some(head) = s.chars().next() {
@@ -64,13 +69,10 @@ fn exec_cmd_line(ctx: &mut EditorCtx, cmd_line: &str) -> Result<(), ExError> {
 
 fn exec_range(ctx: &mut EditorCtx, ex_range: ExRange) -> Result<(), ExError> {
     let (_, buf_view, buffer) = active_session_and_buffer!(mut ctx);
-
     let args = ExRangeSolverArgs::new(buffer.rope(), buffer.marks());
     let range = solve_exrange(&ex_range, args, buf_view.cursor.row)?;
 
     dispatch_cmd(ctx, Cmd::new(Operator::Move(Motion::GotoLine(range.end))));
-    ctx.status.set_msg(Level::Info, &format!(":{}", ex_range));
-
     Ok(())
 }
 

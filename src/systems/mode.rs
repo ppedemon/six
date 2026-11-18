@@ -30,8 +30,6 @@ pub fn enter_insert(ctx: &mut EditorCtx, insert_point: InsertPoint) {
 }
 
 pub fn enter_normal(ctx: &mut EditorCtx) {
-    clear_ex(ctx);
-
     ctx.editor.focus = Focus::Session;
     ctx.editor.char_at_cursor = None;
 

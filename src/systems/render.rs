@@ -28,20 +28,19 @@ pub fn render(ctx: &mut EditorCtx, area: Rect, frame_buf: &mut Buffer) {
         render_session(&ctx.config, session, buf_view, buffer, frame_buf);
     }
 
-    match ctx.editor.focus {
-        Focus::Ex => render_ex(
+    if ctx.editor.focus == Focus::Ex || ctx.status.msg.is_empty() {
+        render_ex(
             &ctx.config,
             &ctx.ex_session,
             &mut ctx.ex_buffer_view,
             frame_buf,
-        ),
-        Focus::Session => {
-            let chunks = Layout::default()
-                .direction(Direction::Vertical)
-                .constraints([Constraint::Fill(1), Constraint::Length(1)])
-                .split(area);
-            render_status(&ctx.status, chunks[1], frame_buf);
-        }
+        )
+    } else {
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Fill(1), Constraint::Length(1)])
+            .split(area);
+        render_status(&ctx.status, chunks[1], frame_buf);
     }
 
     if let Some(c) = ctx.editor.char_at_cursor {

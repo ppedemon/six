@@ -184,6 +184,10 @@ impl ExSession {
         }
     }
 
+    pub fn cancel(&mut self) {
+        self.state = ExState::Cancel;
+    }
+
     pub fn rope(&self) -> &Rope {
         &self.rope
     }

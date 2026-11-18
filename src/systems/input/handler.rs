@@ -9,7 +9,6 @@ use crate::{
         input::{insert::InsertInputHandler, normal::NormalInputHandler},
         insert::handle_edit,
         interactive::{InteractiveArgs, handle_interactive},
-        mode::enter_normal,
         nav::{NavArgs, handle_nav},
         sys::{SysArgs, handle_sys},
     },
@@ -70,7 +69,7 @@ pub fn dispatch_cmd(ctx: &mut EditorCtx, cmd: Cmd) {
 
 pub fn dispatch_insert(ctx: &mut EditorCtx, op: InsertOp) {
     match op {
-        InsertOp::Esc => enter_normal(ctx),
+        InsertOp::Esc => ctx.ex_session.cancel(),
         InsertOp::Edit(edit_op) => handle_edit(ctx, edit_op),
         InsertOp::Move(motion) => {
             let nav_args = NavArgs::new(motion, Cmd::new(motion.into()));
