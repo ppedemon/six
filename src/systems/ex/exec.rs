@@ -1,7 +1,7 @@
 use crate::{
     active_session_and_buffer,
-    cmd::{Cmd, Motion, Operator},
-    components::{Direction, EditorCtx, ExState, Level},
+    cmd::{Cmd, Motion, MotionMeta, Operator},
+    components::{Direction, EditorCtx, ExState, Level, Offset},
     ex::{ExCmd, ExError, ExRange, ExRangeSolverArgs, parse_cmd_line, parse_search, solve_exrange},
     systems::{
         ex::builtin::exec_builtin, input::dispatch_cmd, insert::clear_ex, mode::enter_normal,
@@ -58,9 +58,14 @@ fn exec_search(ctx: &mut EditorCtx, cmd_line: &str, direction: Direction) -> Res
     #[cfg(feature = "dev")]
     tracing::debug!("Result = {p:?}");
 
+    let last_offset = p.last().map(|s| s.offset);
+    let meta = match last_offset {
+        Some(Offset::Line { .. }) => MotionMeta::Linewise,
+        _ => MotionMeta::Charwise,
+    };
     let new_motion = match direction {
-        Direction::Forward => Motion::ImmSearchForward,
-        Direction::Backward => Motion::ImmSearchBackward,
+        Direction::Forward => Motion::ImmSearchForward(meta),
+        Direction::Backward => Motion::ImmSearchBackward(meta),
     };
 
     ctx.last_search.save_pat_search(p);

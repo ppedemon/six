@@ -148,8 +148,8 @@ fn session_nav<R: NavRules>(ctx: &mut EditorCtx, args: NavArgs) {
 
         Motion::ExSearchForward => ex_search(ctx, args.cmd, ExMode::SearchForward),
         Motion::ExSearchBackward => ex_search(ctx, args.cmd, ExMode::SearchBackward),
-        Motion::ImmSearchForward => {}
-        Motion::ImmSearchBackward => {}
+        Motion::ImmSearchForward(_) => {}
+        Motion::ImmSearchBackward(_) => {}
     }
 }
 
