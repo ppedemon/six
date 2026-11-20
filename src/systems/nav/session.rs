@@ -1,5 +1,3 @@
-use std::unimplemented;
-
 use ropey::Rope;
 
 use super::{
@@ -148,10 +146,10 @@ fn session_nav<R: NavRules>(ctx: &mut EditorCtx, args: NavArgs) {
 
         Motion::Line => line::<R>(buffer, buf_view, reps),
 
-        Motion::ExSearchForward => enter_ex(ctx, ExMode::SearchForward, args.cmd),
-        Motion::ExSearchBackward => enter_ex(ctx, ExMode::SearchBackward, args.cmd),
-        Motion::ImmSearchForward => unimplemented!("Actual search forward not supported yet"),
-        Motion::ImmSearchBackward => unimplemented!("Actual search backward not supported yet"),
+        Motion::ExSearchForward => ex_search(ctx, args.cmd, ExMode::SearchForward),
+        Motion::ExSearchBackward => ex_search(ctx, args.cmd, ExMode::SearchBackward),
+        Motion::ImmSearchForward => {}
+        Motion::ImmSearchBackward => {}
     }
 }
 
@@ -261,4 +259,9 @@ pub fn exact_goto_mark<R: NavRules>(
         goto_line::<R>(config, buffer.rope(), viewport, buf_view, coord.row + 1); // goto_line counts from 1
         buffer::goto_col::<R>(config, buffer.rope(), buf_view, coord.col + 1); // Ditto columns
     }
+}
+
+pub fn ex_search(ctx: &mut EditorCtx, cmd: Cmd, ex_mode: ExMode) {
+    ctx.last_search.save_cmd_if_unset(cmd);
+    enter_ex(ctx, ex_mode, cmd);
 }

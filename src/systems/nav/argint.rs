@@ -43,11 +43,11 @@ pub fn interpret(ctx: &mut EditorCtx, cmd: Cmd) -> Result<(YankData, RegisterDat
                 bail!("Invalid viewport motion: {motion:?}");
             }
 
-            // Interactive motions require to save the command and just execute the motion.
+            // Interactive motions require to execute the motion and then save the parent cmd.
             // Since we will jump to ex mode, there's no need to bother with cursor updates,
             // storing yank shape and data, or command-specific fixes.
             if meta == MotionMeta::Interactive {
-                ctx.last_search.save_cmd(cmd);
+                ctx.last_search.save_cmd_if_unset(cmd);
                 exec_motion(ctx, motion, 1);
                 bail!("Nothing to do for ineractive motion: {motion:?}");
             }

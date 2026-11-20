@@ -99,13 +99,15 @@ pub struct LastSearch {
 }
 
 impl LastSearch {
+    const NOP: Cmd = Cmd::new(Operator::Nop);
+
     pub fn empty() -> Self {
         Self {
             last_char_search: None,
             last_pat_search: None,
             last_pat_end: None,
             curr_pat_search: Vec::new(),
-            cmd: Cmd::new(Operator::Nop),
+            cmd: Self::NOP,
         }
     }
 
@@ -132,7 +134,15 @@ impl LastSearch {
         self.last_pat_search.as_ref()
     }
 
-    pub fn save_cmd(&mut self, cmd: Cmd) {
-        self.cmd = cmd;
+    pub fn save_cmd_if_unset(&mut self, cmd: Cmd) {
+        if self.cmd == Self::NOP {
+            self.cmd = cmd;
+        }
+    }
+
+    pub fn take_cmd(&mut self) -> Cmd {
+        let result = self.cmd;
+        self.cmd = Self::NOP;
+        result
     }
 }

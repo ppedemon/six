@@ -58,7 +58,17 @@ fn exec_search(ctx: &mut EditorCtx, cmd_line: &str, direction: Direction) -> Res
     #[cfg(feature = "dev")]
     tracing::debug!("Result = {p:?}");
 
+    let new_motion = match direction {
+        Direction::Forward => Motion::ImmSearchForward,
+        Direction::Backward => Motion::ImmSearchBackward,
+    };
+
     ctx.last_search.save_pat_search(p);
+
+    let cmd = ctx.last_search.take_cmd();
+    let patched_cmd = cmd.patch_motion(new_motion);
+    dispatch_cmd(ctx, patched_cmd);
+
     Ok(())
 }
 

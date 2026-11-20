@@ -3,6 +3,8 @@ mod motion;
 mod operator;
 mod text_object;
 
+use std::matches;
+
 pub use insert::{EditOp, InsertOp};
 pub use motion::{Motion, MotionMeta};
 pub use operator::{ImmediateOp, InsertPoint, InteractiveOp, Operator, SysOp};
@@ -59,7 +61,7 @@ pub struct Cmd {
 }
 
 impl Cmd {
-    pub fn new(op: Operator) -> Self {
+    pub const fn new(op: Operator) -> Self {
         Self {
             reps: None,
             reg: None,
@@ -81,6 +83,25 @@ impl Cmd {
     pub fn arg(mut self, arg: Arg) -> Self {
         self.arg = arg;
         self
+    }
+
+    pub fn patch_motion(mut self, new_motion: Motion) -> Self {
+        if matches!(self.op, Operator::Move(_)) {
+            self.op = Operator::Move(new_motion);
+            self
+        } else {
+            match self.arg {
+                Arg::Motion { reps, mode, motion } => {
+                    self.arg = Arg::Motion {
+                        reps,
+                        mode,
+                        motion: new_motion,
+                    };
+                    self
+                }
+                _ => self,
+            }
+        }
     }
 }
 
