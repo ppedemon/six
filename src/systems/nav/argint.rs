@@ -36,11 +36,23 @@ pub fn interpret(ctx: &mut EditorCtx, cmd: Cmd) -> Result<(YankData, RegisterDat
             unimplemented!("Implement arg-less motions (visual mode)")
         }
         Arg::Motion { reps, mode, motion } => {
+            let meta = motion.meta();
+
             // Viewport motion change the viewport rather than moving the cursor
-            if motion.meta() == MotionMeta::Viewport {
+            if meta == MotionMeta::Viewport {
                 bail!("Invalid viewport motion: {motion:?}");
             }
 
+            // Interactive motions require to save the command and just execute the motion.
+            // Since we will jump to ex mode, there's no need to bother with cursor updates,
+            // storing yank shape and data, or command-specific fixes.
+            if meta == MotionMeta::Interactive {
+                ctx.last_search.save_cmd(cmd);
+                exec_motion(ctx, motion, 1);
+                bail!("Nothing to do for ineractive motion: {motion:?}");
+            }
+
+            // Normal motions: intepret them
             let arg_reps = cmd.reps.unwrap_or(1).saturating_mul(reps.unwrap_or(1));
             Ok(interpret_motion(ctx, cmd.op, motion, mode, arg_reps))
         }

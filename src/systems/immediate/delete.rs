@@ -1,3 +1,5 @@
+use anyhow::Result;
+
 use crate::{
     active_session_and_buffer,
     cmd::{Cmd, MotionMode},
@@ -13,11 +15,8 @@ use crate::{
     },
 };
 
-pub fn delete(ctx: &mut EditorCtx, cmd: Cmd) -> Damage {
-    let Ok((yank_data, reg_data)) = interpret(ctx, cmd) else {
-        // TODO Maybe show an error here?
-        return Damage::Intact;
-    };
+pub fn delete(ctx: &mut EditorCtx, cmd: Cmd) -> Result<Damage> {
+    let (yank_data, reg_data) = interpret(ctx, cmd)?;
 
     let damage = match yank_data.mode {
         MotionMode::Charwise => delete_charwise(ctx, yank_data),
@@ -28,7 +27,7 @@ pub fn delete(ctx: &mut EditorCtx, cmd: Cmd) -> Damage {
     ctx.registers.record_delete(cmd.reg, reg_data);
     ctx.repbuf.save_last_yank(yank_data);
 
-    damage
+    Ok(damage)
 }
 
 fn delete_charwise(ctx: &mut EditorCtx, yank_data: YankData) -> Damage {

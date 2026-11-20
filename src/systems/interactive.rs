@@ -1,3 +1,4 @@
+use anyhow::Result;
 use std::sync::LazyLock;
 
 use crate::{
@@ -76,7 +77,10 @@ pub fn handle_interactive(ctx: &mut EditorCtx, args: InteractiveArgs) {
         buf_view.cursor
     };
 
-    prelude(ctx, args);
+    if let Err(err) = prelude(ctx, args) {
+        return;
+    }
+
     ctx.repbuf.save_last_cmd(args.cmd);
     let insert_point = insert_point(ctx, args.op, cursor);
 
@@ -91,25 +95,26 @@ pub fn handle_interactive(ctx: &mut EditorCtx, args: InteractiveArgs) {
 }
 
 // Apply the structural part of the interactive operation before inserting.
-fn prelude(ctx: &mut EditorCtx, args: InteractiveArgs) {
+fn prelude(ctx: &mut EditorCtx, args: InteractiveArgs) -> Result<()> {
     match args.op {
         InteractiveOp::EnterInsert(insert_point) => {}
         InteractiveOp::OpenAbove => dispatch_txn(ctx, &OPEN_ABOVE),
         InteractiveOp::OpenBelow => dispatch_txn(ctx, &OPEN_BELOW),
-        InteractiveOp::Change => change_prelude(ctx, args),
+        InteractiveOp::Change => change_prelude(ctx, args)?,
         InteractiveOp::ChangeEol => {
             let mut fake_args = args;
             fake_args.cmd = fake_args
                 .cmd
                 .arg(Arg::motion(None, None, Motion::EndOfLine));
-            change_prelude(ctx, fake_args)
+            change_prelude(ctx, fake_args)?;
         }
     }
+    Ok(())
 }
 
 // Delete the selected change range and adjust linewise changes so insertion
 // starts on a newly opened line in the appropriate place.
-fn change_prelude(ctx: &mut EditorCtx, args: InteractiveArgs) {
+fn change_prelude(ctx: &mut EditorCtx, args: InteractiveArgs) -> Result<()> {
     let (buf_id, row, num_rows) = {
         let (session, buf_view, buffer) = active_session_and_buffer!(ctx);
         (
@@ -119,7 +124,7 @@ fn change_prelude(ctx: &mut EditorCtx, args: InteractiveArgs) {
         )
     };
 
-    let damage = delete(ctx, args.cmd);
+    let damage = delete(ctx, args.cmd)?;
     broadcast_damage(ctx, DamageEvent::new(buf_id, damage));
 
     if let Some(yank_data) = ctx.repbuf.last_yank() {
@@ -137,6 +142,8 @@ fn change_prelude(ctx: &mut EditorCtx, args: InteractiveArgs) {
             _ => {}
         }
     }
+
+    Ok(())
 }
 
 // Finish an interactive insert by applying the saved insert according to the

@@ -28,7 +28,7 @@ pub fn render(ctx: &mut EditorCtx, area: Rect, frame_buf: &mut Buffer) {
         render_session(&ctx.config, session, buf_view, buffer, frame_buf);
     }
 
-    if ctx.editor.focus == Focus::Ex || ctx.status.msg.is_empty() {
+    if ctx.editor.focus == Focus::Ex {
         render_ex(
             &ctx.config,
             &ctx.ex_session,
@@ -36,6 +36,10 @@ pub fn render(ctx: &mut EditorCtx, area: Rect, frame_buf: &mut Buffer) {
             frame_buf,
         )
     } else {
+        if ctx.status.msg.is_empty() {
+            ctx.status.msg = ctx.ex_session.rope().to_string();
+        }
+
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([Constraint::Fill(1), Constraint::Length(1)])

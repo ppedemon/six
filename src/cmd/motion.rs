@@ -54,6 +54,7 @@ pub enum MotionMeta {
     Viewport,
     Charwise,
     Linewise,
+    Interactive,
 }
 
 // -----------------------------------------------------------------------
@@ -100,8 +101,8 @@ impl Motion {
             Self::GotoMark(char) => MotionMeta::Linewise,
             Self::ExactGotoMark(char) => MotionMeta::Charwise,
 
-            Self::ExSearchForward => MotionMeta::Charwise,
-            Self::ExSearchBackward => MotionMeta::Charwise,
+            Self::ExSearchForward => MotionMeta::Interactive,
+            Self::ExSearchBackward => MotionMeta::Interactive,
             Self::ImmSearchForward => MotionMeta::Charwise,
             Self::ImmSearchBackward => MotionMeta::Charwise,
         }

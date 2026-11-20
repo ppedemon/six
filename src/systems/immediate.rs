@@ -81,13 +81,13 @@ pub fn handle_immediate(ctx: &mut EditorCtx, args: ImmediateArgs) {
         }
         ImmediateOp::Paste => paste(ctx, args.cmd, PasteMode::After),
         ImmediateOp::PasteBefore => paste(ctx, args.cmd, PasteMode::Before),
-        ImmediateOp::Delete => delete(ctx, args.cmd),
+        ImmediateOp::Delete => delete(ctx, args.cmd).unwrap_or(Damage::Intact),
         ImmediateOp::DeleteEol => {
             let mut fake_args = args;
             fake_args.cmd = fake_args
                 .cmd
                 .arg(Arg::motion(None, None, Motion::EndOfLine));
-            delete(ctx, fake_args.cmd)
+            delete(ctx, fake_args.cmd).unwrap_or(Damage::Intact)
         }
         ImmediateOp::RepeatLast => {
             if let Some(cmd) = ctx.repbuf.last_cmd() {

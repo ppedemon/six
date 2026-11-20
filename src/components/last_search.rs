@@ -93,6 +93,7 @@ impl fmt::Display for PatSearch {
 pub struct LastSearch {
     last_char_search: Option<Motion>,
     last_pat_search: Option<PatSearch>,
+    last_pat_end: Option<usize>,
     curr_pat_search: Vec<PatSearch>,
     cmd: Cmd,
 }
@@ -102,6 +103,7 @@ impl LastSearch {
         Self {
             last_char_search: None,
             last_pat_search: None,
+            last_pat_end: None,
             curr_pat_search: Vec::new(),
             cmd: Cmd::new(Operator::Nop),
         }
@@ -122,11 +124,15 @@ impl LastSearch {
         self.last_char_search
     }
 
+    pub fn save_pat_search(&mut self, p: Vec<PatSearch>) {
+        self.curr_pat_search = p;
+    }
+
     pub fn last_pat_search(&self) -> Option<&PatSearch> {
         self.last_pat_search.as_ref()
     }
 
-    pub fn set_cmd(&mut self, cmd: Cmd) {
+    pub fn save_cmd(&mut self, cmd: Cmd) {
         self.cmd = cmd;
     }
 }
