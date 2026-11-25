@@ -4,8 +4,7 @@ use crate::{
     components::{BufferView, Config, EditorCtx, ExMode, Focus, Level, Mode, MutBuffer, TextStyle},
     ex::{Address, Delimiter, ExRange},
     systems::{
-        hooks,
-        insert::{clear_ex, insert_char},
+        insert::{clear_ex, insert_char, post_insert},
         nav::utils,
     },
 };
@@ -22,9 +21,9 @@ pub fn enter_insert(ctx: &mut EditorCtx, insert_point: InsertPoint) {
 
     let (session, buf_view, buffer) = active_session_and_buffer!(mut ctx);
     session.mode = Mode::Insert;
-    utils::apply_insert_point(ctx, insert_point);
+    session.insert_log.init();
 
-    hooks::on_insert_start(ctx);
+    utils::apply_insert_point(ctx, insert_point);
 }
 
 pub fn enter_normal(ctx: &mut EditorCtx) {
@@ -39,7 +38,7 @@ pub fn enter_normal(ctx: &mut EditorCtx) {
     session.mode = Mode::Normal;
 
     if old_mode == Mode::Insert {
-        hooks::on_insert_end(ctx);
+        post_insert(ctx);
     }
 }
 

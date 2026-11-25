@@ -1,7 +1,6 @@
 mod commons;
 mod event;
 mod ex;
-pub mod hooks;
 mod immediate;
 mod input;
 mod insert;
