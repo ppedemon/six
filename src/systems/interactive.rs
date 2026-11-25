@@ -14,8 +14,8 @@ use crate::{
         input::dispatch_txn,
         insert::{DamageEvent, apply_insert_log, broadcast_damage},
         interactive::ExecMode::{Batch, Interactive},
-        mode::{enter_insert, goto_insert_point},
-        nav::utils::ensure_cursor_inside_line,
+        mode::enter_insert,
+        nav::utils::{self, ensure_cursor_inside_line},
     },
 };
 
@@ -88,7 +88,7 @@ pub fn handle_interactive(ctx: &mut EditorCtx, args: InteractiveArgs) {
         ExecMode::Interactive => enter_insert(ctx, insert_point),
         ExecMode::Batch => {
             let reps = args.cmd.reps.unwrap_or(1);
-            goto_insert_point(ctx, insert_point);
+            utils::apply_insert_point(ctx, insert_point);
             apply_last_insert(ctx, args.op, reps, true);
         }
     }

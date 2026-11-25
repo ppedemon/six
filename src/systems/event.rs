@@ -1,18 +1,15 @@
 use std::{fmt::Write, format};
 
-use ropey::{Rope, RopeSlice};
-
 use crate::{
     cmd::MotionMode,
     components::{BufferName, Level, Status, YankData},
     misc::time,
-    rope,
+    rope::RopeInfo,
     systems::immediate,
 };
 
-pub fn on_buffer_loaded(status: &mut Status, name: &BufferName, rope: &Rope) {
+pub fn on_buffer_loaded(status: &mut Status, name: &BufferName, rope_info: &RopeInfo) {
     let msg = if name.file_path.exists() {
-        let rope_info = rope::info(rope);
         let lines = rope_info.num_lines;
         let bytes = rope_info.num_bytes;
         &format!("\"{}\" - {}L, {}B", name.orig_name, lines, bytes)
@@ -22,9 +19,8 @@ pub fn on_buffer_loaded(status: &mut Status, name: &BufferName, rope: &Rope) {
     status.set_msg(Level::Info, msg);
 }
 
-pub fn on_buffer_saved(status: &mut Status, name: &BufferName, rope: RopeSlice<'_>) {
+pub fn on_buffer_saved(status: &mut Status, name: &BufferName, rope_info: &RopeInfo) {
     let msg = {
-        let rope_info = rope::info_slice(rope);
         let lines = rope_info.num_lines;
         let bytes = rope_info.num_bytes;
         &format!("\"{}\" - {}L, {}B written", name.orig_name, lines, bytes)

@@ -13,49 +13,25 @@ pub use word::{
     prev_sub_word,
 };
 
-pub fn remove_trailing_newline(rope: &mut Rope) {
-    let len_chars = rope.len_chars();
-    if len_chars > 0 && rope.char(len_chars - 1) == '\n' {
-        rope.remove(len_chars - 1..len_chars);
-    }
-}
-
 pub struct RopeInfo {
     pub num_lines: usize,
     pub num_bytes: usize,
 }
 
-pub fn info_slice(rope: RopeSlice<'_>) -> RopeInfo {
-    if rope.len_chars() == 0 {
-        RopeInfo {
-            num_lines: 0,
-            num_bytes: 0,
-        }
-    } else {
-        // Do norm here without mutating the rope
-        let mut num_lines = rope.len_lines();
-        if rope.char(rope.len_chars() - 1) == '\n' {
-            num_lines -= 1;
-        }
-        RopeInfo {
-            num_lines,
-            num_bytes: rope.len_bytes(),
-        }
-    }
-}
-
-// Duplicating info_slice for the Rope type to avoid doing rope.slice(..), which is log(N)
 pub fn info(rope: &Rope) -> RopeInfo {
-    if rope.len_chars() == 0 {
-        RopeInfo {
-            num_lines: 0,
-            num_bytes: 0,
-        }
+    let len = rope.len_chars();
+
+    let num_lines = if len == 0 {
+        0
+    } else if rope.char(len - 1) == '\n' {
+        rope.len_lines() - 1
     } else {
-        RopeInfo {
-            num_lines: rope.len_lines(),
-            num_bytes: rope.len_bytes(),
-        }
+        rope.len_lines()
+    };
+
+    RopeInfo {
+        num_lines,
+        num_bytes: rope.len_bytes(),
     }
 }
 

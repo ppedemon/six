@@ -1,10 +1,13 @@
 use std::ops::Range;
 
-use ropey::Rope;
+use ropey::{Rope, iter::Lines};
 
-use crate::components::{
-    Change, Marks, UndoSummary,
-    undo::{Action, LastEditedLine, UndoStack, UndoTxn},
+use crate::{
+    components::{
+        Change, Marks, UndoSummary,
+        undo::{Action, LastEditedLine, UndoStack, UndoTxn},
+    },
+    rope,
 };
 
 // Mutable view of a buffer
@@ -29,13 +32,20 @@ pub struct Buffer {
 
 impl Buffer {
     pub fn new(rope: Rope) -> Self {
-        Self {
+        let mut buffer = Self {
             marks: Marks::new(),
             undo_stack: UndoStack::new(),
             last_edited_line: LastEditedLine::new(),
             dirty: false,
             rope,
+        };
+
+        let len = buffer.rope.len_chars();
+        if len > 0 && buffer.rope.char(len - 1) == '\n' {
+            buffer.rope.remove(len - 1..len);
         }
+
+        buffer
     }
 
     pub fn empty() -> Self {
@@ -279,4 +289,31 @@ fn multi_line(txn: &UndoTxn, rope: &Rope) -> bool {
         }
     }
     false
+}
+
+// A BufferSlice represent a line-iterable slice of a buffer that is
+// aware of the trailing nl correction. We use this to seamlessly
+// persist either a whole buffer or a slice of it.
+pub struct BufferSlice<'a> {
+    buffer: &'a Buffer,
+    line_range: Range<usize>,
+}
+
+impl<'a> BufferSlice<'a> {
+    pub fn new(buffer: &'a Buffer, line_range: Range<usize>) -> Self {
+        Self { buffer, line_range }
+    }
+
+    pub fn is_full_buffer(&self) -> bool {
+        self.line_range.start == 0 && self.line_range.end == self.buffer.rope.len_lines()
+    }
+
+    pub fn should_append_nl(&self) -> bool {
+        self.buffer.rope.len_chars() > 0 && self.line_range.end == self.buffer.rope.len_lines()
+    }
+
+    pub fn lines(&self) -> Lines<'_> {
+        let slice = rope::slice_as_view(&self.buffer.rope, self.line_range.clone());
+        slice.lines()
+    }
 }
