@@ -28,6 +28,7 @@ pub struct Buffer {
     last_edited_line: LastEditedLine,
     dirty: bool,
     rope: Rope,
+    fake_empty: bool,
 }
 
 impl Buffer {
@@ -38,11 +39,13 @@ impl Buffer {
             last_edited_line: LastEditedLine::new(),
             dirty: false,
             rope,
+            fake_empty: false,
         };
 
         let len = buffer.rope.len_chars();
         if len > 0 && buffer.rope.char(len - 1) == '\n' {
             buffer.rope.remove(len - 1..len);
+            buffer.fake_empty = len == 1;
         }
 
         buffer
@@ -55,7 +58,16 @@ impl Buffer {
             last_edited_line: LastEditedLine::new(),
             dirty: false,
             rope: Rope::new(),
+            fake_empty: false,
         }
+    }
+
+    pub fn fake_empty(&self) -> bool {
+        self.fake_empty
+    }
+
+    pub fn set_fake_empty(&mut self) {
+        self.fake_empty = true
     }
 
     pub fn marks(&self) -> &Marks {

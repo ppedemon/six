@@ -1,5 +1,5 @@
 use crate::{
-    active_session,
+    active_session, active_session_and_buffer,
     cmd::{Cmd, InsertPoint},
     components::{BufferView, Config, EditorCtx, ExMode, Focus, Level, Mode, MutBuffer, TextStyle},
     ex::{Address, Delimiter, ExRange},
@@ -20,9 +20,9 @@ pub fn enter_insert(ctx: &mut EditorCtx, insert_point: InsertPoint) {
     ctx.status
         .set_styled_msg(Level::Info, TextStyle::Bold, "-- INSERT --");
 
-    let (session, buf_view) = active_session!(mut ctx);
+    let (session, buf_view, buffer) = active_session_and_buffer!(mut ctx);
     session.mode = Mode::Insert;
-    utils::apply_insert_point(ctx, insert_point);
+    utils::apply_insert_point(&ctx.config, buffer.rope(), buf_view, insert_point);
 
     hooks::on_insert_start(ctx);
 }
@@ -45,14 +45,7 @@ pub fn enter_normal(ctx: &mut EditorCtx) {
 
 pub fn enter_ex(ctx: &mut EditorCtx, ex_mode: ExMode, cmd: Cmd) {
     clear_ex(ctx);
-    prepare_ex(ctx, ex_mode, cmd);
 
-    ctx.editor.focus = Focus::Ex;
-    ctx.editor.char_at_cursor = None;
-    utils::apply_insert_point(ctx, InsertPoint::Last);
-}
-
-fn prepare_ex(ctx: &mut EditorCtx, ex_mode: ExMode, cmd: Cmd) {
     let ex_session = &mut ctx.ex_session;
     ex_session.mode = ex_mode;
 
@@ -75,6 +68,9 @@ fn prepare_ex(ctx: &mut EditorCtx, ex_mode: ExMode, cmd: Cmd) {
             }
         },
     }
+
+    ctx.editor.focus = Focus::Ex;
+    ctx.editor.char_at_cursor = None;
 }
 
 fn reps_to_range(reps: Option<usize>) -> ExRange {
