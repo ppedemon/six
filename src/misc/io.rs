@@ -74,11 +74,6 @@ pub fn save(path: impl AsRef<Path>, append: bool, buf_slice: BufferSlice) -> io:
         num_lines = 0;
     }
 
-    if buf_slice.should_append_nl() {
-        writer.write(&['\n' as u8])?;
-        num_bytes = num_bytes.saturating_add(1);
-    }
-
     writer.flush()?;
     writer.get_ref().sync_all()?;
 

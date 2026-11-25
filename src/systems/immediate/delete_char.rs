@@ -31,8 +31,11 @@ fn small_delete(
     reps: usize,
     rng: Range<usize>,
 ) -> Damage {
-    let (session, buf_view, buffer) = active_session_and_buffer!(mut ctx);
+    if rng.len() == 0 {
+        return Damage::Intact;
+    }
 
+    let (session, buf_view, buffer) = active_session_and_buffer!(mut ctx);
     record_small_delete(&mut ctx.registers, reg, buffer.rope(), rng.clone());
 
     buffer.edit().remove(rng.clone());

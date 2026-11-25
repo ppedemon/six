@@ -19,16 +19,11 @@ pub struct RopeInfo {
 }
 
 pub fn info(rope: &Rope) -> RopeInfo {
-    let len = rope.len_chars();
-
-    let num_lines = if len == 0 {
+    let num_lines = if rope.len_chars() == 0 {
         0
-    } else if rope.char(len - 1) == '\n' {
-        rope.len_lines() - 1
     } else {
         rope.len_lines()
     };
-
     RopeInfo {
         num_lines,
         num_bytes: rope.len_bytes(),

@@ -44,10 +44,14 @@ fn delete_charwise(ctx: &mut EditorCtx, yank_data: YankData) -> Damage {
             next_col_or_display_width(&ctx.config, buffer.rope(), buf_view, end_coords);
         end_coords.col = new_end_col;
     }
-    let end_idx = coords_to_char_idx(&ctx.config, buffer.rope(), buf_view, end_coords);
 
-    let is_empty = start_idx == 0 && end_idx == buffer.rope().len_chars();
+    let end_idx = coords_to_char_idx(&ctx.config, buffer.rope(), buf_view, end_coords);
+    if start_idx == end_idx {
+        return Damage::Intact;
+    }
+
     buffer.edit().remove(start_idx..end_idx);
+    let is_empty = buffer.rope().len_chars() == 0;
 
     let damage = if lines <= 1 {
         buf_view
@@ -70,9 +74,11 @@ fn delete_charwise(ctx: &mut EditorCtx, yank_data: YankData) -> Damage {
 
 fn delete_linewise(ctx: &mut EditorCtx, yank_data: YankData) -> Damage {
     let (_, buf_view, buffer) = active_session_and_buffer!(mut ctx);
+    if buffer.rope().len_chars() == 0 {
+        return Damage::Intact;
+    }
 
     let num_lines = yank_data.num_lines();
-    let is_empty = buf_view.cursor.row == 0 && num_lines >= buffer.rope().len_lines();
     let start_idx = buffer.rope().line_to_char(buf_view.cursor.row);
 
     let row = if buf_view.cursor.row + num_lines >= buffer.rope().len_lines() {
@@ -94,7 +100,7 @@ fn delete_linewise(ctx: &mut EditorCtx, yank_data: YankData) -> Damage {
     buf_view.display_buf.destroy_from(row);
 
     nav::line_first_non_blank::<NormalNav>(&ctx.config, buffer.rope(), buf_view);
-    event::on_delete(&mut ctx.status, num_lines, is_empty);
+    event::on_delete(&mut ctx.status, num_lines, buffer.rope().len_chars() == 0);
 
     Damage::From(row)
 }

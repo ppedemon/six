@@ -15,7 +15,7 @@ use crate::{
         insert::{DamageEvent, apply_insert_log, broadcast_damage},
         interactive::ExecMode::{Batch, Interactive},
         mode::enter_insert,
-        nav::utils::{self, ensure_cursor_inside_line},
+        nav::utils::{apply_insert_point, ensure_cursor_inside_line},
     },
 };
 
@@ -88,15 +88,10 @@ pub fn handle_interactive(ctx: &mut EditorCtx, args: InteractiveArgs) {
         ExecMode::Interactive => enter_insert(ctx, insert_point),
         ExecMode::Batch => {
             let reps = args.cmd.reps.unwrap_or(1);
-            goto_insert_point(ctx, insert_point);
+            apply_insert_point(ctx, insert_point);
             apply_last_insert(ctx, args.op, reps, true);
         }
     }
-}
-
-fn goto_insert_point(ctx: &mut EditorCtx, insert_point: InsertPoint) {
-    let (_, buf_view, buffer) = active_session_and_buffer!(mut ctx);
-    utils::apply_insert_point(&ctx.config, buffer.rope(), buf_view, insert_point);
 }
 
 // Apply the structural part of the interactive operation before inserting.

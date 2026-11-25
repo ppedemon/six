@@ -22,7 +22,7 @@ pub fn enter_insert(ctx: &mut EditorCtx, insert_point: InsertPoint) {
 
     let (session, buf_view, buffer) = active_session_and_buffer!(mut ctx);
     session.mode = Mode::Insert;
-    utils::apply_insert_point(&ctx.config, buffer.rope(), buf_view, insert_point);
+    utils::apply_insert_point(ctx, insert_point);
 
     hooks::on_insert_start(ctx);
 }

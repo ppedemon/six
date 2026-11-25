@@ -28,27 +28,17 @@ pub struct Buffer {
     last_edited_line: LastEditedLine,
     dirty: bool,
     rope: Rope,
-    fake_empty: bool,
 }
 
 impl Buffer {
     pub fn new(rope: Rope) -> Self {
-        let mut buffer = Self {
+        Self {
             marks: Marks::new(),
             undo_stack: UndoStack::new(),
             last_edited_line: LastEditedLine::new(),
             dirty: false,
             rope,
-            fake_empty: false,
-        };
-
-        let len = buffer.rope.len_chars();
-        if len > 0 && buffer.rope.char(len - 1) == '\n' {
-            buffer.rope.remove(len - 1..len);
-            buffer.fake_empty = len == 1;
         }
-
-        buffer
     }
 
     pub fn empty() -> Self {
@@ -58,16 +48,7 @@ impl Buffer {
             last_edited_line: LastEditedLine::new(),
             dirty: false,
             rope: Rope::new(),
-            fake_empty: false,
         }
-    }
-
-    pub fn fake_empty(&self) -> bool {
-        self.fake_empty
-    }
-
-    pub fn set_fake_empty(&mut self) {
-        self.fake_empty = true
     }
 
     pub fn marks(&self) -> &Marks {
@@ -190,6 +171,10 @@ impl<'a> MutBuffer for SessionMutableBuffer<'a> {
     }
 
     fn remove(&mut self, char_range: Range<usize>) {
+        if char_range.len() == 0 {
+            return;
+        }
+
         let buffer = &mut self.buffer;
         buffer
             .last_edited_line
@@ -303,9 +288,7 @@ fn multi_line(txn: &UndoTxn, rope: &Rope) -> bool {
     false
 }
 
-// A BufferSlice represent a line-iterable slice of a buffer that is
-// aware of the trailing nl correction. We use this to seamlessly
-// persist either a whole buffer or a slice of it.
+// A BufferSlice represent a line-iterable slice of a buffer.
 pub struct BufferSlice<'a> {
     buffer: &'a Buffer,
     line_range: Range<usize>,
@@ -320,12 +303,12 @@ impl<'a> BufferSlice<'a> {
         self.line_range.start == 0 && self.line_range.end == self.buffer.rope.len_lines()
     }
 
-    pub fn should_append_nl(&self) -> bool {
-        self.buffer.rope.len_chars() > 0 && self.line_range.end == self.buffer.rope.len_lines()
-    }
-
     pub fn lines(&self) -> Lines<'_> {
-        let slice = rope::slice_as_view(&self.buffer.rope, self.line_range.clone());
-        slice.lines()
+        if self.is_full_buffer() {
+            self.buffer.rope().lines()
+        } else {
+            let slice = rope::slice_as_view(&self.buffer.rope, self.line_range.clone());
+            slice.lines()
+        }
     }
 }
