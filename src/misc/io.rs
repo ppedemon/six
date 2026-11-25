@@ -1,6 +1,5 @@
 use std::fs::{File, set_permissions};
 use std::io::{self, BufWriter, Write};
-use std::panic;
 use std::path::Path;
 
 use tempfile::NamedTempFile;
