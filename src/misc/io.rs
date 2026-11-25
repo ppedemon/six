@@ -2,10 +2,16 @@ use std::fs::{File, set_permissions};
 use std::io::{self, BufWriter, Write};
 use std::path::Path;
 
-use ropey::RopeSlice;
 use tempfile::NamedTempFile;
 
-pub fn hard_save(path: impl AsRef<Path>, append: bool, rope_slice: RopeSlice) -> io::Result<()> {
+use crate::components::BufferSlice;
+use crate::rope::RopeInfo;
+
+pub fn hard_save(
+    path: impl AsRef<Path>,
+    append: bool,
+    buf_slice: BufferSlice,
+) -> io::Result<RopeInfo> {
     let path = path.as_ref();
 
     let original_perms = match path.metadata() {
@@ -23,7 +29,7 @@ pub fn hard_save(path: impl AsRef<Path>, append: bool, rope_slice: RopeSlice) ->
         }
     }
 
-    let write_result = save(path, append, rope_slice);
+    let write_result = save(path, append, buf_slice);
 
     if let Some(ref perms) = original_perms {
         if perms.readonly() {
@@ -34,7 +40,7 @@ pub fn hard_save(path: impl AsRef<Path>, append: bool, rope_slice: RopeSlice) ->
     write_result
 }
 
-pub fn save(path: impl AsRef<Path>, append: bool, rope_slice: RopeSlice) -> io::Result<()> {
+pub fn save(path: impl AsRef<Path>, append: bool, buf_slice: BufferSlice) -> io::Result<RopeInfo> {
     let path = path.as_ref();
     let parent = path.parent();
 
@@ -46,27 +52,35 @@ pub fn save(path: impl AsRef<Path>, append: bool, rope_slice: RopeSlice) -> io::
     let temp = NamedTempFile::new_in(parent_path)?;
     let mut writer = BufWriter::new(temp.reopen()?);
 
-    // This makes save not atomic, but oh well... (tm)
+    // This makes save non atomic, but oh well...
     if append {
         if let Ok(mut existing) = File::open(path) {
             io::copy(&mut existing, &mut writer)?;
         }
     }
 
-    for chunk in rope_slice.chunks() {
-        writer.write_all(chunk.as_bytes())?;
+    let mut num_bytes: usize = 0;
+    let mut num_lines: usize = 0;
+
+    for line in buf_slice.lines() {
+        num_lines = num_lines.saturating_add(1);
+        for chunk in line.chunks() {
+            writer.write_all(chunk.as_bytes())?;
+            num_bytes = num_bytes.saturating_add(chunk.len());
+        }
     }
 
-    // Rope normalization: ensure last line is POSIX valid by adding a '\n' if necessary
-    if rope_slice.char(rope_slice.len_chars().saturating_sub(1)) != '\n' {
-        writer.write(b"\n")?;
+    if num_bytes == 0 {
+        num_lines = 0;
     }
 
     writer.flush()?;
     writer.get_ref().sync_all()?;
-    drop(writer);
 
     temp.persist(path).map_err(|e| e.error)?;
 
-    Ok(())
+    Ok(RopeInfo {
+        num_lines,
+        num_bytes,
+    })
 }

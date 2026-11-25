@@ -1,10 +1,13 @@
 use std::ops::Range;
 
-use ropey::Rope;
+use ropey::{Rope, iter::Lines};
 
-use crate::components::{
-    Change, Marks, UndoSummary,
-    undo::{Action, LastEditedLine, UndoStack, UndoTxn},
+use crate::{
+    components::{
+        Change, Marks, UndoSummary,
+        undo::{Action, LastEditedLine, UndoStack, UndoTxn},
+    },
+    rope,
 };
 
 // Mutable view of a buffer
@@ -168,6 +171,10 @@ impl<'a> MutBuffer for SessionMutableBuffer<'a> {
     }
 
     fn remove(&mut self, char_range: Range<usize>) {
+        if char_range.len() == 0 {
+            return;
+        }
+
         let buffer = &mut self.buffer;
         buffer
             .last_edited_line
@@ -279,4 +286,29 @@ fn multi_line(txn: &UndoTxn, rope: &Rope) -> bool {
         }
     }
     false
+}
+
+// A BufferSlice represent a line-iterable slice of a buffer.
+pub struct BufferSlice<'a> {
+    buffer: &'a Buffer,
+    line_range: Range<usize>,
+}
+
+impl<'a> BufferSlice<'a> {
+    pub fn new(buffer: &'a Buffer, line_range: Range<usize>) -> Self {
+        Self { buffer, line_range }
+    }
+
+    pub fn is_full_buffer(&self) -> bool {
+        self.line_range.start == 0 && self.line_range.end == self.buffer.rope.len_lines()
+    }
+
+    pub fn lines(&self) -> Lines<'_> {
+        if self.is_full_buffer() {
+            self.buffer.rope().lines()
+        } else {
+            let slice = rope::slice_as_view(&self.buffer.rope, self.line_range.clone());
+            slice.lines()
+        }
+    }
 }

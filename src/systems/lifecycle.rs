@@ -47,17 +47,19 @@ fn create_buffer(ctx: &mut EditorCtx, buf_name: &BufferName) -> Result<BufferId,
     let buf_id = match find_buffer(ctx, file_path) {
         Some(buf_id) => buf_id,
         None => {
-            let buffer = if file_path.exists() {
+            let (buffer, rope_info) = if file_path.exists() {
                 let file = File::open(file_path)?;
                 let reader = BufReader::new(file);
-                let mut rope = Rope::from_reader(reader)?;
-                rope::remove_trailing_newline(&mut rope);
-                Buffer::new(rope)
+                let rope = Rope::from_reader(reader)?;
+                let rope_info = rope::info(&rope);
+                (Buffer::new(rope), rope_info)
             } else {
-                Buffer::empty()
+                let buffer = Buffer::empty();
+                let rope_info = rope::info(&buffer.rope());
+                (buffer, rope_info)
             };
 
-            event::on_buffer_loaded(&mut ctx.status, buf_name, &buffer.rope());
+            event::on_buffer_loaded(&mut ctx.status, buf_name, &rope_info);
             ctx.spawn_buffer(buffer)
         }
     };

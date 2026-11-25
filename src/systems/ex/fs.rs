@@ -1,10 +1,10 @@
-use ropey::RopeSlice;
+use std::ops::Range;
 
 use crate::{
     active_session_and_buffer,
-    components::{Buffer, BufferName, BufferView, EditorCtx, Level, Session, Status},
+    components::{Buffer, BufferName, BufferSlice, BufferView, EditorCtx, Level, Session, Status},
     ex::{ExError, ExRange, ExRangeSolverArgs, solve_exrange},
-    misc, rope,
+    misc,
     systems::event::on_buffer_saved,
 };
 
@@ -104,8 +104,9 @@ fn save(
     }
 
     let range = ex_range.coerce_implicit_to(ExRange::all());
-    let rope_slice = rope_slice(&buffer, curr_line, range)?;
-    let writes_all = rope_slice.len_chars() == buffer.rope().len_chars();
+    let line_range = rope_slice(&buffer, curr_line, range)?;
+    let buf_slice = BufferSlice::new(buffer, line_range);
+    let saves_full_buffer = buf_slice.is_full_buffer();
 
     match (name.as_ref(), session.buf_name.as_ref()) {
         (None, None) => Err(ExError::NoFileName),
@@ -115,10 +116,10 @@ fn save(
                 return Err(ExError::FileExists);
             }
             // Can't do a partial write to myself
-            if !writes_all {
+            if !saves_full_buffer {
                 return Err(ExError::PartialWrite);
             }
-            save_buffer(status, orig_name, append, rope_slice)?;
+            save_buffer(status, orig_name, append, buf_slice)?;
             buffer.saved();
             Ok(())
         }
@@ -126,8 +127,8 @@ fn save(
             if given_name.exists()? {
                 return Err(ExError::FileExists);
             }
-            save_buffer(status, given_name, append, rope_slice)?;
-            if !append && writes_all {
+            save_buffer(status, given_name, append, buf_slice)?;
+            if !append && saves_full_buffer {
                 session.buf_name = name;
                 buffer.saved();
             }
@@ -140,13 +141,13 @@ fn save(
                     return Err(ExError::FileExists);
                 }
                 // Can't do a partial write to myself
-                if !writes_all {
+                if !saves_full_buffer {
                     return Err(ExError::PartialWrite);
                 }
             } else if given_name.exists()? {
                 return Err(ExError::FileExists);
             }
-            save_buffer(status, given_name, append, rope_slice)?;
+            save_buffer(status, given_name, append, buf_slice)?;
             if given_name.file_path.as_path() == orig_name.file_path.as_path() {
                 buffer.saved();
             }
@@ -171,21 +172,22 @@ fn hard_save(
     }
 
     let range = ex_range.coerce_implicit_to(ExRange::all());
-    let rope_slice = rope_slice(&buffer, curr_line, range)?;
-    let writes_all = rope_slice.len_chars() == buffer.rope().len_chars();
+    let line_range = rope_slice(&buffer, curr_line, range)?;
+    let buf_slice = BufferSlice::new(buffer, line_range);
+    let saves_full_buffer = buf_slice.is_full_buffer();
 
     match (name.as_ref(), session.buf_name.as_ref()) {
         (None, None) => Err(ExError::NoFileName),
         (None, Some(orig_name)) => {
-            hard_save_buffer(status, orig_name, append, rope_slice)?;
-            if !append && writes_all {
+            hard_save_buffer(status, orig_name, append, buf_slice)?;
+            if !append && saves_full_buffer {
                 buffer.saved();
             }
             Ok(())
         }
         (Some(given_name), _) => {
-            hard_save_buffer(status, given_name, append, rope_slice)?;
-            if !append && writes_all {
+            hard_save_buffer(status, given_name, append, buf_slice)?;
+            if !append && saves_full_buffer {
                 if session.buf_name.is_none() {
                     session.buf_name = name;
                 }
@@ -200,13 +202,13 @@ fn rope_slice(
     buffer: &Buffer,
     curr_line: usize,
     ex_range: ExRange,
-) -> Result<RopeSlice<'_>, ExError> {
+) -> Result<Range<usize>, ExError> {
     let args = ExRangeSolverArgs::new(buffer.rope(), buffer.marks());
     let range = solve_exrange(&ex_range, args, curr_line)?;
-    if range.is_empty() || range.end > buffer.rope().len_lines() {
+    if range.is_empty() || range.start > range.end || range.end > buffer.rope().len_lines() {
         Err(ExError::InvalidRange)
     } else {
-        Ok(rope::slice_as_view(buffer.rope(), range))
+        Ok(range)
     }
 }
 
@@ -214,10 +216,10 @@ fn save_buffer(
     status: &mut Status,
     name: &BufferName,
     append: bool,
-    rope_slice: RopeSlice<'_>,
+    buf_slice: BufferSlice,
 ) -> Result<(), ExError> {
-    on_buffer_saved(status, name, rope_slice);
-    misc::io::save(name.file_path.as_path(), append, rope_slice)?;
+    let rope_info = misc::io::save(name.file_path.as_path(), append, buf_slice)?;
+    on_buffer_saved(status, name, &rope_info);
     Ok(())
 }
 
@@ -225,9 +227,9 @@ fn hard_save_buffer(
     status: &mut Status,
     name: &BufferName,
     append: bool,
-    rope_slice: RopeSlice<'_>,
+    buf_slice: BufferSlice,
 ) -> Result<(), ExError> {
-    on_buffer_saved(status, name, rope_slice);
-    misc::io::hard_save(name.file_path.as_path(), append, rope_slice)?;
+    let rope_info = misc::io::hard_save(name.file_path.as_path(), append, buf_slice)?;
+    on_buffer_saved(status, name, &rope_info);
     Ok(())
 }

@@ -13,7 +13,7 @@ mod yank;
 
 use std::collections::HashMap;
 
-pub use buffer::{Buffer, MutBuffer};
+pub use buffer::{Buffer, BufferSlice, MutBuffer};
 pub use config::Config;
 pub use display::{DisplayBuffer, DisplayLine, DisplayLineRef};
 pub use editor::{Editor, Focus, Level, Status, TextStyle};
