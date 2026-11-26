@@ -10,6 +10,7 @@ use crate::{
     },
     components::{Coords, EditorCtx, YankData},
     systems::{
+        commons::curr_line,
         immediate::delete::delete,
         input::dispatch_txn,
         insert::{DamageEvent, apply_insert_log, broadcast_damage},
@@ -157,12 +158,17 @@ fn insert_point(ctx: &mut EditorCtx, op: InteractiveOp, orig_cursor: Coords) -> 
     match op {
         InteractiveOp::EnterInsert(insert_point) => insert_point,
         InteractiveOp::Change | InteractiveOp::ChangeEol => {
-            let (_, buf_view) = active_session!(mut ctx);
+            let (_, buf_view, buffer) = active_session_and_buffer!(mut ctx);
             let cursor = buf_view.cursor;
-            if cursor.col < orig_cursor.col {
-                InsertPoint::Last
-            } else {
+            if cursor.row < orig_cursor.row {
                 InsertPoint::Curr
+            } else {
+                let line = curr_line(&ctx.config, buffer.rope(), buf_view);
+                if cursor.col == line.display_width {
+                    InsertPoint::Last
+                } else {
+                    InsertPoint::Curr
+                }
             }
         }
         _ => InsertPoint::Curr,
