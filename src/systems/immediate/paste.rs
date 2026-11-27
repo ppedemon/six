@@ -5,7 +5,7 @@ use crate::{
     active_session_and_buffer,
     cmd::Cmd,
     components::{
-        Buffer, BufferView, Config, Coords, EditorCtx, Level, MutBuffer, Register, RegisterData,
+        Buffer, BufferView, Config, Coords, EditorCtx, MutBuffer, Register, RegisterData,
     },
     systems::{
         commons::{
@@ -40,7 +40,7 @@ pub fn paste(ctx: &mut EditorCtx, cmd: Cmd, mode: PasteMode) -> Damage {
         None => {
             if let Register::Named(name) = r {
                 let msg = &format!("Nothing in register {name}");
-                ctx.status.set_msg(Level::Error, msg);
+                event::on_error(&mut ctx.status, msg);
             }
             Damage::Intact
         }

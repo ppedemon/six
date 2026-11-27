@@ -5,7 +5,7 @@ use crate::{
     components::{BufferName, Level, Status, YankData},
     misc::time,
     rope::RopeInfo,
-    systems::immediate,
+    systems::{immediate, nav::NavError},
 };
 
 pub fn on_buffer_loaded(status: &mut Status, name: &BufferName, rope_info: &RopeInfo) {
@@ -83,4 +83,15 @@ pub fn on_undo(
     write!(status.msg, "{count} {change}; before #{change_id}  ")
         .expect("writing to a String cannot fail");
     time::ppr_timestamp_ms(&mut status.msg, timestamp_ms).expect("writing to a String cannot fail");
+}
+
+pub fn on_error(status: &mut Status, msg: &str) {
+    status.set_msg(Level::Error, msg);
+}
+
+pub fn on_nav_error(status: &mut Status, nav_error: NavError) {
+    match nav_error {
+        NavError::CharNotFound { c } => on_error(status, &format!("Char not found: {c}")),
+        NavError::PatNotFound { pat } => on_error(status, &pat),
+    }
 }

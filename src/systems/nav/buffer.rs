@@ -6,6 +6,7 @@ use crate::rope;
 use crate::systems::commons::{
     char_idx_to_coords, curr_line, cursor_to_char_idx, display_line, snap_coords,
 };
+use crate::systems::nav::session::NavError;
 
 fn apply_target_col<R: NavRules>(config: &Config, rope: &Rope, buf_view: &mut BufferView) {
     let target_col = buf_view.target_col;
@@ -336,11 +337,16 @@ pub fn find_char_forward(
     buf_view: &mut BufferView,
     c: char,
     reps: usize,
-) {
-    let mut char_idx = cursor_to_char_idx(config, buf_view, rope);
-    char_idx = rope::find_char_forward(rope, c, reps, char_idx);
-    let coords = char_idx_to_coords(config, rope, buf_view, char_idx);
-    snap_coords(config, rope, buf_view, coords);
+) -> Result<(), NavError> {
+    let char_idx = cursor_to_char_idx(config, buf_view, rope);
+    let new_char_idx = rope::find_char_forward(rope, c, reps, char_idx);
+    if new_char_idx == char_idx {
+        Err(NavError::CharNotFound { c })
+    } else {
+        let coords = char_idx_to_coords(config, rope, buf_view, new_char_idx);
+        snap_coords(config, rope, buf_view, coords);
+        Ok(())
+    }
 }
 
 pub fn find_char_backward(
@@ -349,11 +355,16 @@ pub fn find_char_backward(
     buf_view: &mut BufferView,
     c: char,
     reps: usize,
-) {
-    let mut char_idx = cursor_to_char_idx(config, buf_view, rope);
-    char_idx = rope::find_char_backward(rope, c, reps, char_idx);
-    let coords = char_idx_to_coords(config, rope, buf_view, char_idx);
-    snap_coords(config, rope, buf_view, coords);
+) -> Result<(), NavError> {
+    let char_idx = cursor_to_char_idx(config, buf_view, rope);
+    let new_char_idx = rope::find_char_backward(rope, c, reps, char_idx);
+    if new_char_idx == char_idx {
+        Err(NavError::CharNotFound { c })
+    } else {
+        let coords = char_idx_to_coords(config, rope, buf_view, new_char_idx);
+        snap_coords(config, rope, buf_view, coords);
+        Ok(())
+    }
 }
 
 pub fn till_char_forward(
@@ -363,18 +374,26 @@ pub fn till_char_forward(
     c: char,
     reps: usize,
     repeats_last: bool,
-) {
-    let mut char_idx = cursor_to_char_idx(config, buf_view, rope);
+) -> Result<(), NavError> {
+    let max_idx = rope.len_chars().saturating_sub(1);
+    let char_idx = cursor_to_char_idx(config, buf_view, rope);
 
     let mut n = reps;
-    if repeats_last && char_idx < rope.len_chars().saturating_sub(1) && rope.char(char_idx + 1) == c
-    {
+    if repeats_last && char_idx < max_idx && rope.char(char_idx + 1) == c {
         n += 1;
     }
 
-    char_idx = rope::till_char_forward(rope, c, n, char_idx);
-    let coords = char_idx_to_coords(config, rope, buf_view, char_idx);
-    snap_coords(config, rope, buf_view, coords);
+    let new_char_idx = rope::till_char_forward(rope, c, n, char_idx);
+
+    if char_idx == max_idx
+        || (new_char_idx == char_idx && (repeats_last || rope.char(new_char_idx + 1) != c))
+    {
+        Err(NavError::CharNotFound { c })
+    } else {
+        let coords = char_idx_to_coords(config, rope, buf_view, new_char_idx);
+        snap_coords(config, rope, buf_view, coords);
+        Ok(())
+    }
 }
 
 pub fn till_char_backward(
@@ -384,15 +403,23 @@ pub fn till_char_backward(
     c: char,
     reps: usize,
     repeats_last: bool,
-) {
-    let mut char_idx = cursor_to_char_idx(config, buf_view, rope);
+) -> Result<(), NavError> {
+    let char_idx = cursor_to_char_idx(config, buf_view, rope);
 
     let mut n = reps;
     if repeats_last && char_idx > 0 && rope.char(char_idx - 1) == c {
         n += 1;
     }
 
-    char_idx = rope::till_char_backward(rope, c, n, char_idx);
-    let coords = char_idx_to_coords(config, rope, buf_view, char_idx);
-    snap_coords(config, rope, buf_view, coords);
+    let new_char_idx = rope::till_char_backward(rope, c, n, char_idx);
+
+    if char_idx == 0
+        || (new_char_idx == char_idx && (repeats_last || rope.char(new_char_idx - 1) != c))
+    {
+        Err(NavError::CharNotFound { c })
+    } else {
+        let coords = char_idx_to_coords(config, rope, buf_view, new_char_idx);
+        snap_coords(config, rope, buf_view, coords);
+        Ok(())
+    }
 }

@@ -9,4 +9,4 @@ pub use buffer::{
     goto_col, goto_line, line_first_non_blank, move_down, move_left, move_right, move_up,
 };
 pub use rules::{InsertNav, NormalNav};
-pub use session::{NavArgs, handle_nav, init_cursor_pos};
+pub use session::{NavArgs, NavError, handle_nav, init_cursor_pos};
