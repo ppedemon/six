@@ -1,4 +1,5 @@
 use ropey::Rope;
+use thiserror::Error;
 
 use super::{
     buffer,
@@ -24,9 +25,21 @@ impl NavArgs {
     }
 }
 
-pub fn handle_nav(ctx: &mut EditorCtx, nav_args: NavArgs) {
+#[derive(Debug, Error)]
+pub enum NavError {
+    #[error("Char not found: {c}")]
+    CharNotFound { c: char },
+
+    #[error("Pattern not found: {pat}")]
+    PatNotFound { pat: String },
+}
+
+pub fn handle_nav(ctx: &mut EditorCtx, nav_args: NavArgs) -> Result<(), NavError> {
     match ctx.editor.focus {
-        Focus::Ex => handle_ex_nav(ctx, nav_args),
+        Focus::Ex => {
+            handle_ex_nav(ctx, nav_args);
+            Ok(())
+        }
         Focus::Session => handle_session_nav(ctx, nav_args),
     }
 }
@@ -48,7 +61,7 @@ fn handle_ex_nav(ctx: &mut EditorCtx, args: NavArgs) {
     }
 }
 
-fn handle_session_nav(ctx: &mut EditorCtx, args: NavArgs) {
+fn handle_session_nav(ctx: &mut EditorCtx, args: NavArgs) -> Result<(), NavError> {
     let config = &ctx.config;
     let (session, _, buffer) = active_session_and_buffer!(mut ctx);
 
@@ -56,7 +69,7 @@ fn handle_session_nav(ctx: &mut EditorCtx, args: NavArgs) {
         Mode::Insert => {
             session.insert_log.poison();
             buffer.commit_undo_txn();
-            session_nav::<InsertNav>(ctx, args);
+            session_nav::<InsertNav>(ctx, args)
         }
         Mode::Normal => session_nav::<NormalNav>(ctx, args),
     }
@@ -64,7 +77,7 @@ fn handle_session_nav(ctx: &mut EditorCtx, args: NavArgs) {
 
 const PAGE_SCROLL_MARGIN: u16 = 3;
 
-fn session_nav<R: NavRules>(ctx: &mut EditorCtx, args: NavArgs) {
+fn session_nav<R: NavRules>(ctx: &mut EditorCtx, args: NavArgs) -> Result<(), NavError> {
     let config = &ctx.config;
     let (session, buf_view, buffer) = active_session_and_buffer!(mut ctx);
     let last_search = &mut ctx.last_search;
@@ -114,22 +127,22 @@ fn session_nav<R: NavRules>(ctx: &mut EditorCtx, args: NavArgs) {
         }
         Motion::FindNextChar(c) => {
             last_search.save_char_search(args.motion);
-            buffer::find_char_forward(config, rope, buf_view, c, reps);
+            buffer::find_char_forward(config, rope, buf_view, c, reps)?
         }
         Motion::FindPrevChar(c) => {
             last_search.save_char_search(args.motion);
-            buffer::find_char_backward(config, rope, buf_view, c, reps);
+            buffer::find_char_backward(config, rope, buf_view, c, reps)?
         }
         Motion::TillNextChar(c) => {
             last_search.save_char_search(args.motion);
-            buffer::till_char_forward(config, rope, buf_view, c, reps, false);
+            buffer::till_char_forward(config, rope, buf_view, c, reps, false)?
         }
         Motion::TillPrevChar(c) => {
             last_search.save_char_search(args.motion);
-            buffer::till_char_backward(config, rope, buf_view, c, reps, false);
+            buffer::till_char_backward(config, rope, buf_view, c, reps, false)?
         }
-        Motion::RepeatForward => repeat_forward(config, rope, &last_search, buf_view, reps),
-        Motion::RepeatBackward => repeat_backward(config, rope, last_search, buf_view, reps),
+        Motion::RepeatForward => repeat_forward(config, rope, &last_search, buf_view, reps)?,
+        Motion::RepeatBackward => repeat_backward(config, rope, last_search, buf_view, reps)?,
 
         Motion::FirstNonBlankInLine => buffer::line_first_non_blank::<R>(config, rope, buf_view),
         Motion::StartOfLine => buffer::start_of_line::<R>(config, rope, buf_view),
@@ -151,6 +164,8 @@ fn session_nav<R: NavRules>(ctx: &mut EditorCtx, args: NavArgs) {
         Motion::ImmSearchForward(_) => {}
         Motion::ImmSearchBackward(_) => {}
     }
+
+    Ok(())
 }
 
 // On startup, move cursor to the first non-blank character of the active session
@@ -166,7 +181,7 @@ fn repeat_forward(
     last_search: &LastSearch,
     buf_view: &mut BufferView,
     reps: usize,
-) {
+) -> Result<(), NavError> {
     if let Some(&m) = last_search.last_char_search().as_ref() {
         match m {
             Motion::FindNextChar(c) => buffer::find_char_forward(config, rope, buf_view, c, reps),
@@ -177,8 +192,10 @@ fn repeat_forward(
             Motion::TillPrevChar(c) => {
                 buffer::till_char_backward(config, rope, buf_view, c, reps, true)
             }
-            _ => {}
+            _ => Ok(()),
         }
+    } else {
+        Ok(())
     }
 }
 
@@ -188,7 +205,7 @@ fn repeat_backward(
     last_search: &LastSearch,
     buf_view: &mut BufferView,
     reps: usize,
-) {
+) -> Result<(), NavError> {
     if let Some(&m) = last_search.last_char_search().as_ref() {
         match m {
             Motion::FindNextChar(c) => buffer::find_char_backward(config, rope, buf_view, c, reps),
@@ -199,8 +216,10 @@ fn repeat_backward(
             Motion::TillPrevChar(c) => {
                 buffer::till_char_forward(config, rope, buf_view, c, reps, true)
             }
-            _ => {}
+            _ => Ok(()),
         }
+    } else {
+        Ok(())
     }
 }
 

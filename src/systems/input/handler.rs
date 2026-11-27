@@ -5,6 +5,7 @@ use crate::{
     cmd::{Cmd, InsertOp, Operator, Txn, TxnItem},
     components::{EditorCtx, Focus, Mode},
     systems::{
+        event,
         immediate::{ImmediateArgs, handle_immediate},
         input::{insert::InsertInputHandler, normal::NormalInputHandler},
         insert::handle_edit,
@@ -55,6 +56,7 @@ pub fn dispatch_cmd(ctx: &mut EditorCtx, cmd: Cmd) {
         Operator::Move(motion) => {
             let args = NavArgs::new(motion, cmd);
             handle_nav(ctx, args)
+                .unwrap_or_else(|nav_error| event::on_nav_error(&mut ctx.status, nav_error))
         }
         Operator::Interactive(op) => {
             let args = InteractiveArgs::new(op, cmd);
@@ -74,6 +76,7 @@ pub fn dispatch_insert(ctx: &mut EditorCtx, op: InsertOp) {
         InsertOp::Move(motion) => {
             let nav_args = NavArgs::new(motion, Cmd::new(motion.into()));
             handle_nav(ctx, nav_args)
+                .unwrap_or_else(|nav_error| event::on_nav_error(&mut ctx.status, nav_error))
         }
     }
 }

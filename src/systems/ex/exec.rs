@@ -1,10 +1,10 @@
 use crate::{
     active_session_and_buffer,
     cmd::{Cmd, Motion, MotionMeta, Operator},
-    components::{Direction, EditorCtx, ExState, Level, Offset},
+    components::{Direction, EditorCtx, ExState, Offset},
     ex::{ExCmd, ExError, ExRange, ExRangeSolverArgs, parse_cmd_line, parse_search, solve_exrange},
     systems::{
-        ex::builtin::exec_builtin, input::dispatch_cmd, insert::clear_ex, mode::enter_normal,
+        event, ex::builtin::exec_builtin, input::dispatch_cmd, insert::clear_ex, mode::enter_normal,
     },
 };
 
@@ -27,7 +27,7 @@ pub fn handle_ex_state(ctx: &mut EditorCtx) {
                     _ => Ok(()),
                 };
                 result.unwrap_or_else(|err| {
-                    ctx.status.set_msg(Level::Error, &err.to_string());
+                    event::on_error(&mut ctx.status, &err.to_string());
                 });
             }
         }
